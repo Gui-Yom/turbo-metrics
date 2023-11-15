@@ -1,0 +1,13 @@
+[package]
+name = "ssimulacra2-cuda"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+video-common = { version = "0.1", path = "../video-common" }
+cudarc = { version = "0.9", default-features = false, features = ["std", "driver"] }
+image = { version = "0.24", default-features = false, features = ["bmp", "png"] }
+array-init = "2"
+cuda_npp = { version = "0.1", path = "../cuda_npp" }

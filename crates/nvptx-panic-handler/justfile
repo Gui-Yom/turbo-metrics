@@ -1,0 +1,4 @@
+set windows-shell := ["cmd.exe", "/c"]
+
+build:
+    rustc +nightly --edition 2021 --crate-type rlib --crate-name nvptx_panic_handler --target nvptx64-nvidia-cuda src/lib.rs -C opt-level=3 -o libnvptx_panic_handler.rlib

@@ -1,0 +1,20 @@
+[package]
+name = "cuda_npp"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+cudarc = { version = "0.9", default-features = false, features = ["std", "driver"] }
+paste = "1"
+duplicate = "1"
+cuda_npp_sys = { version = "0.1", path = "../cuda_npp_sys", default-features = false }
+
+[features]
+default = ["static", "ig", "isu"]
+static = ["cuda_npp_sys/static"]
+icc = ["cuda_npp_sys/icc"]
+if = ["cuda_npp_sys/if"]
+ig = ["cuda_npp_sys/ig"]
+isu = ["cuda_npp_sys/isu"]

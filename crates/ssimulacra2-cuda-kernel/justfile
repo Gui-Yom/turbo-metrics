@@ -1,0 +1,11 @@
+set windows-shell := ["busybox64", "sh", "-c"]
+
+compile:
+    rustc +nightly --edition 2021 --emit llvm-bc --crate-type rlib --crate-name ssimulacra2 --target nvptx64-nvidia-cuda --extern nvptx_panic_handler=../nvptx-panic-handler/libnvptx_panic_handler.rlib src/lib.rs -C opt-level=3
+
+link: compile
+    C:/apps/LLVM-dev-16/bin/llvm-link ssimulacra2.bc "C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.3\nvvm\libdevice\libdevice.10.bc" -o ssimulacra2.linked.bc
+    C:/apps/LLVM-dev-16/bin/opt -p "default<O3>,internalize,globaldce" -internalize-public-api-list=plane_srgb_to_linear,linear_to_xyb,downscale_by_2,mul_planes ssimulacra2.linked.bc -o ssimulacra2.opt.bc
+
+build-ptx: link
+    C:/apps/LLVM-dev-16/bin/llc -O3 -mcpu=sm_30 ssimulacra2.opt.bc -o ssimulacra2.ptx
