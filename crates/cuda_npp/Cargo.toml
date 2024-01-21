@@ -6,10 +6,11 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-cudarc = { version = "0.9", default-features = false, features = ["std", "driver"] }
+cudarc = { version = "0.10", default-features = false, features = ["std", "driver"] }
 paste = "1"
 duplicate = "1"
 cuda_npp_sys = { version = "0.1", path = "../cuda_npp_sys", default-features = false }
+flut = { version = "0.1", path = "../flut" }
 
 [features]
 default = ["static", "ig", "isu"]

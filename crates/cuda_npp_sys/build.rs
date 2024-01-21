@@ -5,27 +5,25 @@ use bindgen::{CargoCallbacks, EnumVariation};
 
 fn link_lib(lib: &str) {
     if cfg!(feature = "static") {
-        println!("cargo:rustc-link-lib=static={lib}_static");
+        println!("cargo:rustc-link-lib=static={lib}");
     } else {
         println!("cargo:rustc-link-lib={lib}");
     }
 }
 
 fn main() {
-    println!("cargo:rerun-if-changed=wrapper.h");
-
     // TODO platform dependant detection
     let CUDA_HOME = r#"C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.3"#;
     let include_path = format!("{CUDA_HOME}/include");
 
     // println!("cargo:rustc-link-lib=cuda");
-    println!("cargo:rustc-link-search=C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v12.3\\lib\\x64");
+    println!("cargo:rustc-link-search={CUDA_HOME}\\lib\\x64");
     let mut bindgen = bindgen::Builder::default()
         .clang_args(["-I", &include_path])
         .header(format!("{include_path}/nppdefs.h"))
         .header(format!("{include_path}/nppcore.h"))
         .must_use_type("NppStatus")
-        .blocklist_type("(Npp8u)|(Npp8s)|(Npp16u)|(Npp16s)|(Npp32f)")
+        .blocklist_type("(Npp8u)|(Npp8s)|(Npp16u)|(Npp16s)|(Npp32s)|(Npp32f)")
         .generate_comments(false)
         .default_enum_style(EnumVariation::Rust {
             non_exhaustive: false,
@@ -36,6 +34,7 @@ fn main() {
         .merge_extern_blocks(true)
         .parse_callbacks(Box::new(CargoCallbacks::new()));
 
+    // npp core
     link_lib("nppc");
     #[cfg(all(feature = "static", target_os = "linux"))]
     link_lib("culibos");

@@ -10,8 +10,13 @@ bindgen = "0.69"
 
 [features]
 default = ["static"]
+# Static linking against cuda libraries
 static = []
+# Color conversion
 icc = []
+# Image filtering
 if = []
+# Geometric transforms
 ig = []
+# Support functions
 isu = []

@@ -7,5 +7,5 @@ edition = "2021"
 
 [dependencies]
 video-common = { version = "0.1", path = "../video-common" }
-cudarc = { version = "0.9", default-features = false, features = ["std", "driver"] }
+cudarc = { version = "0.10", default-features = false, features = ["std", "driver"] }
 image = { version = "0.24", default-features = false, features = ["bmp"] }

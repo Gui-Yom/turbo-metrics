@@ -6,8 +6,10 @@ members = [
     "crates/ssimulacra2-cuda-kernel",
     "crates/ssimulacra2-cuda",
     "crates/cuda_npp_sys",
-    "crates/cuda_npp"
+    "crates/cuda_npp",
+    "crates/flut"
 ]
+resolver = "2"
 
 [package]
 name = "video"
@@ -20,4 +22,4 @@ edition = "2021"
 video-common = { version = "0.1", path = "crates/video-common" }
 nv_video_codec_sdk = { version = "0.1", path = "crates/nv_video_codec_sdk" }
 matroska-demuxer = "0.5"
-bitstream-io = "1.7"
+bitstream-io = "2"
