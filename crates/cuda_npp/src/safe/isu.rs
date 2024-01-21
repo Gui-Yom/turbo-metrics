@@ -78,6 +78,7 @@ mod tests {
     #[test]
     fn new_image() -> Result<()> {
         let img = Image::<f32, C<3>>::malloc(1024, 1024)?;
+        dbg!(img.line_step);
         Ok(())
     }
 }

@@ -1,0 +1,11 @@
+[package]
+name = "ssimulacra2-npp"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+cudarc = { version = "0.10", default-features = false, features = ["std", "driver"] }
+cuda_npp = { version = "0.1", path = "../cuda_npp", features = ["icc", "idei", "if", "ig", "isu"] }
+zune-image = { version = "0.4", default-features = false, features = ["png", "qoi", "simd", "metadata"] }

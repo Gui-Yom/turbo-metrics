@@ -90,6 +90,8 @@ impl SampleResize for f32 {
 /// Layout of the image, either packed channels or planar
 pub trait Channel: __priv::PrivateSupertrait + 'static {
     const LUT_INDEX: usize;
+
+    const NUM_SAMPLES: usize;
 }
 
 const CHANNEL_LAYOUT_LUT_SIZE: usize = 6;
@@ -114,10 +116,10 @@ pub trait ChannelSet: ChannelPacked {
 const CHANNEL_SET_LUT_SIZE: usize = 3;
 
 /// Packed channels
-struct C<const N: usize>;
+pub struct C<const N: usize>;
 
 /// Planar channels
-struct P<const N: usize>;
+pub struct P<const N: usize>;
 
 impl<const N: usize> __priv::PrivateSupertrait for C<N> {}
 
@@ -125,26 +127,22 @@ impl<const N: usize> __priv::PrivateSupertrait for P<N> {}
 
 impl Channel for C<1> {
     const LUT_INDEX: usize = 0;
+    const NUM_SAMPLES: usize = 1;
 }
 
 impl Channel for C<2> {
     const LUT_INDEX: usize = 1;
+    const NUM_SAMPLES: usize = 2;
 }
 
 impl Channel for C<3> {
     const LUT_INDEX: usize = 2;
+    const NUM_SAMPLES: usize = 3;
 }
 
 impl Channel for C<4> {
     const LUT_INDEX: usize = 3;
-}
-
-impl Channel for P<3> {
-    const LUT_INDEX: usize = 4;
-}
-
-impl Channel for P<4> {
-    const LUT_INDEX: usize = 5;
+    const NUM_SAMPLES: usize = 4;
 }
 
 impl ChannelPacked for C<1> {

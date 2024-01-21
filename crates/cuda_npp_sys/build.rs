@@ -54,7 +54,7 @@ fn main() {
     #[cfg(feature = "if")]
     {
         link_lib("nppif");
-        bindgen = bindgen.header(format!("{include_path}/nppi_image_filtering.h"));
+        bindgen = bindgen.header(format!("{include_path}/nppi_filtering_functions.h"));
     }
     #[cfg(feature = "ig")]
     {

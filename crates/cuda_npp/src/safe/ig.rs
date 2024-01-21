@@ -5,7 +5,7 @@ use crate::C;
 use super::isu::Malloc;
 use super::{Image, Result, E};
 
-trait Resize {
+pub trait Resize {
     fn resize(&self, new_width: u32, new_height: u32, ctx: NppStreamContext) -> Result<Self>
     where
         Self: Sized;

@@ -1,3 +1,5 @@
+use std::ops::Range;
+
 use cuda_npp_sys::*;
 
 use crate::safe::isu::Malloc;
@@ -119,9 +121,44 @@ macro_rules! impl_convert {
 
 impl_convert!(u8, C<3>, f32, _8u32f, C3);
 
+pub trait Scale<T: Sample, C: Channel> {
+    fn scale_float(&self, bounds: Range<f32>, ctx: NppStreamContext) -> Result<Image<T, C>>;
+}
+
+macro_rules! impl_scale {
+    ($sample_ty:ty, $channel_ty:ty, $tsample_ty:ty, $sample_id:ident, $channel_id:ident) => {
+        impl Scale<$tsample_ty, $channel_ty> for Image<$sample_ty, $channel_ty> {
+            fn scale_float(&self, bounds: Range<f32>, ctx: NppStreamContext) -> Result<Image<$tsample_ty, $channel_ty>> {
+                let mut dst = Image::malloc(self.width, self.height)?;
+                let status = unsafe {
+                    paste::paste!([<nppi Scale $sample_id _ $channel_id R_Ctx>])(
+                        self.data,
+                        self.line_step,
+                        dst.data as _,
+                        dst.line_step,
+                        self.size(),
+                        bounds.start,
+                        bounds.end,
+                        ctx,
+                    )
+                };
+                if status == NppStatus::NPP_NO_ERROR {
+                    Ok(dst)
+                } else {
+                    Err(E::from(status))
+                }
+            }
+        }
+    };
+}
+
+impl_scale!(u8, C<3>, f32, _8u32f, C3);
+
+impl_scale!(f32, C<3>, u8, _32f8u, C3);
+
 #[cfg(test)]
 mod tests {
-    use crate::safe::idei::{Convert, Set, SetMany};
+    use crate::safe::idei::{Convert, Scale, Set, SetMany};
     use crate::safe::isu::Malloc;
     use crate::safe::Image;
     use crate::safe::Result;
@@ -151,6 +188,24 @@ mod tests {
         let img = Image::<u8, C<3>>::malloc(1024, 1024)?;
         let ctx = get_stream_ctx()?;
         let img2 = img.convert(ctx)?;
+        Ok(())
+    }
+
+    #[test]
+    fn into_f32() -> Result<()> {
+        let dev = cudarc::driver::safe::CudaDevice::new(0).unwrap();
+        let img = Image::<u8, C<3>>::malloc(1024, 1024)?;
+        let ctx = get_stream_ctx()?;
+        let img2 = img.scale_float(0.0..1.0, ctx)?;
+        Ok(())
+    }
+
+    #[test]
+    fn into_u8() -> Result<()> {
+        let dev = cudarc::driver::safe::CudaDevice::new(0).unwrap();
+        let img = Image::<f32, C<3>>::malloc(1024, 1024)?;
+        let ctx = get_stream_ctx()?;
+        let img2 = img.scale_float(0.0..1.0, ctx)?;
         Ok(())
     }
 }
