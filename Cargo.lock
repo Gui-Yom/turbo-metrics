@@ -130,7 +130,6 @@ dependencies = [
  "cuda_npp_sys",
  "cudarc",
  "duplicate",
- "flut",
  "paste",
 ]
 
@@ -191,10 +190,6 @@ dependencies = [
  "crc32fast",
  "miniz_oxide",
 ]
-
-[[package]]
-name = "flut"
-version = "0.1.0"
 
 [[package]]
 name = "glob"

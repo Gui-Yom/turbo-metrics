@@ -1,12 +1,12 @@
 use cuda_npp_sys::{NppStreamContext, NppiInterpolationMode, NppiRect, NppiSize};
 
 use crate::{
-    generic_lut, ChannelLayoutPacked, ChannelLayoutResizePacked, NppResult, Sample, SampleResize,
+    generic_lut, ChannelPacked, ChannelResize, ChannelSet, NppResult, Sample, SampleResize,
 };
 
 /// returned device pointer is guaranteed to not be null.
 /// Step is in bytes
-pub fn malloc<S: Sample + 'static, C: ChannelLayoutPacked + 'static>(
+pub fn malloc<S: Sample + 'static, C: ChannelPacked + 'static>(
     width: i32,
     height: i32,
 ) -> NppResult<(*const S, i32)> {
@@ -14,7 +14,7 @@ pub fn malloc<S: Sample + 'static, C: ChannelLayoutPacked + 'static>(
     unsafe { generic_lut::malloc::<S, C>(width, height, &mut step) }.map(|ptr| (ptr, step))
 }
 
-pub fn resize<S: SampleResize, C: ChannelLayoutResizePacked>(
+pub fn resize_packed<S: SampleResize, C: ChannelResize>(
     src: *const S,
     src_step: i32,
     src_size: NppiSize,
@@ -27,7 +27,7 @@ pub fn resize<S: SampleResize, C: ChannelLayoutResizePacked>(
     ctx: NppStreamContext,
 ) -> NppResult<()> {
     unsafe {
-        generic_lut::resize::<S, C>(
+        generic_lut::resize_packed::<S, C>(
             src,
             src_step,
             src_size,
@@ -40,4 +40,14 @@ pub fn resize<S: SampleResize, C: ChannelLayoutResizePacked>(
             ctx,
         )
     }
+}
+
+pub fn set_many_channel<S: Sample, C: ChannelSet>(
+    value: *const S,
+    dst: *mut S,
+    dst_step: i32,
+    dst_roi: NppiSize,
+    ctx: NppStreamContext,
+) -> NppResult<()> {
+    unsafe { generic_lut::set_many_channel::<S, C>(value, dst, dst_step, dst_roi, ctx) }
 }

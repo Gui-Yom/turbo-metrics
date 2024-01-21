@@ -23,7 +23,7 @@ fn main() {
         .header(format!("{include_path}/nppdefs.h"))
         .header(format!("{include_path}/nppcore.h"))
         .must_use_type("NppStatus")
-        .blocklist_type("(Npp8u)|(Npp8s)|(Npp16u)|(Npp16s)|(Npp32s)|(Npp32f)")
+        //.blocklist_type("(Npp8u)|(Npp8s)|(Npp16u)|(Npp16s)|(Npp32s)|(Npp32f)")
         .generate_comments(false)
         .default_enum_style(EnumVariation::Rust {
             non_exhaustive: false,
@@ -41,8 +41,15 @@ fn main() {
 
     #[cfg(feature = "icc")]
     {
-        link_lib("nppic");
+        link_lib("nppicc");
         bindgen = bindgen.header(format!("{include_path}/nppi_color_conversion.h"));
+    }
+    #[cfg(feature = "idei")]
+    {
+        link_lib("nppidei");
+        bindgen = bindgen.header(format!(
+            "{include_path}/nppi_data_exchange_and_initialization.h"
+        ));
     }
     #[cfg(feature = "if")]
     {

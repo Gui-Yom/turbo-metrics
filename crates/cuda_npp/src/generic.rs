@@ -2,7 +2,7 @@ use std::any::TypeId;
 
 use cuda_npp_sys::*;
 
-use crate::{ChannelLayout, Sample, C};
+use crate::{Channel, Sample, C};
 
 pub type Result = std::result::Result<(), NppStatus>;
 
@@ -43,16 +43,12 @@ macro_rules! generic_dispatch {
     };
 }
 
-pub unsafe fn malloc<S: Sample, L: ChannelLayout>(
-    width: i32,
-    height: i32,
-    step: *mut i32,
-) -> *const S {
+pub unsafe fn malloc<S: Sample, L: Channel>(width: i32, height: i32, step: *mut i32) -> *const S {
     let ret = generic_dispatch!(Malloc,, (width, height, step as _));
     ret as _
 }
 
-pub unsafe fn resize<S: Sample + 'static, L: ChannelLayout + 'static>(
+pub unsafe fn resize<S: Sample + 'static, L: Channel + 'static>(
     src: *const S,
     src_step: i32,
     src_size: NppiSize,
@@ -79,7 +75,7 @@ pub unsafe fn resize<S: Sample + 'static, L: ChannelLayout + 'static>(
     )
 }
 
-pub unsafe fn resize_batch<S: Sample + 'static, L: ChannelLayout + 'static>(
+pub unsafe fn resize_batch<S: Sample + 'static, L: Channel + 'static>(
     smallest_src_size: NppiSize,
     src_roi: NppiRect,
     smallest_dst_size: NppiSize,
@@ -102,7 +98,7 @@ pub unsafe fn resize_batch<S: Sample + 'static, L: ChannelLayout + 'static>(
     )
 }
 
-pub unsafe fn resize_batch_advanced<S: Sample + 'static, L: ChannelLayout + 'static>(
+pub unsafe fn resize_batch_advanced<S: Sample + 'static, L: Channel + 'static>(
     max_width: i32,
     max_height: i32,
     batch_src: *const NppiImageDescriptor,

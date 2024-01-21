@@ -10,12 +10,12 @@ cudarc = { version = "0.10", default-features = false, features = ["std", "drive
 paste = "1"
 duplicate = "1"
 cuda_npp_sys = { version = "0.1", path = "../cuda_npp_sys", default-features = false }
-flut = { version = "0.1", path = "../flut" }
 
 [features]
-default = ["static", "ig", "isu"]
+default = ["static", "icc", "idei", "ig", "isu"]
 static = ["cuda_npp_sys/static"]
 icc = ["cuda_npp_sys/icc"]
+idei = ["cuda_npp_sys/idei"]
 if = ["cuda_npp_sys/if"]
 ig = ["cuda_npp_sys/ig"]
 isu = ["cuda_npp_sys/isu"]
