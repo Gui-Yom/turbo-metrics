@@ -139,7 +139,7 @@ unsafe fn opsin_absorbance(r: f32, g: f32, b: f32) -> (f32, f32, f32) {
 }
 
 #[no_mangle]
-pub unsafe extern "ptx-kernel" fn linear_to_xyb(
+pub unsafe extern "ptx-kernel" fn plane_linear_to_xyb(
     len: usize,
     rp: *const f32,
     gp: *const f32,
@@ -148,12 +148,35 @@ pub unsafe extern "ptx-kernel" fn linear_to_xyb(
     yp: *mut f32,
     bp2: *mut f32,
 ) {
-    let i = core::arch::nvptx::_thread_idx_x() as usize;
+    let i = coords_1d();
     if i < len {
         let (x, y, b) = px_linear_rgb_to_positive_xyb(*rp.add(i), *gp.add(i), *bp.add(i));
         *xp.add(i) = x;
         *yp.add(i) = y;
         *bp2.add(i) = b;
+    }
+}
+
+/// Linear RGB to XYB for a packed image in place.
+#[no_mangle]
+pub unsafe extern "ptx-kernel" fn linear_to_xyb_packed(
+    in_: *const f32,
+    out: *mut f32,
+    width: usize,
+    height: usize,
+    line_step: usize,
+) {
+    let (col, row) = coords_2d();
+    if col < width && row < height {
+        let in_ = in_.byte_add(row * line_step).add(col * 3);
+        let r = in_.read();
+        let g = in_.add(1).read();
+        let b = in_.add(2).read();
+        let (x, y, b) = px_linear_rgb_to_positive_xyb(r, g, b);
+        let out = out.byte_add(row * line_step).add(col * 3);
+        *out = x;
+        *out.add(1) = y;
+        *out.add(2) = b;
     }
 }
 

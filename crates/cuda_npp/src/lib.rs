@@ -1,21 +1,7 @@
-use cudarc::driver::{DevicePtr, DevicePtrMut};
-
 pub use cuda_npp_sys as sys;
 use cuda_npp_sys::{nppGetStreamContext, NppStatus, NppStreamContext};
 
-/// Emulated npp functions for some missing sample/channel count combinations.
-//pub mod emulated;
-/// Generic wrappers for npp functions (using macros and [std::any::TypeId])
-//pub mod generic;
-/// Generic wrappers for npp functions (using macros and const LUT)
-//pub mod generic_lut;
-/// Safer abstractions
 pub mod safe;
-
-/// Safeish wrapper over the result layer
-//pub mod safeish;
-
-pub type NppResult<T> = Result<T, NppStatus>;
 
 mod __priv {
     /// So people don't implement child trait for themselves.
@@ -116,6 +102,7 @@ pub trait ChannelSet: ChannelPacked {
 const CHANNEL_SET_LUT_SIZE: usize = 3;
 
 /// Packed channels
+#[derive(Debug)]
 pub struct C<const N: usize>;
 
 /// Planar channels
@@ -185,14 +172,8 @@ impl ChannelSet for C<4> {
     const LUT_INDEX: usize = 2;
 }
 
-pub fn get_stream_ctx() -> NppResult<NppStreamContext> {
+pub fn get_stream_ctx() -> Result<NppStreamContext, NppStatus> {
     let mut ctx = Default::default();
-    unsafe {
-        let status = nppGetStreamContext(&mut ctx);
-        if status == NppStatus::NPP_NO_ERROR {
-            Ok(ctx)
-        } else {
-            Err(status)
-        }
-    }
+    unsafe { nppGetStreamContext(&mut ctx) }.result()?;
+    Ok(ctx)
 }

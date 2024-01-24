@@ -6,16 +6,26 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-cudarc = { version = "0.10", default-features = false, features = ["std", "driver"] }
 paste = "1"
-duplicate = "1"
 cuda_npp_sys = { version = "0.1", path = "../cuda_npp_sys", default-features = false }
+cudarc = { version = "0.10", default-features = false, features = ["std", "driver"], optional = true }
+
+[dev-dependencies]
+cudarc = { version = "0.10", default-features = false, features = ["std", "driver"] }
 
 [features]
 default = ["static", "icc", "idei", "ig", "isu"]
+# Static linking against cuda libraries
 static = ["cuda_npp_sys/static"]
+# Image Arithmetic and Logical operations
+ial = ["cuda_npp_sys/ial"]
+# Image color conversions
 icc = ["cuda_npp_sys/icc"]
+# Image data exchange and initialization
 idei = ["cuda_npp_sys/idei"]
+# Image filtering
 if = ["cuda_npp_sys/if"]
+# Geometric transforms (resize, transforms)
 ig = ["cuda_npp_sys/ig"]
+# Support functions (malloc & free)
 isu = ["cuda_npp_sys/isu"]

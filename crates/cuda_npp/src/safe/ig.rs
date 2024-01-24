@@ -1,14 +1,18 @@
+//! Geometric transforms (resize, transforms)
+
 use cuda_npp_sys::*;
 
-use crate::C;
+use crate::{Channel, Sample, C};
 
-use super::isu::Malloc;
-use super::{Image, Result, E};
+use super::{Image, Result};
 
 pub trait Resize {
-    fn resize(&self, new_width: u32, new_height: u32, ctx: NppStreamContext) -> Result<Self>
-    where
-        Self: Sized;
+    fn resize(
+        &self,
+        dst: &mut Self,
+        interpolation: NppiInterpolationMode,
+        ctx: NppStreamContext,
+    ) -> Result<()>;
 }
 
 macro_rules! impl_resize {
@@ -16,18 +20,14 @@ macro_rules! impl_resize {
         impl Resize for Image<$sample_ty, $channel_ty> {
             fn resize(
                 &self,
-                new_width: u32,
-                new_height: u32,
+                dst: &mut Self,
+                interpolation: NppiInterpolationMode,
                 ctx: NppStreamContext,
-            ) -> Result<Self> {
-                let dst = Image::<$sample_ty, $channel_ty>::malloc(new_width, new_height)?;
-                let status = unsafe { paste::paste!([<nppi Resize $sample_id _ $channel_id R_Ctx>])(
+            ) -> Result<()> {
+                unsafe { paste::paste!([<nppi Resize $sample_id _ $channel_id R_Ctx>])(
                     self.data as _,
                     self.line_step,
-                    NppiSize {
-                        width: self.width as i32,
-                        height: self.height as i32,
-                    },
+                    self.size(),
                     NppiRect {
                         x: 0,
                         y: 0,
@@ -36,23 +36,17 @@ macro_rules! impl_resize {
                     },
                     dst.data as _,
                     dst.line_step,
-                    NppiSize {
-                        width: dst.width as i32,
-                        height: dst.height as i32,
-                    },
+                    dst.size(),
                     NppiRect {
                         x: 0,
                         y: 0,
                         width: dst.width as i32,
                         height: dst.height as i32,
                     },
-                    NppiInterpolationMode::NPPI_INTER_LANCZOS as _,
+                    interpolation as _,
                     ctx,
-                )};
-                if status != NppStatus::NPP_NO_ERROR {
-                    return Err(E::from(status));
-                }
-                Ok(dst)
+                )}.result()?;
+                Ok(())
             }
         }
     };
@@ -73,9 +67,28 @@ impl_resize!(f32, C<1>, _32f, C1);
 impl_resize!(f32, C<3>, _32f, C3);
 impl_resize!(f32, C<4>, _32f, C4);
 
+#[cfg(feature = "isu")]
+impl<S: Sample, C: Channel> Image<S, C>
+where
+    Image<S, C>: Resize + crate::safe::isu::Malloc,
+{
+    pub fn resize_new(
+        &self,
+        new_width: u32,
+        new_height: u32,
+        interpolation: NppiInterpolationMode,
+        ctx: NppStreamContext,
+    ) -> Result<Self> {
+        let mut dst = <Self as crate::safe::isu::Malloc>::malloc(new_width, new_height)?;
+        self.resize(&mut dst, interpolation, ctx)?;
+        Ok(dst)
+    }
+}
+
 #[cfg(test)]
 mod tests {
-    use crate::safe::ig::Resize;
+    use cuda_npp_sys::{NppiInterpolationMode, NppiSize};
+
     use crate::safe::isu::Malloc;
     use crate::safe::Image;
     use crate::{get_stream_ctx, C};
@@ -85,7 +98,15 @@ mod tests {
         let dev = cudarc::driver::safe::CudaDevice::new(0).unwrap();
         let img = Image::<f32, C<3>>::malloc(1024, 1024)?;
         let ctx = get_stream_ctx()?;
-        img.resize(2048, 2048, ctx)?;
+        let resized = img.resize_new(2048, 2048, NppiInterpolationMode::NPPI_INTER_LANCZOS, ctx)?;
+
+        assert_eq!(
+            resized.size(),
+            NppiSize {
+                width: 2048,
+                height: 2048,
+            }
+        );
         Ok(())
     }
 }

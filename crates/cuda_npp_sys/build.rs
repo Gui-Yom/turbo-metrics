@@ -1,6 +1,8 @@
 use std::env;
+use std::fmt::Debug;
 use std::path::PathBuf;
 
+use bindgen::callbacks::{DeriveInfo, ParseCallbacks};
 use bindgen::{CargoCallbacks, EnumVariation};
 
 fn link_lib(lib: &str) {
@@ -32,6 +34,7 @@ fn main() {
         .use_core()
         .sort_semantically(true)
         .merge_extern_blocks(true)
+        .parse_callbacks(Box::new(CustomCallbacks))
         .parse_callbacks(Box::new(CargoCallbacks::new()));
 
     // npp core
@@ -39,6 +42,13 @@ fn main() {
     #[cfg(all(feature = "static", target_os = "linux"))]
     link_lib("culibos");
 
+    #[cfg(feature = "ial")]
+    {
+        link_lib("nppial");
+        bindgen = bindgen.header(format!(
+            "{include_path}/nppi_arithmetic_and_logical_operations.h"
+        ));
+    }
     #[cfg(feature = "icc")]
     {
         link_lib("nppicc");
@@ -73,4 +83,17 @@ fn main() {
     bindings
         .write_to_file(out_path.join("bindings.rs"))
         .expect("Couldn't write bindings!");
+}
+
+#[derive(Debug)]
+struct CustomCallbacks;
+
+impl ParseCallbacks for CustomCallbacks {
+    fn add_derives(&self, info: &DeriveInfo<'_>) -> Vec<String> {
+        if info.name == "NppiSize" {
+            vec![String::from("PartialEq"), String::from("Eq")]
+        } else {
+            Vec::new()
+        }
+    }
 }

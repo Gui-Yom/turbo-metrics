@@ -1,11 +1,12 @@
+//! Image data exchange and initialization
+
 use std::ops::Range;
 
 use cuda_npp_sys::*;
 
-use crate::safe::isu::Malloc;
 use crate::{Channel, Sample, C};
 
-use super::{Image, Result, E};
+use super::{Image, Result};
 
 pub trait Set<S> {
     fn set(&mut self, value: S, ctx: NppStreamContext) -> Result<()>
@@ -20,23 +21,16 @@ macro_rules! impl_set_single {
             where
                 Self: Sized,
             {
-                let status = unsafe {
+                unsafe {
                     paste::paste!([<nppi Set $sample_id _ $channel_id R_Ctx>])(
                         value,
                         self.data as _,
                         self.line_step,
-                        NppiSize {
-                            width: self.width as i32,
-                            height: self.height as i32,
-                        },
+                        self.size(),
                         ctx,
                     )
-                };
-                if status == NppStatus::NPP_NO_ERROR {
-                    Ok(())
-                } else {
-                    Err(E::from(status))
-                }
+                }.result()?;
+                Ok(())
             }
         }
     };
@@ -60,23 +54,16 @@ macro_rules! impl_set {
             where
                 Self: Sized,
             {
-                let status = unsafe {
+                unsafe {
                     paste::paste!([<nppi Set $sample_id _ $channel_id R_Ctx>])(
                         value.as_ptr(),
                         self.data as _,
                         self.line_step,
-                        NppiSize {
-                            width: self.width as i32,
-                            height: self.height as i32,
-                        },
+                        self.size(),
                         ctx,
                     )
-                };
-                if status == NppStatus::NPP_NO_ERROR {
-                    Ok(())
-                } else {
-                    Err(E::from(status))
-                }
+                }.result()?;
+                Ok(())
             }
         }
     };
@@ -90,16 +77,20 @@ impl_set!(f32, C<2>, 2, _32f, C2);
 impl_set!(f32, C<3>, 3, _32f, C3);
 impl_set!(f32, C<4>, 4, _32f, C4);
 
-pub trait Convert<T: Sample, C: Channel> {
-    fn convert(&self, ctx: NppStreamContext) -> Result<Image<T, C>>;
+pub trait Convert<C: Channel> {
+    // Associated type because we want to be able to use T in return position only
+    type T: Sample;
+
+    fn convert(&self, dst: &mut Image<Self::T, C>, ctx: NppStreamContext) -> Result<()>;
 }
 
 macro_rules! impl_convert {
     ($sample_ty:ty, $channel_ty:ty, $tsample_ty:ty, $sample_id:ident, $channel_id:ident) => {
-        impl Convert<$tsample_ty, $channel_ty> for Image<$sample_ty, $channel_ty> {
-            fn convert(&self, ctx: NppStreamContext) -> Result<Image<$tsample_ty, $channel_ty>> {
-                let mut dst = Image::malloc(self.width, self.height)?;
-                let status = unsafe {
+        impl Convert<$channel_ty> for Image<$sample_ty, $channel_ty> {
+            type T = $tsample_ty;
+
+            fn convert(&self, dst: &mut Image<$tsample_ty, $channel_ty>, ctx: NppStreamContext) -> Result<()> {
+                unsafe {
                     paste::paste!([<nppi Convert $sample_id _ $channel_id R_Ctx>])(
                         self.data,
                         self.line_step,
@@ -108,12 +99,8 @@ macro_rules! impl_convert {
                         self.size(),
                         ctx,
                     )
-                };
-                if status == NppStatus::NPP_NO_ERROR {
-                    Ok(dst)
-                } else {
-                    Err(E::from(status))
-                }
+                }.result()?;
+                Ok(())
             }
         }
     };
@@ -121,16 +108,38 @@ macro_rules! impl_convert {
 
 impl_convert!(u8, C<3>, f32, _8u32f, C3);
 
-pub trait Scale<T: Sample, C: Channel> {
-    fn scale_float(&self, bounds: Range<f32>, ctx: NppStreamContext) -> Result<Image<T, C>>;
+#[cfg(feature = "isu")]
+impl<S: Sample, C: Channel, T: Sample> Image<S, C>
+where
+    Image<S, C>: Convert<C, T = T>,
+    Image<T, C>: crate::safe::isu::Malloc,
+{
+    pub fn convert_new(&self, ctx: NppStreamContext) -> Result<Image<T, C>> {
+        let mut dst = self.malloc_same_size()?;
+        self.convert(&mut dst, ctx)?;
+        Ok(dst)
+    }
+}
+
+pub trait Scale<C: Channel> {
+    // Associated type because we want to be able to use T in return position only
+    type T: Sample;
+
+    fn scale_float(
+        &self,
+        dst: &mut Image<Self::T, C>,
+        bounds: Range<f32>,
+        ctx: NppStreamContext,
+    ) -> Result<()>;
 }
 
 macro_rules! impl_scale {
     ($sample_ty:ty, $channel_ty:ty, $tsample_ty:ty, $sample_id:ident, $channel_id:ident) => {
-        impl Scale<$tsample_ty, $channel_ty> for Image<$sample_ty, $channel_ty> {
-            fn scale_float(&self, bounds: Range<f32>, ctx: NppStreamContext) -> Result<Image<$tsample_ty, $channel_ty>> {
-                let mut dst = Image::malloc(self.width, self.height)?;
-                let status = unsafe {
+        impl Scale<$channel_ty> for Image<$sample_ty, $channel_ty> {
+            type T = $tsample_ty;
+
+            fn scale_float(&self, dst: &mut Image<$tsample_ty, $channel_ty>, bounds: Range<f32>, ctx: NppStreamContext) -> Result<()> {
+                unsafe {
                     paste::paste!([<nppi Scale $sample_id _ $channel_id R_Ctx>])(
                         self.data,
                         self.line_step,
@@ -141,12 +150,8 @@ macro_rules! impl_scale {
                         bounds.end,
                         ctx,
                     )
-                };
-                if status == NppStatus::NPP_NO_ERROR {
-                    Ok(dst)
-                } else {
-                    Err(E::from(status))
-                }
+                }.result()?;
+                Ok(())
             }
         }
     };
@@ -156,8 +161,27 @@ impl_scale!(u8, C<3>, f32, _8u32f, C3);
 
 impl_scale!(f32, C<3>, u8, _32f8u, C3);
 
+#[cfg(feature = "isu")]
+impl<S: Sample, C: Channel, T: Sample> Image<S, C>
+where
+    Image<S, C>: Scale<C, T = T>,
+    Image<T, C>: crate::safe::isu::Malloc,
+{
+    pub fn scale_float_new(
+        &self,
+        bounds: Range<f32>,
+        ctx: NppStreamContext,
+    ) -> Result<Image<T, C>> {
+        let mut dst = self.malloc_same_size()?;
+        self.scale_float(&mut dst, bounds, ctx)?;
+        Ok(dst)
+    }
+}
+
 #[cfg(test)]
 mod tests {
+    use cuda_npp_sys::NppStatus;
+
     use crate::safe::idei::{Convert, Scale, Set, SetMany};
     use crate::safe::isu::Malloc;
     use crate::safe::Image;
@@ -187,7 +211,7 @@ mod tests {
         let dev = cudarc::driver::safe::CudaDevice::new(0).unwrap();
         let img = Image::<u8, C<3>>::malloc(1024, 1024)?;
         let ctx = get_stream_ctx()?;
-        let img2 = img.convert(ctx)?;
+        let img2 = img.convert_new(ctx)?;
         Ok(())
     }
 
@@ -196,7 +220,7 @@ mod tests {
         let dev = cudarc::driver::safe::CudaDevice::new(0).unwrap();
         let img = Image::<u8, C<3>>::malloc(1024, 1024)?;
         let ctx = get_stream_ctx()?;
-        let img2 = img.scale_float(0.0..1.0, ctx)?;
+        let img2 = img.scale_float_new(0.0..1.0, ctx)?;
         Ok(())
     }
 
@@ -205,7 +229,8 @@ mod tests {
         let dev = cudarc::driver::safe::CudaDevice::new(0).unwrap();
         let img = Image::<f32, C<3>>::malloc(1024, 1024)?;
         let ctx = get_stream_ctx()?;
-        let img2 = img.scale_float(0.0..1.0, ctx)?;
+        let img2 = img.scale_float_new(0.0..1.0, ctx)?;
+        NppStatus::NPP_NO_ERROR.result()?;
         Ok(())
     }
 }

@@ -1,9 +1,11 @@
+//! Support functions (malloc & free)
+
 use std::marker::PhantomData;
 
 use cuda_npp_sys::*;
 
 use crate::safe::{Image, E};
-use crate::{Channel, ChannelPacked, Sample, C};
+use crate::{Channel, Sample, C};
 
 use super::Result;
 
@@ -59,6 +61,26 @@ malloc_impl!(f32, C<2>, _32f, C2);
 malloc_impl!(f32, C<3>, _32f, C3);
 malloc_impl!(f32, C<4>, _32f, C4);
 
+impl<S: Sample, C: Channel> Image<S, C>
+where
+    Image<S, C>: Malloc,
+{
+    /// Malloc a new image with the same dimensions, sample type and channel count.
+    pub fn malloc_same(&self) -> Result<Self> {
+        Self::malloc(self.width, self.height)
+    }
+}
+
+impl<S: Sample, C: Channel> Image<S, C> {
+    /// Malloc a new image with the same dimensions.
+    pub fn malloc_same_size<T: Sample, C2: Channel>(&self) -> Result<Image<T, C2>>
+    where
+        Image<T, C2>: Malloc,
+    {
+        Image::malloc(self.width, self.height)
+    }
+}
+
 impl<S: Sample, C: Channel> Drop for Image<S, C> {
     fn drop(&mut self) {
         println!("Dropping image");
@@ -79,6 +101,23 @@ mod tests {
     fn new_image() -> Result<()> {
         let img = Image::<f32, C<3>>::malloc(1024, 1024)?;
         dbg!(img.line_step);
+        assert!(!img.data.is_null());
+        Ok(())
+    }
+
+    #[test]
+    fn same() -> Result<()> {
+        let img = Image::<f32, C<3>>::malloc(1024, 1024)?;
+        let other = img.malloc_same()?;
+        assert_eq!(img.size(), other.size());
+        Ok(())
+    }
+
+    #[test]
+    fn same_size() -> Result<()> {
+        let img = Image::<f32, C<3>>::malloc(1024, 1024)?;
+        let other = img.malloc_same_size::<u8, C<3>>()?;
+        assert_eq!(img.size(), other.size());
         Ok(())
     }
 }

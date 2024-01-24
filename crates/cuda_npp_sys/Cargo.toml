@@ -12,6 +12,8 @@ bindgen = "0.69"
 default = ["static"]
 # Static linking against cuda libraries
 static = []
+# Image Arithmetic and Logical operations
+ial = []
 # Color conversion
 icc = []
 # Image data exchange and initialization

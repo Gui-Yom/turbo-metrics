@@ -3,12 +3,16 @@ use std::mem;
 
 use cuda_npp_sys::{NppStatus, NppiSize};
 
-use crate::{Channel, ChannelPacked, ChannelResize, ChannelSet, Sample, SampleResize};
+use crate::{Channel, Sample};
 
+#[cfg(feature = "ial")]
+pub mod ial;
 #[cfg(feature = "icc")]
 pub mod icc;
 #[cfg(feature = "idei")]
 pub mod idei;
+#[cfg(feature = "if")]
+pub mod if_;
 #[cfg(feature = "ig")]
 pub mod ig;
 #[cfg(feature = "isu")]
@@ -16,23 +20,24 @@ pub mod isu;
 
 #[derive(Debug)]
 pub enum E {
-    NppStatus(NppStatus),
+    NppError(NppStatus),
 }
 
 impl From<NppStatus> for E {
     fn from(value: NppStatus) -> Self {
-        E::NppStatus(value)
+        E::NppError(value)
     }
 }
 
 pub type Result<T> = std::result::Result<T, E>;
 
+#[derive(Debug)]
 pub struct Image<S: Sample, C: Channel> {
     pub width: u32,
     pub height: u32,
     /// Line step in bytes
-    line_step: i32,
-    data: *const S,
+    pub line_step: i32,
+    pub data: *const S,
     marker_: PhantomData<S>,
     marker__: PhantomData<C>,
 }
@@ -50,6 +55,7 @@ impl<S: Sample, C: Channel> Image<S, C> {
             != dbg!(self.line_step as usize)
     }
 
+    #[cfg(feature = "cudarc")]
     pub fn copy_from_cpu(&mut self, data: &[S]) -> Result<()> {
         if self.has_padding() {
             for c in 0..self.height as usize {
@@ -71,6 +77,7 @@ impl<S: Sample, C: Channel> Image<S, C> {
     }
 }
 
+#[cfg(feature = "cudarc")]
 impl<S: Sample + Default + Copy, C: Channel> Image<S, C> {
     pub fn copy_to_cpu(&self) -> Result<Vec<S>> {
         let mut dst =
