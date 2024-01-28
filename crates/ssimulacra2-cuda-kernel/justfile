@@ -5,7 +5,7 @@ compile:
 
 link: compile
     C:/apps/LLVM-dev-16/bin/llvm-link ssimulacra2.bc "C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.3\nvvm\libdevice\libdevice.10.bc" -o ssimulacra2.linked.bc
-    C:/apps/LLVM-dev-16/bin/opt -p "default<O3>,internalize,globaldce" -internalize-public-api-list=plane_srgb_to_linear,linear_to_xyb_packed,downscale_by_2,mul_planes ssimulacra2.linked.bc -o ssimulacra2.opt.bc
+    C:/apps/LLVM-dev-16/bin/opt -p "default<O3>,internalize,globaldce" -internalize-public-api-list=plane_srgb_to_linear,linear_to_xyb_packed,downscale_by_2,mul_planes,ssim_map,edge_diff_map ssimulacra2.linked.bc -o ssimulacra2.opt.bc
 
 build-ptx: link
     C:/apps/LLVM-dev-16/bin/llc -O3 -mcpu=sm_30 ssimulacra2.opt.bc -o ssimulacra2.ptx

@@ -5,6 +5,8 @@
 
 extern crate nvptx_panic_handler;
 
+use core::mem;
+
 // libdevice bindings
 extern "C" {
     #[link_name = "__nv_fmaf"]
@@ -13,6 +15,8 @@ extern "C" {
     fn cbrt(x: f32) -> f32;
     #[link_name = "__nv_powf"]
     fn powf(x: f32, y: f32) -> f32;
+    #[link_name = "__nv_fabsf"]
+    fn abs(x: f32) -> f32;
 }
 
 unsafe fn coords_1d() -> usize {
@@ -169,9 +173,9 @@ pub unsafe extern "ptx-kernel" fn linear_to_xyb_packed(
     let (col, row) = coords_2d();
     if col < width && row < height {
         let in_ = in_.byte_add(row * line_step).add(col * 3);
-        let r = in_.read();
-        let g = in_.add(1).read();
-        let b = in_.add(2).read();
+        let r = *in_;
+        let g = *in_.add(1);
+        let b = *in_.add(2);
         let (x, y, b) = px_linear_rgb_to_positive_xyb(r, g, b);
         let out = out.byte_add(row * line_step).add(col * 3);
         *out = x;
@@ -219,5 +223,77 @@ pub unsafe extern "ptx-kernel" fn mul_planes(
     let (x, y) = coords_2d();
     if x < w && y < h {
         *c.add(y * w + x) = *a.add(y * w + x) * *b.add(y * w + x);
+    }
+}
+
+#[no_mangle]
+pub unsafe extern "ptx-kernel" fn ssim_map(
+    w: usize,
+    h: usize,
+    stride: usize,
+    mu1: *const f32,
+    mu2: *const f32,
+    sigma11: *const f32,
+    sigma22: *const f32,
+    sigma12: *const f32,
+    out: *mut f32,
+) {
+    const C2: f32 = 0.0009f32;
+
+    let (x, y) = coords_2d();
+    if x < w && y < h {
+        for i in 0..3 {
+            let offset = y * stride + (x * 3 + i) * mem::size_of::<f32>();
+            let mu1 = *mu1.byte_add(offset);
+            let mu2 = *mu2.byte_add(offset);
+            let sigma11 = *sigma11.byte_add(offset);
+            let sigma22 = *sigma22.byte_add(offset);
+            let sigma12 = *sigma12.byte_add(offset);
+            let mu11 = mu1 * mu1;
+            let mu22 = mu2 * mu2;
+            let mu12 = mu1 * mu2;
+            let mu_diff = mu1 - mu2;
+
+            let num_m = fma(mu_diff, -mu_diff, 1.0f32);
+            let num_s = fma(2f32, sigma12 - mu12, C2);
+            let denom_s = (sigma11 - mu11) + (sigma22 - mu22) + C2;
+            // Use 1 - SSIM' so it becomes an error score instead of a quality
+            // index. This makes it make sense to compute an L_4 norm.
+            *out.byte_add(offset) = (1.0 - (num_m * num_s) / denom_s).max(0.0);
+        }
+    }
+}
+
+#[no_mangle]
+pub unsafe extern "ptx-kernel" fn edge_diff_map(
+    w: usize,
+    h: usize,
+    stride: usize,
+    source: *const f32,
+    mu1: *const f32,
+    distorted: *const f32,
+    mu2: *const f32,
+    artifact: *mut f32,
+    detail_lost: *mut f32,
+) {
+    let (x, y) = coords_2d();
+    if x < w && y < h {
+        for i in 0..3 {
+            let offset = y * stride + (x * 3 + i) * mem::size_of::<f32>();
+            let source = *source.byte_add(offset);
+            let mu1 = *mu1.byte_add(offset);
+            let distorted = *distorted.byte_add(offset);
+            let mu2 = *mu2.byte_add(offset);
+
+            let d1 = (1.0 + abs(distorted - mu2)) / (1.0 + abs(source - mu1)) - 1.0;
+
+            // d1 > 0: distorted has an edge where original is smooth
+            //         (indicating ringing, color banding, blockiness, etc)
+            *artifact.byte_add(offset) = d1.max(0.0);
+
+            // d1 < 0: original has an edge where distorted is smooth
+            //         (indicating smoothing, blurring, smearing, etc)
+            *detail_lost.byte_add(offset) = (-d1).max(0.0);
+        }
     }
 }

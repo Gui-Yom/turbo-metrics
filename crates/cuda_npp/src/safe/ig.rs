@@ -99,6 +99,7 @@ mod tests {
         let img = Image::<f32, C<3>>::malloc(1024, 1024)?;
         let ctx = get_stream_ctx()?;
         let resized = img.resize_new(2048, 2048, NppiInterpolationMode::NPPI_INTER_LANCZOS, ctx)?;
+        dev.synchronize().unwrap();
 
         assert_eq!(
             resized.size(),

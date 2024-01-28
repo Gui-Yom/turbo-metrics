@@ -41,7 +41,7 @@ impl_set_single!(u16, C<1>, _16u, C1);
 impl_set_single!(i16, C<1>, _16s, C1);
 impl_set_single!(f32, C<1>, _32f, C1);
 
-trait SetMany<S, const N: usize> {
+pub trait SetMany<S, const N: usize> {
     fn set(&mut self, value: [S; N], ctx: NppStreamContext) -> Result<()>
     where
         Self: Sized;
@@ -182,7 +182,7 @@ where
 mod tests {
     use cuda_npp_sys::NppStatus;
 
-    use crate::safe::idei::{Convert, Scale, Set, SetMany};
+    use crate::safe::idei::{Set, SetMany};
     use crate::safe::isu::Malloc;
     use crate::safe::Image;
     use crate::safe::Result;
@@ -194,6 +194,7 @@ mod tests {
         let mut img = Image::<u8, C<1>>::malloc(1024, 1024)?;
         let ctx = get_stream_ctx()?;
         img.set(127, ctx)?;
+        dev.synchronize().unwrap();
         Ok(())
     }
 
@@ -203,6 +204,7 @@ mod tests {
         let mut img = Image::<f32, C<3>>::malloc(1024, 1024)?;
         let ctx = get_stream_ctx()?;
         img.set([1.0, 1.0, 0.0], ctx)?;
+        dev.synchronize().unwrap();
         Ok(())
     }
 
@@ -212,6 +214,7 @@ mod tests {
         let img = Image::<u8, C<3>>::malloc(1024, 1024)?;
         let ctx = get_stream_ctx()?;
         let img2 = img.convert_new(ctx)?;
+        dev.synchronize().unwrap();
         Ok(())
     }
 
@@ -221,6 +224,7 @@ mod tests {
         let img = Image::<u8, C<3>>::malloc(1024, 1024)?;
         let ctx = get_stream_ctx()?;
         let img2 = img.scale_float_new(0.0..1.0, ctx)?;
+        dev.synchronize().unwrap();
         Ok(())
     }
 
@@ -230,7 +234,7 @@ mod tests {
         let img = Image::<f32, C<3>>::malloc(1024, 1024)?;
         let ctx = get_stream_ctx()?;
         let img2 = img.scale_float_new(0.0..1.0, ctx)?;
-        NppStatus::NPP_NO_ERROR.result()?;
+        dev.synchronize().unwrap();
         Ok(())
     }
 }

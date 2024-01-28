@@ -14,13 +14,15 @@ default = ["static"]
 static = []
 # Image Arithmetic and Logical operations
 ial = []
-# Color conversion
+# Image color conversion
 icc = []
 # Image data exchange and initialization
 idei = []
 # Image filtering
 if = []
-# Geometric transforms (resize, transforms)
+# Image geometric transforms (resize, transforms)
 ig = []
-# Support functions (malloc & free)
+# Image statistics
+ist = []
+# Image support functions (malloc & free)
 isu = []

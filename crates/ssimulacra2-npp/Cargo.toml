@@ -7,5 +7,5 @@ edition = "2021"
 
 [dependencies]
 cudarc = { version = "0.10", default-features = false, features = ["std", "driver"] }
-cuda_npp = { version = "0.1", path = "../cuda_npp", features = ["ial", "icc", "idei", "if", "ig", "isu", "cudarc"] }
+cuda_npp = { version = "0.1", path = "../cuda_npp", features = ["ial", "icc", "idei", "if", "ig", "ist", "isu", "cudarc"] }
 zune-image = { version = "0.4", default-features = false, features = ["png", "qoi", "simd", "metadata"] }

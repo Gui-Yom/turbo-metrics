@@ -1,7 +1,9 @@
+use core::ffi::c_void;
 use std::marker::PhantomData;
 use std::mem;
+use std::ptr::null_mut;
 
-use cuda_npp_sys::{NppStatus, NppiSize};
+use cuda_npp_sys::{cudaFree, cudaMalloc, NppStatus, NppiSize};
 
 use crate::{Channel, Sample};
 
@@ -15,6 +17,8 @@ pub mod idei;
 pub mod if_;
 #[cfg(feature = "ig")]
 pub mod ig;
+#[cfg(feature = "ist")]
+pub mod ist;
 #[cfg(feature = "isu")]
 pub mod isu;
 
@@ -98,6 +102,30 @@ impl<S: Sample + Default + Copy, C: Channel> Image<S, C> {
             let res = unsafe { cudarc::driver::result::memcpy_dtoh_sync(&mut dst, self.data as _) };
             res.unwrap();
             Ok(dst)
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct ScratchBuffer {
+    pub ptr: *mut c_void,
+    pub size: usize,
+}
+
+impl ScratchBuffer {
+    pub fn alloc(size: usize) -> Self {
+        let mut ptr = null_mut();
+        unsafe {
+            cudaMalloc(&mut ptr, size);
+        }
+        Self { ptr, size }
+    }
+}
+
+impl Drop for ScratchBuffer {
+    fn drop(&mut self) {
+        unsafe {
+            cudaFree(self.ptr);
         }
     }
 }

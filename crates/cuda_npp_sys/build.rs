@@ -1,6 +1,6 @@
 use std::env;
 use std::fmt::Debug;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use bindgen::callbacks::{DeriveInfo, ParseCallbacks};
 use bindgen::{CargoCallbacks, EnumVariation};
@@ -13,17 +13,24 @@ fn link_lib(lib: &str) {
     }
 }
 
-fn main() {
-    // TODO platform dependant detection
-    let CUDA_HOME = r#"C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.3"#;
-    let include_path = format!("{CUDA_HOME}/include");
+fn include(path: &Path, header: &str) -> String {
+    path.join(header).to_str().unwrap().to_string()
+}
 
-    // println!("cargo:rustc-link-lib=cuda");
-    println!("cargo:rustc-link-search={CUDA_HOME}\\lib\\x64");
+fn main() {
+    let cuda_path = PathBuf::from(env::var("CUDA_PATH").expect(
+        "environment variable CUDA_PATH must be set for cuda_npp_sys to find the CUDA SDK",
+    ));
+    let include_path = cuda_path.join("include");
+    let link_path = cuda_path.join("lib/x64");
+
+    println!("cargo:rustc-link-lib=cuda");
+    link_lib("cudart");
+    println!("cargo:rustc-link-search={}", link_path.display());
     let mut bindgen = bindgen::Builder::default()
-        .clang_args(["-I", &include_path])
-        .header(format!("{include_path}/nppdefs.h"))
-        .header(format!("{include_path}/nppcore.h"))
+        .clang_args(["-I", include_path.to_str().unwrap()])
+        .header(include(&include_path, "nppdefs.h"))
+        .header(include(&include_path, "nppcore.h"))
         .must_use_type("NppStatus")
         //.blocklist_type("(Npp8u)|(Npp8s)|(Npp16u)|(Npp16s)|(Npp32s)|(Npp32f)")
         .generate_comments(false)
@@ -45,36 +52,43 @@ fn main() {
     #[cfg(feature = "ial")]
     {
         link_lib("nppial");
-        bindgen = bindgen.header(format!(
-            "{include_path}/nppi_arithmetic_and_logical_operations.h"
+        bindgen = bindgen.header(include(
+            &include_path,
+            "nppi_arithmetic_and_logical_operations.h",
         ));
     }
     #[cfg(feature = "icc")]
     {
         link_lib("nppicc");
-        bindgen = bindgen.header(format!("{include_path}/nppi_color_conversion.h"));
+        bindgen = bindgen.header(include(&include_path, "nppi_color_conversion.h"));
     }
     #[cfg(feature = "idei")]
     {
         link_lib("nppidei");
-        bindgen = bindgen.header(format!(
-            "{include_path}/nppi_data_exchange_and_initialization.h"
+        bindgen = bindgen.header(include(
+            &include_path,
+            "nppi_data_exchange_and_initialization.h",
         ));
     }
     #[cfg(feature = "if")]
     {
         link_lib("nppif");
-        bindgen = bindgen.header(format!("{include_path}/nppi_filtering_functions.h"));
+        bindgen = bindgen.header(include(&include_path, "nppi_filtering_functions.h"));
     }
     #[cfg(feature = "ig")]
     {
         link_lib("nppig");
-        bindgen = bindgen.header(format!("{include_path}/nppi_geometry_transforms.h"));
+        bindgen = bindgen.header(include(&include_path, "nppi_geometry_transforms.h"));
+    }
+    #[cfg(feature = "ist")]
+    {
+        link_lib("nppist");
+        bindgen = bindgen.header(include(&include_path, "nppi_statistics_functions.h"));
     }
     #[cfg(feature = "isu")]
     {
         link_lib("nppisu");
-        bindgen = bindgen.header(format!("{include_path}/nppi_support_functions.h"));
+        bindgen = bindgen.header(include(&include_path, "nppi_support_functions.h"));
     }
     let bindings = bindgen.generate().expect("Unable to generate bindings");
 

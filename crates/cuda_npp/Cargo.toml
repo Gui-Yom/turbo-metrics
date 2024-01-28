@@ -14,18 +14,20 @@ cudarc = { version = "0.10", default-features = false, features = ["std", "drive
 cudarc = { version = "0.10", default-features = false, features = ["std", "driver"] }
 
 [features]
-default = ["static", "icc", "idei", "ig", "isu"]
+default = ["static"]
 # Static linking against cuda libraries
 static = ["cuda_npp_sys/static"]
 # Image Arithmetic and Logical operations
 ial = ["cuda_npp_sys/ial"]
-# Image color conversions
+# Image Color Conversions
 icc = ["cuda_npp_sys/icc"]
-# Image data exchange and initialization
+# Image Data Exchange and Initialization
 idei = ["cuda_npp_sys/idei"]
-# Image filtering
+# Image Filtering
 if = ["cuda_npp_sys/if"]
-# Geometric transforms (resize, transforms)
+# Image Gometric transforms (resize, transforms)
 ig = ["cuda_npp_sys/ig"]
-# Support functions (malloc & free)
+# Image Statistics
+ist = ["cuda_npp_sys/ist"]
+# Image Support functions (malloc & free)
 isu = ["cuda_npp_sys/isu"]
