@@ -16,12 +16,18 @@ pub struct Kernel {
 
 impl Kernel {
     pub fn load(dev: &Arc<CudaDevice>) -> Self {
+        let path = if cfg!(debug_assertions) {
+            "../../target/nvptx64-nvidia-cuda/dev-nvptx/ssimulacra2_cuda_kernel.ptx"
+        } else {
+            "../../target/nvptx64-nvidia-cuda/release-nvptx/ssimulacra2_cuda_kernel.ptx"
+        };
+
         dev.load_ptx(
-            Ptx::from_file("../ssimulacra2-cuda-kernel/ssimulacra2.ptx"),
+            Ptx::from_file(path),
             PTX_MODULE_NAME,
             &["linear_to_xyb_packed", "ssim_map", "edge_diff_map"],
         )
-        .unwrap();
+            .unwrap();
 
         Self {
             dev: dev.clone(),
@@ -111,7 +117,7 @@ impl Kernel {
 }
 
 fn launch_config_2d(width: u32, height: u32) -> LaunchConfig {
-    const MAX_THREADS_PER_BLOCK: u32 = 32;
+    const MAX_THREADS_PER_BLOCK: u32 = 16;
     let num_blocks_w = (width + MAX_THREADS_PER_BLOCK - 1) / MAX_THREADS_PER_BLOCK;
     let num_blocks_h = (height + MAX_THREADS_PER_BLOCK - 1) / MAX_THREADS_PER_BLOCK;
     LaunchConfig {

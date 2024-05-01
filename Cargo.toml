@@ -11,12 +11,30 @@ members = [
 ]
 resolver = "2"
 
+[profile.dev-nvptx]
+inherits = "dev"
+opt-level = 3
+lto = "fat"
+debug = "full"
+codegen-units = 1
+overflow-checks = true
+
+[profile.release-nvptx]
+inherits = "release"
+opt-level = 3
+lto = "fat"
+debug = false
+codegen-units = 1
+overflow-checks = false
+
 [package]
 name = "video"
 version = "0.1.0"
 edition = "2021"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+
 
 [dependencies]
 video-common = { version = "0.1", path = "crates/video-common" }

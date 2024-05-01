@@ -16,9 +16,17 @@ Bindings to CUDA NPP libraries.
 ### ssimulacra2-cuda
 
 Reference implementation : https://github.com/cloudinary/ssimulacra2
+
 Rust implementation : https://github.com/rust-av/ssimulacra2
 
-An attempt at computing the ssimulacra2 metric with hardware acceleration on NVidia GPU.
+An attempt at computing the ssimulacra2 metric with GPU acceleration leveraging NPP and custom written kernels in Rust.
+Preliminary profiling shows that I'm really bad at writing GPU code that runs fast.
+
+## Prerequisites
+
+- A recent CUDA SDK (tested with 12.3)
+- Everything should build with Rust stable, except for the cuda kernel which requires a recent (2024-04-24) nightly Rust
+  toolchain
 
 ## Planned
 

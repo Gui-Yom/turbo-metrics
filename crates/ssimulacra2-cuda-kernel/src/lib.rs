@@ -1,6 +1,6 @@
 #![no_std]
 #![feature(abi_ptx)]
-#![feature(stdsimd)]
+#![feature(stdarch_nvptx)]
 // #![feature(core_intrisics)]
 
 extern crate nvptx_panic_handler;
@@ -23,7 +23,7 @@ unsafe fn coords_1d() -> usize {
     let tx = core::arch::nvptx::_thread_idx_x() as usize;
     let bx = core::arch::nvptx::_block_idx_x() as usize;
     let bdx = core::arch::nvptx::_block_dim_x() as usize;
-    (bx * bdx + tx)
+    bx * bdx + tx
 }
 
 unsafe fn coords_2d() -> (usize, usize) {
@@ -245,17 +245,17 @@ pub unsafe extern "ptx-kernel" fn ssim_map(
         for i in 0..3 {
             let offset = y * stride + (x * 3 + i) * mem::size_of::<f32>();
             let mu1 = *mu1.byte_add(offset);
-            let mu2 = *mu2.byte_add(offset);
-            let sigma11 = *sigma11.byte_add(offset);
-            let sigma22 = *sigma22.byte_add(offset);
-            let sigma12 = *sigma12.byte_add(offset);
             let mu11 = mu1 * mu1;
+            let mu2 = *mu2.byte_add(offset);
             let mu22 = mu2 * mu2;
             let mu12 = mu1 * mu2;
             let mu_diff = mu1 - mu2;
-
             let num_m = fma(mu_diff, -mu_diff, 1.0f32);
+
+            let sigma12 = *sigma12.byte_add(offset);
             let num_s = fma(2f32, sigma12 - mu12, C2);
+            let sigma11 = *sigma11.byte_add(offset);
+            let sigma22 = *sigma22.byte_add(offset);
             let denom_s = (sigma11 - mu11) + (sigma22 - mu22) + C2;
             // Use 1 - SSIM' so it becomes an error score instead of a quality
             // index. This makes it make sense to compute an L_4 norm.
@@ -282,10 +282,12 @@ pub unsafe extern "ptx-kernel" fn edge_diff_map(
             let offset = y * stride + (x * 3 + i) * mem::size_of::<f32>();
             let source = *source.byte_add(offset);
             let mu1 = *mu1.byte_add(offset);
+            let denom = 1.0 / (1.0 + abs(source - mu1));
             let distorted = *distorted.byte_add(offset);
             let mu2 = *mu2.byte_add(offset);
+            let numer = 1.0 + abs(distorted - mu2);
 
-            let d1 = (1.0 + abs(distorted - mu2)) / (1.0 + abs(source - mu1)) - 1.0;
+            let d1 = fma(numer, denom, -1.0);
 
             // d1 > 0: distorted has an edge where original is smooth
             //         (indicating ringing, color banding, blockiness, etc)
