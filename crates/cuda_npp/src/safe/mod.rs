@@ -1,9 +1,11 @@
 use core::ffi::c_void;
+use cudarc::driver::sys::CUdeviceptr;
+use cudarc::driver::{DevicePtr, DevicePtrMut, DeviceSlice};
 use std::marker::PhantomData;
 use std::mem;
 use std::ptr::null_mut;
 
-use cuda_npp_sys::{cudaFree, cudaMalloc, NppStatus, NppiSize};
+use cuda_npp_sys::{cudaFree, cudaMalloc, cudaMallocArray, NppStatus, NppiSize};
 
 use crate::{Channel, Sample};
 
@@ -41,9 +43,27 @@ pub struct Image<S: Sample, C: Channel> {
     pub height: u32,
     /// Line step in bytes
     pub line_step: i32,
-    pub data: *const S,
+    pub data: u64,
     marker_: PhantomData<S>,
     marker__: PhantomData<C>,
+}
+
+impl<S: Sample, C: Channel> DeviceSlice<S> for Image<S, C> {
+    fn len(&self) -> usize {
+        (self.line_step as u32 * self.height) as usize
+    }
+}
+
+impl<S: Sample, C: Channel> DevicePtr<S> for Image<S, C> {
+    fn device_ptr(&self) -> &CUdeviceptr {
+        &self.data
+    }
+}
+
+impl<S: Sample, C: Channel> DevicePtrMut<S> for Image<S, C> {
+    fn device_ptr_mut(&mut self) -> &mut CUdeviceptr {
+        &mut self.data
+    }
 }
 
 impl<S: Sample, C: Channel> Image<S, C> {
@@ -65,7 +85,7 @@ impl<S: Sample, C: Channel> Image<S, C> {
             for c in 0..self.height as usize {
                 unsafe {
                     cudarc::driver::result::memcpy_htod_sync(
-                        self.data.byte_add(c * self.line_step as usize) as _,
+                        self.data + c as u64 * self.line_step as u64,
                         &data[c * self.width as usize * C::NUM_SAMPLES
                             ..(c + 1) * self.width as usize * C::NUM_SAMPLES],
                     )
@@ -92,7 +112,7 @@ impl<S: Sample + Default + Copy, C: Channel> Image<S, C> {
                     cudarc::driver::result::memcpy_dtoh_sync(
                         &mut dst[c * self.width as usize * C::NUM_SAMPLES
                             ..(c + 1) * self.width as usize * C::NUM_SAMPLES],
-                        self.data.byte_add(c * self.line_step as usize) as _,
+                        self.data + c as u64 * self.line_step as u64,
                     )
                 }
                 .unwrap();

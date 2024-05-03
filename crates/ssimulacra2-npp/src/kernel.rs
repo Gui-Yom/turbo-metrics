@@ -1,5 +1,7 @@
 use std::sync::Arc;
 
+use cuda_npp::safe::Image;
+use cuda_npp::C;
 use cudarc::driver::{CudaDevice, CudaFunction, LaunchAsync, LaunchConfig};
 use cudarc::nvrtc::Ptx;
 
@@ -9,6 +11,7 @@ const PTX_MODULE_NAME: &str = "ssimulacra2";
 
 pub struct Kernel {
     dev: Arc<CudaDevice>,
+    packed_srgb_to_linear: CudaFunction,
     linear_to_xyb: CudaFunction,
     ssim_map: CudaFunction,
     edge_diff_map: CudaFunction,
@@ -22,20 +25,49 @@ impl Kernel {
             "../../target/nvptx64-nvidia-cuda/release-nvptx/ssimulacra2_cuda_kernel.ptx"
         };
 
+        let path = "../../target/nvptx64-nvidia-cuda/release-nvptx/ssimulacra2_cuda_kernel.ptx";
+
         dev.load_ptx(
             Ptx::from_file(path),
             PTX_MODULE_NAME,
-            &["linear_to_xyb_packed", "ssim_map", "edge_diff_map"],
+            &[
+                "packed_srgb_to_linear",
+                "linear_to_xyb_packed",
+                "ssim_map",
+                "edge_diff_map",
+            ],
         )
-            .unwrap();
+        .unwrap();
 
         Self {
             dev: dev.clone(),
+            packed_srgb_to_linear: dev
+                .get_func(PTX_MODULE_NAME, "packed_srgb_to_linear")
+                .unwrap(),
             linear_to_xyb: dev
                 .get_func(PTX_MODULE_NAME, "linear_to_xyb_packed")
                 .unwrap(),
             ssim_map: dev.get_func(PTX_MODULE_NAME, "ssim_map").unwrap(),
             edge_diff_map: dev.get_func(PTX_MODULE_NAME, "edge_diff_map").unwrap(),
+        }
+    }
+
+    pub fn packed_srgb_to_linear(&self, src: &Image<u8, C<3>>, dst: &mut Image<f32, C<3>>) {
+        unsafe {
+            self.packed_srgb_to_linear
+                .clone()
+                .launch(
+                    launch_config_2d(src.width, src.height),
+                    (
+                        src.width as usize,
+                        src.height as usize,
+                        src.data as usize,
+                        src.line_step as usize,
+                        dst.data as usize,
+                        dst.line_step as usize,
+                    ),
+                )
+                .expect("Could not launch packed_srgb_to_linear kernel");
         }
     }
 
@@ -117,12 +149,14 @@ impl Kernel {
 }
 
 fn launch_config_2d(width: u32, height: u32) -> LaunchConfig {
-    const MAX_THREADS_PER_BLOCK: u32 = 16;
-    let num_blocks_w = (width + MAX_THREADS_PER_BLOCK - 1) / MAX_THREADS_PER_BLOCK;
-    let num_blocks_h = (height + MAX_THREADS_PER_BLOCK - 1) / MAX_THREADS_PER_BLOCK;
+    const MAX_THREADS_PER_BLOCK: u32 = 256;
+    const THREADS_WIDTH: u32 = 32;
+    const THREADS_HEIGHT: u32 = 8;
+    let num_blocks_w = (width + THREADS_WIDTH - 1) / THREADS_WIDTH;
+    let num_blocks_h = (height + THREADS_HEIGHT - 1) / THREADS_HEIGHT;
     LaunchConfig {
         grid_dim: (num_blocks_w, num_blocks_h, 1),
-        block_dim: (MAX_THREADS_PER_BLOCK, MAX_THREADS_PER_BLOCK, 1),
+        block_dim: (THREADS_WIDTH, THREADS_HEIGHT, 1),
         shared_mem_bytes: 0,
     }
 }

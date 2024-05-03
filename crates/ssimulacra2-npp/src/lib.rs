@@ -1,5 +1,10 @@
+use std::sync::Arc;
+
+use cudarc::driver::CudaDevice;
+use zune_image::codecs::png::zune_core::colorspace::{ColorCharacteristics, ColorSpace};
+
 use cuda_npp::safe::ial::SqrIP;
-use cuda_npp::safe::icc::GammaFwdIP;
+use cuda_npp::safe::icc::{GammaFwdIP, GammaInvIP};
 use cuda_npp::safe::idei::Scale;
 use cuda_npp::safe::ig::Resize;
 use cuda_npp::safe::ist::Sum;
@@ -10,19 +15,26 @@ use cuda_npp::{get_stream_ctx, C};
 
 use crate::kernel::Kernel;
 
+mod cpu;
 mod kernel;
 
 pub(crate) type Img = Image<f32, C<3>>;
 
-pub fn ssimulacra2(mut source: Image<u8, C<3>>, mut distorted: Image<u8, C<3>>) -> Result<f64> {
-    let dev = cudarc::driver::safe::CudaDevice::new(0).unwrap();
+pub fn ssimulacra2(source_: Image<u8, C<3>>, distorted_: Image<u8, C<3>>) -> Result<f64> {
+    let dev = CudaDevice::new(0).unwrap();
     let kernel = Kernel::load(&dev);
     let ctx = get_stream_ctx()?;
     println!("Starting work ...");
-    source.gamma_fwd_ip(ctx)?;
-    let mut source = source.scale_float_new(0.0..1.0, ctx)?;
-    distorted.gamma_fwd_ip(ctx)?;
-    let mut distorted = distorted.scale_float_new(0.0..1.0, ctx)?;
+
+    let mut source = source_.malloc_same_size()?;
+    kernel.packed_srgb_to_linear(&source_, &mut source);
+    let mut distorted = distorted_.malloc_same_size()?;
+    kernel.packed_srgb_to_linear(&distorted_, &mut distorted);
+
+    // source.gamma_inv_ip(ctx)?;
+    // let mut source = source.scale_float_new(0.0..1.0, ctx)?;
+    // distorted.gamma_inv_ip(ctx)?;
+    // let mut distorted = distorted.scale_float_new(0.0..1.0, ctx)?;
     dev.synchronize().unwrap();
 
     let mut scores = [0.0; 108];
@@ -34,13 +46,13 @@ pub fn ssimulacra2(mut source: Image<u8, C<3>>, mut distorted: Image<u8, C<3>>) 
             source = source.resize_new(
                 new_width,
                 new_height,
-                NppiInterpolationMode::NPPI_INTER_LINEAR,
+                NppiInterpolationMode::NPPI_INTER_NN,
                 ctx,
             )?;
             distorted = distorted.resize_new(
                 new_width,
                 new_height,
-                NppiInterpolationMode::NPPI_INTER_LINEAR,
+                NppiInterpolationMode::NPPI_INTER_NN,
                 ctx,
             )?;
             dev.synchronize().unwrap();
@@ -50,6 +62,9 @@ pub fn ssimulacra2(mut source: Image<u8, C<3>>, mut distorted: Image<u8, C<3>>) 
         let source = kernel.linear_to_xyb(&source);
         let distorted = kernel.linear_to_xyb(&distorted);
         dev.synchronize().unwrap();
+
+        save_img(&dev, &source, &format!("xyb_src_{scale}"));
+        save_img(&dev, &distorted, &format!("xyb_dis_{scale}"));
 
         let ref_sq = source.mul_new(&source, ctx)?;
         let sigma1_sq = ref_sq.filter_gauss_border_new(NppiMaskSize::NPP_MASK_SIZE_9_X_9, ctx)?;
@@ -63,6 +78,7 @@ pub fn ssimulacra2(mut source: Image<u8, C<3>>, mut distorted: Image<u8, C<3>>) 
         dev.synchronize().unwrap();
 
         let mut ssim = kernel.ssim_map(&mu1, &mu2, &sigma1_sq, &sigma2_sq, &sigma12);
+        // save_img(&dev, &ssim, &format!("{scale}_ssim"));
         let mut sum_scratch = ssim.alloc_scratch();
         let sum_ssim = ssim.sum(&mut sum_scratch, ctx)?;
         ssim.sqr_ip(ctx)?;
@@ -70,6 +86,8 @@ pub fn ssimulacra2(mut source: Image<u8, C<3>>, mut distorted: Image<u8, C<3>>) 
         let sum_ssim_4 = ssim.sum(&mut sum_scratch, ctx)?;
 
         let (mut artifact, mut detail_loss) = kernel.edge_diff_map(&source, &mu1, &distorted, &mu2);
+        // save_img(&dev, &ssim, &format!("{scale}_artifact"));
+        // save_img(&dev, &ssim, &format!("{scale}_detail_loss"));
         let sum_artifact = artifact.sum(&mut sum_scratch, ctx)?;
         artifact.sqr_ip(ctx)?;
         artifact.sqr_ip(ctx)?;
@@ -232,11 +250,79 @@ fn post_process_scores(scores: &[f64; 108]) -> f64 {
     score
 }
 
+fn save_image(dev: &Arc<CudaDevice>, img: &Image<u8, C<3>>, name: &str) {
+    dev.synchronize().unwrap();
+    let bytes = img.copy_to_cpu().unwrap();
+    let mut img = zune_image::image::Image::from_u8(
+        &bytes,
+        img.width as usize,
+        img.height as usize,
+        ColorSpace::RGB,
+    );
+    img.metadata_mut()
+        .set_color_trc(ColorCharacteristics::Linear);
+    img.save(format!("./gpu_{name}.png")).unwrap()
+}
+
+fn save_img(dev: &Arc<CudaDevice>, img: &Img, name: &str) {
+    dev.synchronize().unwrap();
+    let bytes = img.copy_to_cpu().unwrap();
+    let mut img = zune_image::image::Image::from_f32(
+        &bytes,
+        img.width as usize,
+        img.height as usize,
+        ColorSpace::RGB,
+    );
+    img.metadata_mut()
+        .set_color_trc(ColorCharacteristics::Linear);
+    img.save(format!("./gpu_{name}.png")).unwrap()
+}
+
 #[cfg(test)]
 mod tests {
     use cuda_npp::safe::isu::Malloc;
 
+    use crate::cpu::CpuImg;
+
     use super::*;
+
+    #[test]
+    fn gamma() -> Result<()> {
+        let source = zune_image::image::Image::open("../ssimulacra2-cuda/source.png").unwrap();
+        assert_eq!(source.channels_ref(true).len(), 3);
+        let source_bytes = &source.flatten_to_u8()[0];
+        let mut source_img =
+            Image::<u8, C<3>>::malloc(source.dimensions().0 as u32, source.dimensions().1 as u32)?;
+        source_img.copy_from_cpu(&source_bytes)?;
+
+        let dev = CudaDevice::new(0).unwrap();
+        let kernel = Kernel::load(&dev);
+        let ctx = get_stream_ctx()?;
+
+        {
+            let mut src = source_img.malloc_same()?;
+            dev.dtod_copy(&source_img, &mut src).unwrap();
+            src.gamma_fwd_ip(ctx)?;
+            save_image(&dev, &src, "source_npp_fwd");
+        }
+
+        {
+            let mut src = source_img.malloc_same()?;
+            dev.dtod_copy(&source_img, &mut src).unwrap();
+            src.gamma_inv_ip(ctx)?;
+            save_image(&dev, &src, "source_npp_inv");
+        }
+
+        {
+            let mut src = source_img.malloc_same()?;
+            dev.dtod_copy(&source_img, &mut src).unwrap();
+            let mut dst = src.malloc_same_size()?;
+            kernel.packed_srgb_to_linear(&src, &mut dst);
+            save_image(&dev, &src, "source_custom_cuda");
+        }
+
+        Ok(())
+    }
 
     #[test]
     fn it_works() -> Result<()> {
@@ -255,6 +341,29 @@ mod tests {
         dis_img.copy_from_cpu(&dis_bytes)?;
 
         let result = dbg!(ssimulacra2(source_img, dis_img))?;
+
+        let expected = 17.398_505_f64;
+        assert!(
+            (result - expected).abs() < 0.25f64,
+            "Result {result:.6} not equal to expected {expected:.6}",
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn cpu() -> Result<()> {
+        let source = zune_image::image::Image::open("../ssimulacra2-cuda/source.png").unwrap();
+        assert_eq!(source.channels_ref(true).len(), 3);
+        let source_bytes = &source.flatten_to_u8()[0];
+        let source_img =
+            CpuImg::from_srgb(source_bytes, source.dimensions().0, source.dimensions().1);
+
+        let dis = zune_image::image::Image::open("../ssimulacra2-cuda/distorted.png").unwrap();
+        assert_eq!(dis.channels_ref(true).len(), 3);
+        let dis_bytes = &dis.flatten_to_u8()[0];
+        let dis_img = CpuImg::from_srgb(dis_bytes, dis.dimensions().0, dis.dimensions().1);
+
+        let result = dbg!(cpu::compute_frame_ssimulacra2(&source_img, &dis_img));
 
         let expected = 17.398_505_f64;
         assert!(

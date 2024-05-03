@@ -1,2 +1,2 @@
 [target.nvptx64-nvidia-cuda]
-rustflags = ["-Z", "unstable-options", "-C", "linker-flavor=llbc", "-C", "target-cpu=sm_60"] #, "-C", "link-arg=C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v12.3\\nvvm\\libdevice\\libdevice.10.bc"]
+rustflags = ["-Z", "unstable-options", "-C", "linker-flavor=llbc", "-C", "target-cpu=sm_86", "-Z", "tune-cpu=sm_86"]

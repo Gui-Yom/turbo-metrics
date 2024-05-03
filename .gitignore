@@ -3,3 +3,5 @@
 *.bc
 *.ptx
 *.rlib
+*.ncu-rep
+/data

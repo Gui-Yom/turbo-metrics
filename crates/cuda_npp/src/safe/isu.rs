@@ -32,7 +32,7 @@ macro_rules! malloc_impl {
                         width,
                         height,
                         line_step,
-                        data: ptr,
+                        data: ptr as _,
                         marker_: PhantomData,
                         marker__: PhantomData,
                     })

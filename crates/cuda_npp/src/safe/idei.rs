@@ -92,7 +92,7 @@ macro_rules! impl_convert {
             fn convert(&self, dst: &mut Image<$tsample_ty, $channel_ty>, ctx: NppStreamContext) -> Result<()> {
                 unsafe {
                     paste::paste!([<nppi Convert $sample_id _ $channel_id R_Ctx>])(
-                        self.data,
+                        self.data as _,
                         self.line_step,
                         dst.data as _,
                         dst.line_step,
@@ -141,7 +141,7 @@ macro_rules! impl_scale {
             fn scale_float(&self, dst: &mut Image<$tsample_ty, $channel_ty>, bounds: Range<f32>, ctx: NppStreamContext) -> Result<()> {
                 unsafe {
                     paste::paste!([<nppi Scale $sample_id _ $channel_id R_Ctx>])(
-                        self.data,
+                        self.data as _,
                         self.line_step,
                         dst.data as _,
                         dst.line_step,

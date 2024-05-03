@@ -6,7 +6,7 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [lib]
-crate-type = ["cdylib"]
+crate-type = ["rlib", "cdylib"]
 
 [dependencies]
-nvptx-panic-handler = { version = "0.1", path = "../nvptx-panic-handler" }
+nvptx-core = { version = "0.1", path = "../nvptx-core" }

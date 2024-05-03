@@ -3,7 +3,7 @@ use std::fmt::Debug;
 use std::path::{Path, PathBuf};
 
 use bindgen::callbacks::{DeriveInfo, ParseCallbacks};
-use bindgen::{CargoCallbacks, EnumVariation};
+use bindgen::EnumVariation;
 
 fn link_lib(lib: &str) {
     if cfg!(feature = "static") {
@@ -42,7 +42,9 @@ fn main() {
         .sort_semantically(true)
         .merge_extern_blocks(true)
         .parse_callbacks(Box::new(CustomCallbacks))
-        .parse_callbacks(Box::new(CargoCallbacks::new()));
+        .parse_callbacks(Box::new(
+            bindgen::CargoCallbacks::new().rerun_on_header_files(true),
+        ));
 
     // npp core
     link_lib("nppc");
