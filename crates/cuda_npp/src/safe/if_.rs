@@ -2,11 +2,11 @@
 
 use cuda_npp_sys::*;
 
-use crate::{Channel, Sample, C};
+use crate::{Channels, Sample, C, __priv};
 
-use super::{Image, Result, E};
+use super::{Image, Result, E, ImgMut, Img};
 
-pub trait FilterGaussBorder {
+pub trait FilterGaussBorder<S: Sample, C: Channels>: __priv::Sealed {
     /// Filters the image using a Gaussian filter kernel with border control.
     /// Use filter_gauss_advanced_border if you want to supply your own filter coefficients.
     ///
@@ -19,29 +19,40 @@ pub trait FilterGaussBorder {
     /// functions are calculated using a sigma value of 0.4F + (mask width / 2) * 0.6F.
     fn filter_gauss_border(
         &self,
-        dst: &mut Self,
+        dst: impl ImgMut<S, C>,
         filter_size: NppiMaskSize,
         ctx: NppStreamContext,
-    ) -> Result<()>
-    where
-        Self: Sized;
+    ) -> Result<()>;
+
+    #[cfg(feature = "isu")]
+    fn filter_gauss_border_new(
+        &self,
+        filter_size: NppiMaskSize,
+        ctx: NppStreamContext,
+    ) -> Result<Image<S, C>>
+        where Self: Img<S, C>, Image<S, C>: super::isu::Malloc
+    {
+        let mut dst = self.malloc_same_size()?;
+        self.filter_gauss_border(&mut dst, filter_size, ctx)?;
+        Ok(dst)
+    }
 }
 
 macro_rules! impl_filtergaussborder {
     ($sample_ty:ty, $channel_ty:ty, $sample_id:ident, $channel_id:ident) => {
-        impl FilterGaussBorder for Image<$sample_ty, $channel_ty> {
-            fn filter_gauss_border(&self, dst: &mut Self, filter_size: NppiMaskSize, ctx: NppStreamContext) -> Result<()>
+        impl<T: Img<$sample_ty, $channel_ty>> FilterGaussBorder<$sample_ty, $channel_ty> for T {
+            fn filter_gauss_border(&self, mut dst: impl ImgMut<$sample_ty, $channel_ty>, filter_size: NppiMaskSize, ctx: NppStreamContext) -> Result<()>
             where
                 Self: Sized,
             {
                 let status = unsafe {
                     paste::paste!([<nppi FilterGaussBorder $sample_id _ $channel_id R_Ctx>])(
-                        self.data as _,
-                        self.line_step,
+                        self.device_ptr(),
+                        self.pitch(),
                         self.size(),
                         NppiPoint::default(),
-                        dst.data as _,
-                        dst.line_step,
+                        dst.device_ptr_mut(),
+                        dst.pitch(),
                         dst.size(),
                         filter_size,
                         NppiBorderType::NPP_BORDER_REPLICATE,
@@ -59,22 +70,3 @@ macro_rules! impl_filtergaussborder {
 }
 
 impl_filtergaussborder!(f32, C<3>, _32f, C3);
-
-#[cfg(feature = "isu")]
-impl<S: Sample, C: Channel> Image<S, C>
-where
-    Image<S, C>: FilterGaussBorder + crate::safe::isu::Malloc,
-{
-    /// See [FilterGaussBorder::filter_gauss_border].
-    ///
-    /// This wrapper function takes care of allocating a new destination image.
-    pub fn filter_gauss_border_new(
-        &self,
-        filter_size: NppiMaskSize,
-        ctx: NppStreamContext,
-    ) -> Result<Self> {
-        let mut dst = self.malloc_same()?;
-        self.filter_gauss_border(&mut dst, filter_size, ctx)?;
-        Ok(dst)
-    }
-}

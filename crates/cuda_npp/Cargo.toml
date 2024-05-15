@@ -7,7 +7,6 @@ edition = "2021"
 
 [dependencies]
 cuda_npp_sys = { version = "0.1", path = "../cuda_npp_sys", default-features = false }
-cudarc = { workspace = true, optional = true }
 paste.workspace = true
 
 [dev-dependencies]

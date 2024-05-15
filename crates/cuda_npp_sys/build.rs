@@ -41,6 +41,15 @@ fn main() {
         .use_core()
         .sort_semantically(true)
         .merge_extern_blocks(true)
+        .allowlist_function("^npp.*")
+        .allowlist_function("^cudaMallocAsync")
+        .allowlist_function("^cudaFreeAsync")
+        .allowlist_function("^cudaMemcpy2DAsync")
+        .allowlist_function("^cudaMemcpyAsync")
+        .allowlist_var("^CU.*")
+        .allowlist_type("^Npp.*")
+        .allowlist_type("^cuda.*")
+        .allowlist_type("^cuuint(32|64)_t")
         .parse_callbacks(Box::new(CustomCallbacks))
         .parse_callbacks(Box::new(
             bindgen::CargoCallbacks::new().rerun_on_header_files(true),

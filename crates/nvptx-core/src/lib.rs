@@ -1,7 +1,8 @@
 #![no_std]
 #![feature(stdarch_nvptx)]
+#![feature(asm_experimental_arch)]
 
-use core::arch::nvptx;
+use core::arch::{asm, nvptx};
 use core::ffi::CStr;
 use core::mem::transmute;
 use core::panic::PanicInfo;
@@ -79,5 +80,13 @@ pub fn coords_3d() -> (usize, usize, usize) {
         let bdy = nvptx::_block_dim_y() as usize;
         let bdz = nvptx::_block_dim_z() as usize;
         (bx * bdx + tx, by * bdy + ty, bz * bdz + tz)
+    }
+}
+
+fn tex2D() {
+    unsafe {
+        asm!(
+        ""
+        )
     }
 }

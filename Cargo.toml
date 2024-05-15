@@ -1,5 +1,6 @@
 [workspace]
 members = [
+    "crates/cuda-driver",
     "crates/cuda_npp",
     "crates/cuda_npp_sys",
     "crates/nv_video_codec_sdk",
@@ -11,19 +12,11 @@ members = [
 ]
 resolver = "2"
 
-[profile.dev-nvptx]
-inherits = "dev"
-opt-level = 3
-lto = "fat"
-debug = "full"
-codegen-units = 1
-overflow-checks = true
-
 [profile.release-nvptx]
 inherits = "release"
 opt-level = 3
 lto = "fat"
-debug = false
+debug = "full"
 codegen-units = 1
 overflow-checks = false
 

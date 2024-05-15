@@ -4,16 +4,16 @@ use std::marker::PhantomData;
 
 use cuda_npp_sys::*;
 
-use crate::safe::{Image, E};
-use crate::{Channel, Sample, C};
+use crate::safe::{Image, E, Img};
+use crate::{Channels, Sample, C};
 
 use super::Result;
 
 pub trait Malloc {
     /// `malloc` a new image on device
     fn malloc(width: u32, height: u32) -> Result<Self>
-    where
-        Self: Sized;
+        where
+            Self: Sized;
 }
 
 macro_rules! malloc_impl {
@@ -23,18 +23,19 @@ macro_rules! malloc_impl {
             where
                 Self: Sized,
             {
-                let mut line_step = 0;
-                let ptr = unsafe { paste::paste!([<nppi Malloc $sample_id _ $channel_id>])(width as i32, height as i32, &mut line_step) };
+                let mut pitch = 0;
+                let ptr = unsafe { paste::paste!([<nppi Malloc $sample_id _ $channel_id>])(width as i32, height as i32, &mut pitch) };
                 if ptr.is_null() {
                     Err(E::from(NppStatus::NPP_MEMORY_ALLOCATION_ERR))
                 } else {
+                    dbg!(pitch);
                     Ok(Self {
                         width,
                         height,
-                        line_step,
+                        pitch,
                         data: ptr as _,
+                        marker: PhantomData,
                         marker_: PhantomData,
-                        marker__: PhantomData,
                     })
                 }
             }
@@ -61,31 +62,11 @@ malloc_impl!(f32, C<2>, _32f, C2);
 malloc_impl!(f32, C<3>, _32f, C3);
 malloc_impl!(f32, C<4>, _32f, C4);
 
-impl<S: Sample, C: Channel> Image<S, C>
-where
-    Image<S, C>: Malloc,
-{
-    /// Malloc a new image with the same dimensions, sample type and channel count.
-    pub fn malloc_same(&self) -> Result<Self> {
-        Self::malloc(self.width, self.height)
-    }
-}
-
-impl<S: Sample, C: Channel> Image<S, C> {
-    /// Malloc a new image with the same dimensions.
-    pub fn malloc_same_size<T: Sample, C2: Channel>(&self) -> Result<Image<T, C2>>
-    where
-        Image<T, C2>: Malloc,
-    {
-        Image::malloc(self.width, self.height)
-    }
-}
-
-impl<S: Sample, C: Channel> Drop for Image<S, C> {
+impl<S: Sample, C: Channels> Drop for Image<S, C> {
     fn drop(&mut self) {
-        println!("Dropping image");
+        // println!("Dropping image");
         unsafe {
-            nppiFree(self.data as _);
+            nppiFree(self.device_ptr() as _);
         }
     }
 }
@@ -93,23 +74,14 @@ impl<S: Sample, C: Channel> Drop for Image<S, C> {
 #[cfg(test)]
 mod tests {
     use crate::safe::isu::Malloc;
-    use crate::safe::Image;
+    use crate::safe::{Image, Img};
     use crate::safe::Result;
     use crate::C;
 
     #[test]
     fn new_image() -> Result<()> {
         let img = Image::<f32, C<3>>::malloc(1024, 1024)?;
-        dbg!(img.line_step);
-        assert!(!img.data.is_null());
-        Ok(())
-    }
-
-    #[test]
-    fn same() -> Result<()> {
-        let img = Image::<f32, C<3>>::malloc(1024, 1024)?;
-        let other = img.malloc_same()?;
-        assert_eq!(img.size(), other.size());
+        dbg!(img.pitch());
         Ok(())
     }
 

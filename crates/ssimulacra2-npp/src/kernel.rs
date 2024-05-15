@@ -37,7 +37,7 @@ impl Kernel {
                 "edge_diff_map",
             ],
         )
-        .unwrap();
+            .unwrap();
 
         Self {
             dev: dev.clone(),

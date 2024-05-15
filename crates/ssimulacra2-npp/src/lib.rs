@@ -1,17 +1,17 @@
-use std::sync::Arc;
+use std::sync::{Arc, OnceLock};
 
 use cudarc::driver::CudaDevice;
 use zune_image::codecs::png::zune_core::colorspace::{ColorCharacteristics, ColorSpace};
 
+use cuda_npp::{C, get_stream_ctx};
 use cuda_npp::safe::ial::SqrIP;
 use cuda_npp::safe::icc::{GammaFwdIP, GammaInvIP};
 use cuda_npp::safe::idei::Scale;
 use cuda_npp::safe::ig::Resize;
-use cuda_npp::safe::ist::Sum;
 use cuda_npp::safe::Image;
+use cuda_npp::safe::ist::Sum;
 use cuda_npp::safe::Result;
 use cuda_npp::sys::{NppiInterpolationMode, NppiMaskSize};
-use cuda_npp::{get_stream_ctx, C};
 
 use crate::kernel::Kernel;
 
@@ -19,6 +19,8 @@ mod cpu;
 mod kernel;
 
 pub(crate) type Img = Image<f32, C<3>>;
+
+static RERUN: OnceLock<rerun::RecordingStream> = OnceLock::new();
 
 pub fn ssimulacra2(source_: Image<u8, C<3>>, distorted_: Image<u8, C<3>>) -> Result<f64> {
     let dev = CudaDevice::new(0).unwrap();
@@ -43,13 +45,13 @@ pub fn ssimulacra2(source_: Image<u8, C<3>>, distorted_: Image<u8, C<3>>) -> Res
         if scale > 0 {
             let new_width = (source.width + 1) / 2;
             let new_height = (source.height + 1) / 2;
-            source = source.resize_new(
+            source = source.resize_sqr_pixel_new(
                 new_width,
                 new_height,
                 NppiInterpolationMode::NPPI_INTER_NN,
                 ctx,
             )?;
-            distorted = distorted.resize_new(
+            distorted = distorted.resize_sqr_pixel_new(
                 new_width,
                 new_height,
                 NppiInterpolationMode::NPPI_INTER_NN,
@@ -62,12 +64,16 @@ pub fn ssimulacra2(source_: Image<u8, C<3>>, distorted_: Image<u8, C<3>>) -> Res
         let source = kernel.linear_to_xyb(&source);
         let distorted = kernel.linear_to_xyb(&distorted);
         dev.synchronize().unwrap();
+        rr().log("xyb/src/gpu", &rerun::Image::new(img_to_rerun(&dev, &source))).unwrap();
+        rr().log("xyb/dis/gpu", &rerun::Image::new(img_to_rerun(&dev, &distorted))).unwrap();
 
-        save_img(&dev, &source, &format!("xyb_src_{scale}"));
-        save_img(&dev, &distorted, &format!("xyb_dis_{scale}"));
+        // save_img(&dev, &source, &format!("xyb_src_{scale}"));
+        // save_img(&dev, &distorted, &format!("xyb_dis_{scale}"));
 
         let ref_sq = source.mul_new(&source, ctx)?;
+        rr().log("mulsq/src/gpu", &rerun::Image::new(img_to_rerun(&dev, &ref_sq))).unwrap();
         let sigma1_sq = ref_sq.filter_gauss_border_new(NppiMaskSize::NPP_MASK_SIZE_9_X_9, ctx)?;
+        rr().log("mulblur/src/gpu", &rerun::Image::new(img_to_rerun(&dev, &sigma1_sq))).unwrap();
         let dis_sq = distorted.mul_new(&distorted, ctx)?;
         let sigma2_sq = dis_sq.filter_gauss_border_new(NppiMaskSize::NPP_MASK_SIZE_9_X_9, ctx)?;
         let ref_dis = source.mul_new(&distorted, ctx)?;
@@ -278,6 +284,34 @@ fn save_img(dev: &Arc<CudaDevice>, img: &Img, name: &str) {
     img.save(format!("./gpu_{name}.png")).unwrap()
 }
 
+fn image_to_rerun(dev: &Arc<CudaDevice>, img: &Image<u8, C<3>>) -> rerun::TensorData {
+    dev.synchronize().unwrap();
+    let shape = vec![
+        rerun::TensorDimension::height(img.height as _),
+        rerun::TensorDimension::width(img.width as _),
+        rerun::TensorDimension::depth(3),
+    ];
+    let buffer = rerun::TensorBuffer::U8(img.copy_to_cpu().unwrap().into());
+    rerun::TensorData { shape, buffer }
+}
+
+fn img_to_rerun(dev: &Arc<CudaDevice>, img: &Img) -> rerun::TensorData {
+    dev.synchronize().unwrap();
+    let shape = vec![
+        rerun::TensorDimension::height(img.height as _),
+        rerun::TensorDimension::width(img.width as _),
+        rerun::TensorDimension::depth(3),
+    ];
+    let buffer = rerun::TensorBuffer::F32(img.copy_to_cpu().unwrap().into());
+    rerun::TensorData { shape, buffer }
+}
+
+pub(crate) fn rr() -> &'static rerun::RecordingStream {
+    RERUN.get_or_init(|| {
+        rerun::RecordingStreamBuilder::new("rerun_example_shared_recording").spawn().unwrap()
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use cuda_npp::safe::isu::Malloc;
@@ -347,6 +381,7 @@ mod tests {
             (result - expected).abs() < 0.25f64,
             "Result {result:.6} not equal to expected {expected:.6}",
         );
+        rr().flush_blocking();
         Ok(())
     }
 
@@ -370,6 +405,7 @@ mod tests {
             (result - expected).abs() < 0.25f64,
             "Result {result:.6} not equal to expected {expected:.6}",
         );
+        rr().flush_blocking();
         Ok(())
     }
 }

@@ -2,47 +2,52 @@
 
 use cuda_npp_sys::*;
 
-use crate::{Channel, Sample, C};
+use crate::{C, Channels, Sample};
 
-use super::{Image, Result};
+use super::{Image, Img, ImgMut, Result};
 
-pub trait Resize {
+pub trait Resize<S: Sample, C: Channels> {
     fn resize(
         &self,
-        dst: &mut Self,
+        dst: impl ImgMut<S, C>,
         interpolation: NppiInterpolationMode,
         ctx: NppStreamContext,
     ) -> Result<()>;
+
+    #[cfg(feature = "isu")]
+    fn resize_new(
+        &self,
+        new_width: u32,
+        new_height: u32,
+        interpolation: NppiInterpolationMode,
+        ctx: NppStreamContext,
+    ) -> Result<Image<S, C>>
+        where Image<S, C>: super::isu::Malloc
+    {
+        let mut dst = super::isu::Malloc::malloc(new_width, new_height)?;
+        self.resize(&mut dst, interpolation, ctx)?;
+        Ok(dst)
+    }
 }
 
 macro_rules! impl_resize {
     ($sample_ty:ty, $channel_ty:ty, $sample_id:ident, $channel_id:ident) => {
-        impl Resize for Image<$sample_ty, $channel_ty> {
+        impl<T: Img<$sample_ty, $channel_ty>> Resize<$sample_ty, $channel_ty> for T {
             fn resize(
                 &self,
-                dst: &mut Self,
+                mut dst: impl ImgMut<$sample_ty, $channel_ty>,
                 interpolation: NppiInterpolationMode,
                 ctx: NppStreamContext,
             ) -> Result<()> {
                 unsafe { paste::paste!([<nppi Resize $sample_id _ $channel_id R_Ctx>])(
-                    self.data as _,
-                    self.line_step,
+                    self.device_ptr(),
+                    self.pitch(),
                     self.size(),
-                    NppiRect {
-                        x: 0,
-                        y: 0,
-                        width: self.width as i32,
-                        height: self.height as i32,
-                    },
-                    dst.data as _,
-                    dst.line_step,
+                    self.rect(),
+                    dst.device_ptr_mut(),
+                    dst.pitch(),
                     dst.size(),
-                    NppiRect {
-                        x: 0,
-                        y: 0,
-                        width: dst.width as i32,
-                        height: dst.height as i32,
-                    },
+                    dst.rect(),
                     interpolation as _,
                     ctx,
                 )}.result()?;
@@ -67,31 +72,67 @@ impl_resize!(f32, C<1>, _32f, C1);
 impl_resize!(f32, C<3>, _32f, C3);
 impl_resize!(f32, C<4>, _32f, C4);
 
-#[cfg(feature = "isu")]
-impl<S: Sample, C: Channel> Image<S, C>
-where
-    Image<S, C>: Resize + crate::safe::isu::Malloc,
-{
-    pub fn resize_new(
+pub trait ResizeSqrPixel<S: Sample, C: Channels> {
+    fn resize_sqr_pixel(
+        &self,
+        dst: impl ImgMut<S, C>,
+        interpolation: NppiInterpolationMode,
+        ctx: NppStreamContext,
+    ) -> Result<()>;
+
+    #[cfg(feature = "isu")]
+    fn resize_sqr_pixel_new(
         &self,
         new_width: u32,
         new_height: u32,
         interpolation: NppiInterpolationMode,
         ctx: NppStreamContext,
-    ) -> Result<Self> {
-        let mut dst = <Self as crate::safe::isu::Malloc>::malloc(new_width, new_height)?;
-        self.resize(&mut dst, interpolation, ctx)?;
+    ) -> Result<Image<S, C>>
+        where Image<S, C>: super::isu::Malloc
+    {
+        let mut dst = super::isu::Malloc::malloc(new_width, new_height)?;
+        self.resize_sqr_pixel(&mut dst, interpolation, ctx)?;
         Ok(dst)
     }
 }
+
+macro_rules! impl_resize_sqr_pixel {
+    ($sample_ty:ty, $channel_ty:ty, $sample_id:ident, $channel_id:ident) => {
+        impl<T: Img<$sample_ty, $channel_ty>> ResizeSqrPixel<$sample_ty, $channel_ty> for T {
+            fn resize_sqr_pixel(
+                &self,
+                mut dst: impl ImgMut<$sample_ty, $channel_ty>,
+                interpolation: NppiInterpolationMode,
+                ctx: NppStreamContext,
+            ) -> Result<()> {
+                unsafe { paste::paste!([<nppi ResizeSqrPixel $sample_id _ $channel_id R_Ctx>])(
+                    self.device_ptr(),
+                    self.size(),
+                    self.pitch(),
+                    self.rect(),
+                    dst.device_ptr_mut(),
+                    dst.pitch(),
+                    dst.rect(),
+                    0.5, 0.5, 0.0, 0.0,
+                    interpolation as _,
+                    ctx,
+                )}.result()?;
+                Ok(())
+            }
+        }
+    };
+}
+
+impl_resize_sqr_pixel!(f32, C<3>, _32f, C3);
 
 #[cfg(test)]
 mod tests {
     use cuda_npp_sys::{NppiInterpolationMode, NppiSize};
 
+    use crate::{C, get_stream_ctx};
+    use crate::safe::ig::Resize;
+    use crate::safe::{Image, Img};
     use crate::safe::isu::Malloc;
-    use crate::safe::Image;
-    use crate::{get_stream_ctx, C};
 
     #[test]
     fn resize() -> crate::safe::Result<()> {

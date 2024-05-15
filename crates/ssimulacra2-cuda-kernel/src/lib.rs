@@ -20,31 +20,6 @@ unsafe fn srgb_eotf(x: f32) -> f32 {
     }
 }
 
-#[no_mangle]
-unsafe extern "ptx-kernel" fn plane_srgb_to_linear(len: usize, src: *const f32, dst: *mut f32) {
-    let i = coords_1d();
-    if i < len {
-        *dst.add(i) = srgb_eotf(*src.add(i));
-    }
-}
-
-#[no_mangle]
-unsafe extern "ptx-kernel" fn packed_srgb_to_linear_u8(
-    w: usize,
-    h: usize,
-    stride: usize,
-    out: *mut u8,
-) {
-    let (x, y) = coords_2d();
-    if x < w && y < h {
-        for i in 0..3 {
-            let offset = y * stride + (x * 3 + i) * mem::size_of::<u8>();
-            *out.byte_add(offset) =
-                round(srgb_eotf(*out.byte_add(offset) as f32 / 255.0) * 255.0) as u8;
-        }
-    }
-}
-
 const FROM_SRGB8_TABLE: [f32; 256] = [
     0.0,
     0.000303527,
@@ -304,26 +279,22 @@ const FROM_SRGB8_TABLE: [f32; 256] = [
     1.0,
 ];
 
+/// Works at the sample level for coalesced read & writes.
+///
+/// Does not do bound checks as it assumes it can read & write past bounds.
+/// When working on full images, the image must be padded.
+/// In other cases, this kernel will touch more samples on the edge.
 #[no_mangle]
-unsafe extern "ptx-kernel" fn packed_srgb_to_linear(
-    w: usize,
-    h: usize,
+unsafe extern "ptx-kernel" fn srgb_to_linear(
     src: *mut u8,
     src_line_step: usize,
     dst: *mut f32,
     dst_line_step: usize,
 ) {
     let (x, y) = coords_2d();
-    if x < w && y < h {
-        let a_src = y * src_line_step;
-        let a_dst = y * dst_line_step;
-        let b = x * 3;
-        for i in 0..3 {
-            let offset_src = a_src + (b + i) * mem::size_of::<u8>();
-            let offset_dst = a_dst + (b + i) * mem::size_of::<f32>();
-            *dst.byte_add(offset_dst) = FROM_SRGB8_TABLE[*src.byte_add(offset_src) as usize];
-        }
-    }
+    // if x < w && y < h {
+    *dst.byte_add(y * dst_line_step).add(x) = FROM_SRGB8_TABLE[*src.byte_add(y * src_line_step).add(x) as usize];
+    // }
 }
 
 const K_M02: f32 = 0.078f32;
@@ -365,7 +336,7 @@ const NEG_OPSIN_ABSORBANCE_BIAS: [f32; 3] = [-K_B0, -K_B1, -K_B2];
 /// that the input is Linear RGB. If you pass it gamma-encoded RGB, the results
 /// will be incorrect.
 /// Get all components in more or less 0..1 range
-pub unsafe fn px_linear_rgb_to_positive_xyb(r: f32, g: f32, b: f32) -> (f32, f32, f32) {
+unsafe fn px_linear_rgb_to_positive_xyb(r: f32, g: f32, b: f32) -> (f32, f32, f32) {
     let (mut rg, mut gr, mut b) = opsin_absorbance(r, g, b);
     rg = cbrt(rg.max(0.0)) - OPSIN_ABSORBANCE_BIAS_ROOT[0];
     gr = cbrt(gr.max(0.0)) - OPSIN_ABSORBANCE_BIAS_ROOT[1];
@@ -431,51 +402,57 @@ pub unsafe extern "ptx-kernel" fn plane_linear_to_xyb(
 /// Linear RGB to XYB for a packed image in place.
 #[no_mangle]
 pub unsafe extern "ptx-kernel" fn linear_to_xyb_packed(
-    in_: *const f32,
-    out: *mut f32,
     width: usize,
     height: usize,
-    line_step: usize,
+    src: *const f32,
+    src_pitch: usize,
+    dst: *mut f32,
+    dst_pitch: usize,
 ) {
     let (col, row) = coords_2d();
-    if col < width && row < height {
-        let in_ = in_.byte_add(row * line_step).add(col * 3);
-        let r = *in_;
-        let g = *in_.add(1);
-        let b = *in_.add(2);
-        let (x, y, b) = px_linear_rgb_to_positive_xyb(r, g, b);
-        let out = out.byte_add(row * line_step).add(col * 3);
-        *out = x;
-        *out.add(1) = y;
-        *out.add(2) = b;
-    }
+    // if col < width && row < height {
+    let in_ = src.byte_add(row * src_pitch).add(col * 3);
+    let r = *in_;
+    let g = *in_.add(1);
+    let b = *in_.add(2);
+    let (x, y, b) = px_linear_rgb_to_positive_xyb(r, g, b);
+    let out = dst.byte_add(row * dst_pitch).add(col * 3);
+    *out = x;
+    *out.add(1) = y;
+    *out.add(2) = b;
+    // }
 }
 
 #[no_mangle]
 pub unsafe extern "ptx-kernel" fn downscale_by_2(
-    iw: usize,
-    ih: usize,
-    ow: usize,
-    oh: usize,
-    pin: *const f32,
-    pout: *mut f32,
+    src_w: usize,
+    src_h: usize,
+    src: *const f32,
+    src_pitch: usize,
+    dst_w: usize,
+    dst_h: usize,
+    dst: *mut f32,
+    dst_pitch: usize,
 ) {
     const SCALE: usize = 2;
     const NORMALIZE: f32 = 1f32 / (SCALE * SCALE) as f32;
+    const C: usize = 3;
 
     let (ox, oy) = coords_2d();
 
-    if ox < ow && oy < oh {
-        let mut sum = 0f32;
-        for iy in 0..SCALE {
-            for ix in 0..SCALE {
-                let x = (ox * SCALE + ix).min(iw - 1);
-                let y = (oy * SCALE + iy).min(ih - 1);
+    if ox < dst_w && oy < dst_h {
+        for c in 0..C {
+            let mut sum = 0.0;
+            for iy in 0..SCALE {
+                for ix in 0..SCALE {
+                    let x = (ox * SCALE + ix).min(src_w - 1);
+                    let y = (oy * SCALE + iy).min(src_h - 1);
 
-                sum += *pin.add(y * iw + x);
+                    sum += *src.byte_add(y * src_pitch).add(x * C + c);
+                }
             }
+            *dst.byte_add(oy * dst_pitch).add(ox * C + c) = sum * NORMALIZE;
         }
-        *pout.add(oy * ow + ox) = sum * NORMALIZE;
     }
 }
 

@@ -7,11 +7,8 @@ edition = "2021"
 
 [dependencies]
 cudarc.workspace = true
-cuda_npp = { version = "0.1", path = "../cuda_npp", features = ["ial", "icc", "idei", "if", "ig", "ist", "isu", "cudarc"] }
+cuda_npp = { version = "0.1", path = "../cuda_npp", features = ["ial", "icc", "idei", "if", "ig", "ist", "isu"] }
 zune-image.workspace = true
-
-[dev-dependencies]
-rerun.workspace = true
 
 [build-dependencies]
 nalgebra.workspace = true

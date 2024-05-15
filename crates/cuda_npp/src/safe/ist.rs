@@ -1,12 +1,13 @@
 use std::mem;
+use std::ptr::null_mut;
 
 use cuda_npp_sys::*;
 
-use crate::C;
+use crate::{C, Channels, Sample};
 
-use super::{Image, Result, ScratchBuffer};
+use super::{Img, Result, ScratchBuffer};
 
-pub trait Sum {
+pub trait Sum<S: Sample, C: Channels> {
     type SumResult;
 
     fn sum(&self, scratch: &mut ScratchBuffer, ctx: NppStreamContext) -> Result<Self::SumResult>;
@@ -14,30 +15,31 @@ pub trait Sum {
     fn alloc_scratch(&self) -> ScratchBuffer;
 }
 
-impl Sum for Image<f32, C<3>> {
+impl<T: Img<f32, C<3>>> Sum<f32, C<3>> for T {
     type SumResult = [f64; 3];
 
     fn sum(&self, scratch: &mut ScratchBuffer, ctx: NppStreamContext) -> Result<Self::SumResult> {
         let mut out_dev = ScratchBuffer::alloc(3 * mem::size_of::<f64>());
         unsafe {
             nppiSum_32f_C3R_Ctx(
-                self.data as _,
-                self.line_step,
+                self.device_ptr(),
+                self.pitch(),
                 self.size(),
                 scratch.ptr as _,
                 out_dev.ptr as _,
                 ctx,
             )
         }
-        .result()?;
+            .result()?;
         let mut out = [0.0; 3];
         unsafe {
             assert_eq!(
-                cudaMemcpy(
+                cudaMemcpyAsync(
                     out.as_mut_ptr() as _,
                     out_dev.ptr,
                     out_dev.size,
                     cudaMemcpyKind::cudaMemcpyDeviceToHost,
+                    null_mut(),
                 ),
                 cudaError_t::cudaSuccess
             );
@@ -61,11 +63,11 @@ impl Sum for Image<f32, C<3>> {
 
 #[cfg(test)]
 mod tests {
+    use crate::{C, get_stream_ctx};
     use crate::safe::idei::SetMany;
+    use crate::safe::Image;
     use crate::safe::ist::Sum;
     use crate::safe::isu::Malloc;
-    use crate::safe::Image;
-    use crate::{get_stream_ctx, C};
 
     #[test]
     fn sum() -> crate::safe::Result<()> {
