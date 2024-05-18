@@ -12,6 +12,7 @@ pub struct Kernel {
     dev: Arc<CudaDevice>,
     srgb_to_linear: CudaFunction,
     downscale_by_2: CudaFunction,
+    downscale_plane_by_2: CudaFunction,
     linear_to_xyb: CudaFunction,
     ssim_map: CudaFunction,
     edge_diff_map: CudaFunction,
@@ -27,6 +28,7 @@ impl Kernel {
             &[
                 "srgb_to_linear",
                 "downscale_by_2",
+                "downscale_plane_by_2",
                 "linear_to_xyb_packed",
                 "ssim_map",
                 "edge_diff_map",
@@ -41,6 +43,9 @@ impl Kernel {
                 .unwrap(),
             downscale_by_2: dev
                 .get_func(PTX_MODULE_NAME, "downscale_by_2")
+                .unwrap(),
+            downscale_plane_by_2: dev
+                .get_func(PTX_MODULE_NAME, "downscale_plane_by_2")
                 .unwrap(),
             linear_to_xyb: dev
                 .get_func(PTX_MODULE_NAME, "linear_to_xyb_packed")
@@ -86,6 +91,36 @@ impl Kernel {
                     ),
                 )
                 .expect("Could not launch downscale_by_2 kernel");
+        }
+    }
+
+    pub fn downscale_plane_by_2(&self, src: impl Img<f32, C<1>>, mut dst: impl ImgMut<f32, C<1>>) {
+        unsafe {
+            const THREADS_WIDTH: u32 = 16;
+            const THREADS_HEIGHT: u32 = 16;
+            let num_blocks_w = (src.width() + THREADS_WIDTH - 1) / THREADS_WIDTH;
+            let num_blocks_h = (src.height() + THREADS_HEIGHT - 1) / THREADS_HEIGHT;
+
+            self.downscale_plane_by_2
+                .clone()
+                .launch(
+                    LaunchConfig {
+                        grid_dim: (num_blocks_w, num_blocks_h, 1),
+                        block_dim: (THREADS_WIDTH, THREADS_HEIGHT, 1),
+                        shared_mem_bytes: 0,
+                    },
+                    (
+                        src.width() as usize,
+                        src.height() as usize,
+                        src.device_ptr() as usize,
+                        src.pitch() as usize,
+                        dst.width() as usize,
+                        dst.height() as usize,
+                        dst.device_ptr_mut() as usize,
+                        dst.pitch() as usize,
+                    ),
+                )
+                .expect("Could not launch downscale_plane_by_2 kernel");
         }
     }
 

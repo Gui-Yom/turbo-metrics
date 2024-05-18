@@ -2,9 +2,9 @@
 
 use cuda_npp_sys::*;
 
-use crate::{Channels, Sample, C, __priv};
+use crate::{__priv, C, Channels, Sample};
 
-use super::{Image, Result, E, ImgMut, Img};
+use super::{E, Image, Img, ImgMut, Result};
 
 pub trait FilterGaussBorder<S: Sample, C: Channels>: __priv::Sealed {
     /// Filters the image using a Gaussian filter kernel with border control.

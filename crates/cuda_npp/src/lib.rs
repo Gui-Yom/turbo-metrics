@@ -1,5 +1,7 @@
+use std::fmt::Debug;
+
 pub use cuda_npp_sys as sys;
-use cuda_npp_sys::{nppGetStreamContext, NppStatus, NppStreamContext};
+use sys::{nppGetStreamContext, NppStatus, NppStreamContext};
 
 pub mod safe;
 
@@ -39,6 +41,17 @@ impl Sample for f32 {}
 /// Layout of the image, either packed channels or planar
 pub trait Channels: __priv::Sealed + 'static {
     const NUM_SAMPLES: usize;
+    const IS_PLANAR: bool;
+
+    type Storage<S>: Debug + Clone;
+    type Ref<S>: Copy;
+    type RefMut<S>;
+
+    fn make_ref<S>(s: &Self::Storage<S>) -> Self::Ref<S>;
+    fn make_ref_mut<S>(s: &mut Self::Storage<S>) -> Self::RefMut<S>;
+
+    fn iter_ptrs<S>(s: &Self::Storage<S>) -> impl ExactSizeIterator<Item=*const S>;
+    fn iter_ptrs_mut<S>(s: &mut Self::Storage<S>) -> impl ExactSizeIterator<Item=*mut S>;
 }
 
 /// Packed channels
@@ -46,27 +59,74 @@ pub trait Channels: __priv::Sealed + 'static {
 pub struct C<const N: usize>;
 
 /// Planar channels
+#[derive(Debug)]
 pub struct P<const N: usize>;
 
-impl<const N: usize> __priv::Sealed for C<N> {}
+macro_rules! impl_channels_packed {
+    ($n:literal) => {
+        impl __priv::Sealed for C<$n> {}
+        impl Channels for C<$n> {
+            const NUM_SAMPLES: usize = $n;
+            const IS_PLANAR: bool = false;
+            type Storage<S> = *mut S;
+            type Ref<S> = *const S;
+            type RefMut<S> = *mut S;
 
-impl<const N: usize> __priv::Sealed for P<N> {}
+            fn make_ref<S>(s: &Self::Storage<S>) -> Self::Ref<S> {
+                *s
+            }
 
-impl Channels for C<1> {
-    const NUM_SAMPLES: usize = 1;
+            fn make_ref_mut<S>(s: &mut Self::Storage<S>) -> Self::RefMut<S> {
+                *s
+            }
+
+            fn iter_ptrs<S>(s: &Self::Storage<S>) -> impl ExactSizeIterator<Item=*const S> {
+                [(*s).cast_const()].into_iter()
+            }
+
+            fn iter_ptrs_mut<S>(s: &mut Self::Storage<S>) -> impl ExactSizeIterator<Item=*mut S> {
+                [*s].into_iter()
+            }
+        }
+    }
 }
 
-impl Channels for C<2> {
-    const NUM_SAMPLES: usize = 2;
+impl_channels_packed!(1);
+impl_channels_packed!(2);
+impl_channels_packed!(3);
+impl_channels_packed!(4);
+
+macro_rules! impl_channels_planar {
+    ($n:literal) => {
+        impl __priv::Sealed for P<$n> {}
+        impl Channels for P<$n> {
+            const NUM_SAMPLES: usize = $n;
+            const IS_PLANAR: bool = true;
+            type Storage<S> = [*mut S; Self::NUM_SAMPLES];
+            type Ref<S> = *const *const S;
+            type RefMut<S> = *const *mut S;
+
+            fn make_ref<S>(s: &Self::Storage<S>) -> Self::Ref<S> {
+                s.as_ptr() as _
+            }
+
+            fn make_ref_mut<S>(s: &mut Self::Storage<S>) -> Self::RefMut<S> {
+                s.as_ptr()
+            }
+
+            fn iter_ptrs<S>(s: &Self::Storage<S>) -> impl ExactSizeIterator<Item=*const S> {
+                s.clone().into_iter().map(|p| p.cast_const())
+            }
+
+            fn iter_ptrs_mut<S>(s: &mut Self::Storage<S>) -> impl ExactSizeIterator<Item=*mut S> {
+                s.iter().copied()
+            }
+        }
+    }
 }
 
-impl Channels for C<3> {
-    const NUM_SAMPLES: usize = 3;
-}
-
-impl Channels for C<4> {
-    const NUM_SAMPLES: usize = 4;
-}
+impl_channels_planar!(3);
+impl_channels_planar!(4);
 
 pub fn get_stream_ctx() -> Result<NppStreamContext, NppStatus> {
     let mut ctx = Default::default();

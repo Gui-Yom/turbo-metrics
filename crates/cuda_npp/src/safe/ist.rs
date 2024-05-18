@@ -25,8 +25,8 @@ impl<T: Img<f32, C<3>>> Sum<f32, C<3>> for T {
                 self.device_ptr(),
                 self.pitch(),
                 self.size(),
-                scratch.ptr as _,
-                out_dev.ptr as _,
+                scratch.ptr.cast(),
+                out_dev.ptr.cast(),
                 ctx,
             )
         }

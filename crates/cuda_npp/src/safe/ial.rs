@@ -1,10 +1,10 @@
 //! Image Arithmetic and Logical operations
 
+use cuda_npp_sys::*;
+
 use crate::{__priv, assert_same_size, C, Channels, Sample};
 
 use super::{Image, Img, ImgMut, Result};
-
-use cuda_npp_sys::*;
 
 pub trait Mul<S: Sample, C: Channels>: __priv::Sealed {
     /// Pixel by pixel multiply of two images.

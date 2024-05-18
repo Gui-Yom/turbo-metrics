@@ -6,9 +6,7 @@ use zune_image::codecs::png::zune_core::options::DecoderOptions;
 
 use cuda_npp::C;
 use cuda_npp::safe::{Image, Img, ImgMut};
-use cuda_npp::safe::ial::Mul;
 use cuda_npp::safe::isu::Malloc;
-use cuda_npp::sys::NppiRect;
 
 use crate::kernel::Kernel;
 
@@ -32,6 +30,7 @@ fn main() {
     dbg!(ssimulacra2.compute(ref_bytes, dis_bytes));
 }
 
+/// This impl never allocates during execution and the instance is valid for a specific width and height
 struct Ssimulacra2 {
     dev: Arc<CudaDevice>,
     kernel: Kernel,
@@ -77,59 +76,52 @@ impl Ssimulacra2 {
         self.ref_input.copy_from_cpu(ref_bytes).unwrap();
         self.dis_input.copy_from_cpu(dis_bytes).unwrap();
 
+        // TODO we should work with planar images, as it would allow us to coalesce read and writes
+        //  coalescing can already be achieved for kernels which doesn't require access to neighbouring pixels or samples
+
         // Convert to linear
         self.kernel.srgb_to_linear(&self.ref_input, &mut self.ref_linear);
         self.kernel.srgb_to_linear(&self.dis_input, &mut self.dis_linear);
+
+        let mut tmp = Image::malloc(2048, 2048).unwrap();
+        // tmp.set(1.0, get_stream_ctx().unwrap()).unwrap();
+        tmp.copy_from_cpu(&[1.0; 2048 * 2048]).unwrap();
+        // dbg!(tmp.copy_to_cpu().unwrap());
+        let mut tmp2 = Image::malloc(1024, 1024).unwrap();
+        self.kernel.downscale_plane_by_2(&tmp, &mut tmp2);
+        // dbg!(tmp2.copy_to_cpu().unwrap());
 
         // linear -> xyb -> ...
         //    |-> /2 -> xyb -> ...
         //         |-> /2 -> xyb -> ...
 
-        let mut width = self.ref_input.width();
-        let mut height = self.ref_input.height();
+        let mut size = self.ref_input.rect();
 
         for scale in 0..6 {
             if scale > 0 {
                 {
-                    let rect = NppiRect {
-                        x: 0,
-                        y: 0,
-                        width: width as _,
-                        height: height as _,
-                    };
+                    let ref_linear = self.ref_linear.view_mut(size);
+                    let dis_linear = self.dis_linear.view_mut(size);
 
-                    let ref_linear = self.ref_linear.view_mut(rect);
-                    let dis_linear = self.dis_linear.view_mut(rect);
+                    // Divide size by 2
+                    size.width = (size.width + 1) / 2;
+                    size.height = (size.height + 1) / 2;
 
-                    width = (width + 1) / 2;
-                    height = (height + 1) / 2;
+                    dbg!(size);
 
-                    dbg!(width, height);
-
-                    let rect = NppiRect {
-                        x: 0,
-                        y: 0,
-                        width: width as _,
-                        height: height as _,
-                    };
-
-                    self.kernel.downscale_by_2(&ref_linear, self.ref_linear_resized.view_mut(rect));
-                    self.kernel.downscale_by_2(&dis_linear, self.dis_linear_resized.view_mut(rect));
+                    // TODO this can be done with warp level primitives by having warps sized 16x2
+                    //  block size 16x16 would be perfect
+                    //  warps would contain 8 2x2 patches which can be summed using shfl_down_sync and friends
+                    self.kernel.downscale_by_2(&ref_linear, self.ref_linear_resized.view_mut(size));
+                    self.kernel.downscale_by_2(&dis_linear, self.dis_linear_resized.view_mut(size));
                 }
 
                 mem::swap(&mut self.ref_linear, &mut self.ref_linear_resized);
                 mem::swap(&mut self.dis_linear, &mut self.dis_linear_resized);
 
-                let rect = NppiRect {
-                    x: 0,
-                    y: 0,
-                    width: width as _,
-                    height: height as _,
-                };
-
                 // dbg!(ref_linear_resized.device_ptr());
-                self.kernel.linear_to_xyb(self.ref_linear_resized.view(rect), self.ref_xyb.view_mut(rect));
-                self.kernel.linear_to_xyb(self.dis_linear_resized.view(rect), self.dis_xyb.view_mut(rect));
+                self.kernel.linear_to_xyb(self.ref_linear_resized.view(size), self.ref_xyb.view_mut(size));
+                self.kernel.linear_to_xyb(self.dis_linear_resized.view(size), self.dis_xyb.view_mut(size));
             } else {
                 // dbg!(ref_linear_resized.device_ptr());
                 self.kernel.linear_to_xyb(&self.ref_linear, &mut self.ref_xyb);

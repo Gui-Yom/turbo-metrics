@@ -44,6 +44,28 @@ extern "C" {
     pub fn round(x: f32) -> f32;
 }
 
+pub const WARP_SIZE: usize = 32;
+
+/// Local id of a thread in a warp
+#[inline]
+pub fn lane() -> u32 {
+    let out;
+    unsafe {
+        asm!(
+        "mov.u32 {out}, %laneid;",
+        out = out(reg32) out
+        )
+    }
+    out
+}
+
+#[inline]
+pub fn syncthreads() {
+    unsafe {
+        nvptx::_syncthreads();
+    }
+}
+
 #[inline]
 pub fn coords_1d() -> usize {
     unsafe {
@@ -82,6 +104,26 @@ pub fn coords_3d() -> (usize, usize, usize) {
         (bx * bdx + tx, by * bdy + ty, bz * bdz + tz)
     }
 }
+
+macro_rules! shfl_down_sync_t {
+    ($ty:ty) => {
+        #[inline(always)]
+        pub unsafe fn shfl_down_sync(mask: u32, value: $ty, offset: u32, width: u32) -> $ty {
+            let out;
+            asm!(
+            "shfl.sync.down.b32 {out}, {v}, {offset}, {width}, {mask};",
+            out = out(reg32) out,
+            v = in(reg32) value,
+            offset = in(reg32) offset,
+            width = in(reg32) width,
+            mask = in(reg32) mask
+            );
+            out
+        }
+    }
+}
+
+shfl_down_sync_t!(f32);
 
 fn tex2D() {
     unsafe {

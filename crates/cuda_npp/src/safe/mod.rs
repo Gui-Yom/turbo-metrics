@@ -49,9 +49,17 @@ pub struct Image<S: Sample, C: Channels> {
     height: u32,
     /// in bytes
     pitch: i32,
-    data: u64,
+    data: C::Storage<S>,
     marker: PhantomData<S>,
     marker_: PhantomData<C>,
+}
+
+impl<S: Sample, C: Channels> Image<S, C> {
+    fn into_inner(self) -> C::Storage<S> {
+        let inner = self.data.clone();
+        mem::forget(self);
+        return inner;
+    }
 }
 
 // TODO impl view offset
@@ -169,13 +177,20 @@ impl<S: Sample, C: Channels> Image<S, C> {
 }
 
 pub trait Img<S: Sample, C: Channels>: __priv::Sealed {
+    const SAMPLE_SIZE: usize = mem::size_of::<S>();
     /// Pixel size in bytes
-    const PIXEL_SIZE: usize = C::NUM_SAMPLES * mem::size_of::<S>();
+    const PIXEL_SIZE: usize = C::NUM_SAMPLES * Self::SAMPLE_SIZE;
 
     fn width(&self) -> u32;
     fn height(&self) -> u32;
+    /// Pitch in bytes
     fn pitch(&self) -> i32;
-    fn device_ptr(&self) -> *const S;
+
+    /// The pointer to give when passing the image to NPP for reads
+    fn device_ptr(&self) -> C::Ref<S>;
+
+    /// Iterator over the pointers of the underlying allocations on device
+    fn alloc_ptrs(&self) -> impl ExactSizeIterator<Item=*const S>;
 
     fn size(&self) -> NppiSize {
         NppiSize {
@@ -212,60 +227,81 @@ pub trait Img<S: Sample, C: Channels>: __priv::Sealed {
         let mut dst =
             vec![S::default(); self.width() as usize * self.height() as usize * C::NUM_SAMPLES];
 
-        unsafe {
-            let res = cudaMemcpy2DAsync(
-                dst.as_mut_ptr().cast(),
-                self.width() as usize * Self::PIXEL_SIZE,
-                self.device_ptr().cast(),
-                self.pitch() as usize,
-                self.width() as usize,
-                self.height() as usize,
-                cudaMemcpyKind::cudaMemcpyDeviceToHost,
-                null_mut(),
-            );
+        let pixel_size = if C::IS_PLANAR {
+            Self::SAMPLE_SIZE
+        } else {
+            Self::PIXEL_SIZE
+        };
+
+        for (i, ptr) in self.alloc_ptrs().enumerate() {
+            let res = unsafe {
+                cudaMemcpy2DAsync(
+                    dst[self.width() as usize * self.height() as usize * i..].as_mut_ptr().cast(),
+                    self.width() as usize * pixel_size,
+                    ptr.cast(),
+                    self.pitch() as usize,
+                    self.width() as usize * pixel_size,
+                    self.height() as usize,
+                    cudaMemcpyKind::cudaMemcpyDeviceToHost,
+                    null_mut(),
+                )
+            };
             match res {
-                cudaError::cudaSuccess => {
-                    Ok(dst)
-                }
+                cudaError::cudaSuccess => {}
                 e => {
-                    Err(e.into())
+                    return Err(e.into());
                 }
             }
         }
+
+        Ok(dst)
     }
 }
 
 pub trait ImgMut<S: Sample, C: Channels>: Img<S, C> {
-    fn device_ptr_mut(&mut self) -> *mut S {
-        self.device_ptr().cast_mut()
-    }
+    /// The pointer to give when passing the image to NPP for writes
+    fn device_ptr_mut(&mut self) -> C::RefMut<S>;
+
+    /// Iterator over the pointers of the underlying allocations on device
+    fn alloc_ptrs_mut(&mut self) -> impl ExactSizeIterator<Item=*mut S>;
 
     fn copy_from_cpu(&mut self, data: &[S]) -> Result<()> {
-        assert_eq!(data.len(), self.width() as usize * self.height() as usize * C::NUM_SAMPLES);
-        unsafe {
-            let res = cudaMemcpy2DAsync(
-                self.device_ptr_mut().cast(),
-                self.pitch() as usize,
-                data.as_ptr().cast(),
-                self.width() as usize * Self::PIXEL_SIZE,
-                self.width() as usize,
-                self.height() as usize,
-                cudaMemcpyKind::cudaMemcpyHostToDevice,
-                null_mut(),
-            );
+        let width = self.width() as usize;
+        let height = self.height() as usize;
+        let pitch = self.pitch() as usize;
+        assert_eq!(data.len(), width * height * C::NUM_SAMPLES);
+
+        let pixel_size = if C::IS_PLANAR {
+            Self::SAMPLE_SIZE
+        } else {
+            Self::PIXEL_SIZE
+        };
+
+        for (i, ptr) in self.alloc_ptrs_mut().enumerate() {
+            let res = unsafe {
+                cudaMemcpy2DAsync(
+                    ptr.cast(),
+                    pitch,
+                    data[width * height * i..].as_ptr().cast(),
+                    width * pixel_size,
+                    width * pixel_size,
+                    height,
+                    cudaMemcpyKind::cudaMemcpyHostToDevice,
+                    null_mut(),
+                )
+            };
             match res {
-                cudaError::cudaSuccess => {
-                    Ok(())
-                }
+                cudaError::cudaSuccess => {}
                 e => {
-                    Err(e.into())
+                    return Err(e.into());
                 }
             }
         }
+        Ok(())
     }
 }
 
-impl<'a, S: Sample, C: Channels, T: Img<S, C>> Img<S, C> for &T {
+impl<S: Sample, C: Channels, T: Img<S, C>> Img<S, C> for &T {
     fn width(&self) -> u32 {
         (*self).width()
     }
@@ -278,12 +314,16 @@ impl<'a, S: Sample, C: Channels, T: Img<S, C>> Img<S, C> for &T {
         (*self).pitch()
     }
 
-    fn device_ptr(&self) -> *const S {
+    fn device_ptr(&self) -> <C>::Ref<S> {
         (*self).device_ptr()
+    }
+
+    fn alloc_ptrs(&self) -> impl ExactSizeIterator<Item=*const S> {
+        (*self).alloc_ptrs()
     }
 }
 
-impl<'a, S: Sample, C: Channels, T: Img<S, C>> Img<S, C> for &mut T {
+impl<S: Sample, C: Channels, T: Img<S, C>> Img<S, C> for &mut T {
     fn width(&self) -> u32 {
         Img::width(*self)
     }
@@ -296,8 +336,12 @@ impl<'a, S: Sample, C: Channels, T: Img<S, C>> Img<S, C> for &mut T {
         Img::pitch(*self)
     }
 
-    fn device_ptr(&self) -> *const S {
+    fn device_ptr(&self) -> C::Ref<S> {
         Img::device_ptr(*self)
+    }
+
+    fn alloc_ptrs(&self) -> impl ExactSizeIterator<Item=*const S> {
+        Img::alloc_ptrs(*self)
     }
 }
 
@@ -314,8 +358,12 @@ impl<S: Sample, C: Channels> Img<S, C> for Image<S, C> {
         self.pitch
     }
 
-    fn device_ptr(&self) -> *const S {
-        self.data as _
+    fn device_ptr(&self) -> C::Ref<S> {
+        C::make_ref(&self.data)
+    }
+
+    fn alloc_ptrs(&self) -> impl ExactSizeIterator<Item=*const S> {
+        C::iter_ptrs(&self.data)
     }
 }
 
@@ -332,8 +380,12 @@ impl<'a, S: Sample, C: Channels> Img<S, C> for ImgView<'a, S, C> {
         self.parent.pitch
     }
 
-    fn device_ptr(&self) -> *const S {
-        self.parent.data as _
+    fn device_ptr(&self) -> C::Ref<S> {
+        self.parent.device_ptr()
+    }
+
+    fn alloc_ptrs(&self) -> impl ExactSizeIterator<Item=*const S> {
+        self.parent.alloc_ptrs()
     }
 }
 
@@ -350,18 +402,54 @@ impl<'a, S: Sample, C: Channels> Img<S, C> for ImgViewMut<'a, S, C> {
         self.parent.pitch
     }
 
-    fn device_ptr(&self) -> *const S {
-        self.parent.data as _
+    fn device_ptr(&self) -> C::Ref<S> {
+        self.parent.device_ptr()
+    }
+
+    fn alloc_ptrs(&self) -> impl ExactSizeIterator<Item=*const S> {
+        self.parent.alloc_ptrs()
     }
 }
 
-impl<'a, S: Sample, C: Channels> ImgMut<S, C> for Image<S, C> {}
+impl<S: Sample, C: Channels> ImgMut<S, C> for Image<S, C> {
+    fn device_ptr_mut(&mut self) -> C::RefMut<S> {
+        C::make_ref_mut(&mut self.data)
+    }
 
-impl<'a, S: Sample, C: Channels> ImgMut<S, C> for &mut Image<S, C> {}
+    fn alloc_ptrs_mut(&mut self) -> impl ExactSizeIterator<Item=*mut S> {
+        C::iter_ptrs_mut(&mut self.data)
+    }
+}
 
-impl<'a, S: Sample, C: Channels> ImgMut<S, C> for ImgViewMut<'a, S, C> {}
+impl<S: Sample, C: Channels> ImgMut<S, C> for &mut Image<S, C> {
+    fn device_ptr_mut(&mut self) -> C::RefMut<S> {
+        C::make_ref_mut(&mut self.data)
+    }
 
-impl<'a, S: Sample, C: Channels> ImgMut<S, C> for &mut ImgViewMut<'a, S, C> {}
+    fn alloc_ptrs_mut(&mut self) -> impl ExactSizeIterator<Item=*mut S> {
+        C::iter_ptrs_mut(&mut self.data)
+    }
+}
+
+impl<'a, S: Sample, C: Channels> ImgMut<S, C> for ImgViewMut<'a, S, C> {
+    fn device_ptr_mut(&mut self) -> C::RefMut<S> {
+        self.parent.device_ptr_mut()
+    }
+
+    fn alloc_ptrs_mut(&mut self) -> impl ExactSizeIterator<Item=*mut S> {
+        self.parent.alloc_ptrs_mut()
+    }
+}
+
+impl<'a, S: Sample, C: Channels> ImgMut<S, C> for &mut ImgViewMut<'a, S, C> {
+    fn device_ptr_mut(&mut self) -> C::RefMut<S> {
+        self.parent.device_ptr_mut()
+    }
+
+    fn alloc_ptrs_mut(&mut self) -> impl ExactSizeIterator<Item=*mut S> {
+        self.parent.alloc_ptrs_mut()
+    }
+}
 
 /// An opaque scratch buffer needed by some npp routines
 #[derive(Debug, Clone)]
@@ -389,21 +477,15 @@ impl Drop for ScratchBuffer {
     }
 }
 
-// #[cfg(test)]
-// mod tests {
-//     use crate::C;
-//     use crate::safe::{Image, ImageCommon};
-//     use crate::safe::isu::Malloc;
-//
-//     #[test]
-//     fn copy_and_back() {
-//         let source_bytes = &source.flatten_to_u8()[0];
-//         let mut source_img =
-//             Image::<u8, C<3>>::malloc(source.dimensions().0 as u32, source.dimensions().1 as u32)
-//                 .unwrap();
-//         source_img.copy_from_cpu(&source_bytes).unwrap();
-//
-//         let source_back = source_img.copy_to_cpu().unwrap();
-//         assert_eq!(source_bytes, &source_back);
-//     }
-// }
+#[cfg(test)]
+mod tests {
+    use crate::C;
+    use crate::safe::Image;
+    use crate::safe::isu::Malloc;
+
+    #[test]
+    fn into_inner_does_not_drop() {
+        let inner = Image::<f32, C<1>>::malloc(16, 16).unwrap().into_inner();
+        dbg!(inner);
+    }
+}

@@ -1,11 +1,12 @@
 //! Support functions (malloc & free)
 
 use std::marker::PhantomData;
+use std::ptr::null_mut;
 
 use cuda_npp_sys::*;
 
-use crate::safe::{Image, E, Img};
-use crate::{Channels, Sample, C};
+use crate::{C, P, Channels, Sample};
+use crate::safe::{E, Image};
 
 use super::Result;
 
@@ -62,21 +63,55 @@ malloc_impl!(f32, C<2>, _32f, C2);
 malloc_impl!(f32, C<3>, _32f, C3);
 malloc_impl!(f32, C<4>, _32f, C4);
 
+macro_rules! malloc_planar_impl {
+    ($sample_ty:ty, $n:literal) => {
+        impl Malloc for Image<$sample_ty, P<$n>> {
+            fn malloc(width: u32, height: u32) -> Result<Self>
+                where
+                    Self: Sized,
+            {
+                let mut planes = [null_mut(); $n];
+                let mut pitch = 0;
+                for i in 0..$n {
+                    let img = Image::<$sample_ty, C<1>>::malloc(width, height)?;
+                    pitch = img.pitch;
+                    planes[i] = img.into_inner();
+                }
+
+                Ok(Self {
+                    width,
+                    height,
+                    pitch,
+                    data: planes,
+                    marker: PhantomData,
+                    marker_: PhantomData,
+                })
+            }
+        }
+    }
+}
+
+malloc_planar_impl!(f32, 3);
+malloc_planar_impl!(f32, 4);
+
 impl<S: Sample, C: Channels> Drop for Image<S, C> {
     fn drop(&mut self) {
         // println!("Dropping image");
         unsafe {
-            nppiFree(self.device_ptr() as _);
+            for ptr in C::iter_ptrs_mut(&mut self.data) {
+                cudaFreeAsync(ptr.cast(), null_mut());
+                // nppiFree(self.device_ptr() as _);
+            }
         }
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use crate::safe::isu::Malloc;
-    use crate::safe::{Image, Img};
-    use crate::safe::Result;
     use crate::C;
+    use crate::safe::{Image, Img};
+    use crate::safe::isu::Malloc;
+    use crate::safe::Result;
 
     #[test]
     fn new_image() -> Result<()> {

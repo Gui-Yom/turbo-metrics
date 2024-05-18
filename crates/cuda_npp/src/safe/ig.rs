@@ -130,8 +130,8 @@ mod tests {
     use cuda_npp_sys::{NppiInterpolationMode, NppiSize};
 
     use crate::{C, get_stream_ctx};
-    use crate::safe::ig::Resize;
     use crate::safe::{Image, Img};
+    use crate::safe::ig::Resize;
     use crate::safe::isu::Malloc;
 
     #[test]

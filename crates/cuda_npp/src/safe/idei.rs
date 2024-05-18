@@ -4,9 +4,9 @@ use std::ops::Range;
 
 use cuda_npp_sys::*;
 
-use crate::{Channels, Sample, C, __priv, assert_same_size};
+use crate::{__priv, assert_same_size, C, Channels, P, Sample};
 
-use super::{Image, Result, ImgMut, Img};
+use super::{Image, Img, ImgMut, Result};
 
 pub trait Set<S: Sample, C: Channels>: __priv::Sealed {
     fn set(&mut self, value: S, ctx: NppStreamContext) -> Result<()>;
@@ -67,10 +67,43 @@ impl_set!(f32, C<2>, 2, _32f, C2);
 impl_set!(f32, C<3>, 3, _32f, C3);
 impl_set!(f32, C<4>, 4, _32f, C4);
 
+pub trait ConvertChannel<S: Sample, C: Channels>: __priv::Sealed {
+    type Target: Channels;
+
+    fn convert_channel(&self, dst: impl ImgMut<S, Self::Target>, ctx: NppStreamContext) -> Result<()>;
+}
+
+macro_rules! impl_convert_channel {
+    ($sample_ty:ty, $channel_ty:ty, $tchannel_ty:ty, $sample_id:ident, $channel_id:ident) => {
+        impl<T: Img<$sample_ty, $channel_ty>> ConvertChannel<$sample_ty, $channel_ty> for T {
+            type Target = $tchannel_ty;
+
+            fn convert_channel(&self, mut dst: impl ImgMut<$sample_ty, $tchannel_ty>, ctx: NppStreamContext) -> Result<()> {
+                assert_same_size!(self, dst);
+                unsafe {
+                    paste::paste!([<nppi Copy $sample_id _ $channel_id R_Ctx>])(
+                        self.device_ptr(),
+                        self.pitch(),
+                        dst.device_ptr_mut(),
+                        dst.pitch(),
+                        self.size(),
+                        ctx,
+                    )
+                }.result()?;
+                Ok(())
+            }
+        }
+    };
+}
+
+impl_convert_channel!(f32, C<3>, P<3>, _32f, C3P3);
+impl_convert_channel!(f32, C<4>, P<4>, _32f, C4P4);
+
 pub trait Convert<S: Sample, C: Channels>: __priv::Sealed {
     // Associated type because we want to be able to use T in return position only
     type Target: Sample;
 
+    /// Convert sample type
     fn convert(&self, dst: impl ImgMut<Self::Target, C>, ctx: NppStreamContext) -> Result<()>;
 
     #[cfg(feature = "isu")]
@@ -163,11 +196,11 @@ impl_scale!(f32, C<3>, u8, _32f8u, C3);
 
 #[cfg(test)]
 mod tests {
+    use crate::{C, get_stream_ctx};
     use crate::safe::idei::{Convert, Scale, Set, SetMany};
-    use crate::safe::isu::Malloc;
     use crate::safe::Image;
+    use crate::safe::isu::Malloc;
     use crate::safe::Result;
-    use crate::{get_stream_ctx, C};
 
     #[test]
     fn set_single() -> Result<()> {
