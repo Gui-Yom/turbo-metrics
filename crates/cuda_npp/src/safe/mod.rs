@@ -186,6 +186,8 @@ pub trait Img<S: Sample, C: Channels>: __priv::Sealed {
     /// Pitch in bytes
     fn pitch(&self) -> i32;
 
+    fn storage(&self) -> C::Storage<S>;
+
     /// The pointer to give when passing the image to NPP for reads
     fn device_ptr(&self) -> C::Ref<S>;
 
@@ -314,6 +316,10 @@ impl<S: Sample, C: Channels, T: Img<S, C>> Img<S, C> for &T {
         (*self).pitch()
     }
 
+    fn storage(&self) -> C::Storage<S> {
+        (*self).storage()
+    }
+
     fn device_ptr(&self) -> <C>::Ref<S> {
         (*self).device_ptr()
     }
@@ -334,6 +340,10 @@ impl<S: Sample, C: Channels, T: Img<S, C>> Img<S, C> for &mut T {
 
     fn pitch(&self) -> i32 {
         Img::pitch(*self)
+    }
+
+    fn storage(&self) -> C::Storage<S> {
+        Img::storage(*self)
     }
 
     fn device_ptr(&self) -> C::Ref<S> {
@@ -358,6 +368,10 @@ impl<S: Sample, C: Channels> Img<S, C> for Image<S, C> {
         self.pitch
     }
 
+    fn storage(&self) -> C::Storage<S> {
+        self.data.clone()
+    }
+
     fn device_ptr(&self) -> C::Ref<S> {
         C::make_ref(&self.data)
     }
@@ -377,7 +391,11 @@ impl<'a, S: Sample, C: Channels> Img<S, C> for ImgView<'a, S, C> {
     }
 
     fn pitch(&self) -> i32 {
-        self.parent.pitch
+        self.parent.pitch()
+    }
+
+    fn storage(&self) -> C::Storage<S> {
+        self.parent.storage()
     }
 
     fn device_ptr(&self) -> C::Ref<S> {
@@ -399,7 +417,11 @@ impl<'a, S: Sample, C: Channels> Img<S, C> for ImgViewMut<'a, S, C> {
     }
 
     fn pitch(&self) -> i32 {
-        self.parent.pitch
+        self.parent.pitch()
+    }
+
+    fn storage(&self) -> C::Storage<S> {
+        self.parent.storage()
     }
 
     fn device_ptr(&self) -> C::Ref<S> {

@@ -30,18 +30,20 @@ fn panic_handler(info: &PanicInfo) -> ! {
     }
 }
 
-// libdevice bindings
-extern "C" {
-    #[link_name = "__nv_fmaf"]
-    pub fn fma(x: f32, y: f32, z: f32) -> f32;
-    #[link_name = "__nv_cbrtf"]
-    pub fn cbrt(x: f32) -> f32;
-    #[link_name = "__nv_powf"]
-    pub fn powf(x: f32, y: f32) -> f32;
-    #[link_name = "__nv_fabsf"]
-    pub fn abs(x: f32) -> f32;
-    #[link_name = "__nv_roundf"]
-    pub fn round(x: f32) -> f32;
+pub mod math {
+    // libdevice bindings
+    extern "C" {
+        #[link_name = "__nv_fmaf"]
+        pub fn fma(x: f32, y: f32, z: f32) -> f32;
+        #[link_name = "__nv_cbrtf"]
+        pub fn cbrt(x: f32) -> f32;
+        #[link_name = "__nv_powf"]
+        pub fn powf(x: f32, y: f32) -> f32;
+        #[link_name = "__nv_fabsf"]
+        pub fn abs(x: f32) -> f32;
+        #[link_name = "__nv_roundf"]
+        pub fn round(x: f32) -> f32;
+    }
 }
 
 pub const WARP_SIZE: usize = 32;

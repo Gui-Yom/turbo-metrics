@@ -1,6 +1,6 @@
 use std::{slice};
 use zune_image::codecs::png::zune_core::colorspace::{ColorCharacteristics, ColorSpace};
-use crate::{Img, img_to_rerun, rr};
+use crate::{Img};
 
 // How often to downscale and score the input images.
 // Each scaling step will downscale by a factor of two.
@@ -319,21 +319,6 @@ impl CpuImg {
         // img.metadata_mut().set_color_trc(ColorCharacteristics::Linear);
         // img.save(format!("./cpu_{name}.png")).unwrap();
     }
-
-    pub fn to_rerun(&self) -> rerun::TensorData {
-        let shape = vec![
-            rerun::TensorDimension::height(self.height as _),
-            rerun::TensorDimension::width(self.width as _),
-            rerun::TensorDimension::depth(3),
-        ];
-        let samples = unsafe {
-            let ptr = self.data.as_ptr();
-            let len = self.data.len();
-            slice::from_raw_parts(ptr as *const f32, len * 3)
-        };
-        let buffer = rerun::TensorBuffer::F32(samples.into());
-        rerun::TensorData { shape, buffer }
-    }
 }
 
 /// Computes the SSIMULACRA2 score for a given input frame and the distorted
@@ -379,11 +364,7 @@ pub fn compute_frame_ssimulacra2(source: &CpuImg, distorted: &CpuImg) -> f64 {
         linear_to_xyb(&mut img1);
         let mut img2 = img2.clone();
         linear_to_xyb(&mut img2);
-        rr().log("xyb/src/cpu", &rerun::Image::new(img1.to_rerun())).unwrap();
-        rr().log("xyb/dis/cpu", &rerun::Image::new(img2.to_rerun())).unwrap();
-
-        // img1.save(&format!("xyb_src_{scale}"));
-        // img2.save(&format!("xyb_dis_{scale}"));
+        // img1.save(&format!("ref_xyb_{scale}"));
 
         // make_positive_xyb(&mut img1);
         // make_positive_xyb(&mut img2);

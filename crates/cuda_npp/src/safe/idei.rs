@@ -98,6 +98,8 @@ macro_rules! impl_convert_channel {
 
 impl_convert_channel!(f32, C<3>, P<3>, _32f, C3P3);
 impl_convert_channel!(f32, C<4>, P<4>, _32f, C4P4);
+impl_convert_channel!(f32, P<3>, C<3>, _32f, P3C3);
+impl_convert_channel!(f32, P<4>, C<4>, _32f, P4C4);
 
 pub trait Convert<S: Sample, C: Channels>: __priv::Sealed {
     // Associated type because we want to be able to use T in return position only

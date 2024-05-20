@@ -11,8 +11,8 @@ pub trait Sum<S: Sample, C: Channels> {
     type SumResult;
 
     fn sum(&self, scratch: &mut ScratchBuffer, ctx: NppStreamContext) -> Result<Self::SumResult>;
-    fn scratch_size(&self) -> usize;
-    fn alloc_scratch(&self) -> ScratchBuffer;
+    fn sum_scratch_size(&self) -> usize;
+    fn sum_alloc_scratch(&self) -> ScratchBuffer;
 }
 
 impl<T: Img<f32, C<3>>> Sum<f32, C<3>> for T {
@@ -35,8 +35,8 @@ impl<T: Img<f32, C<3>>> Sum<f32, C<3>> for T {
         unsafe {
             assert_eq!(
                 cudaMemcpyAsync(
-                    out.as_mut_ptr() as _,
-                    out_dev.ptr,
+                    out.as_mut_ptr().cast(),
+                    out_dev.ptr.cast_const(),
                     out_dev.size,
                     cudaMemcpyKind::cudaMemcpyDeviceToHost,
                     null_mut(),
@@ -48,7 +48,7 @@ impl<T: Img<f32, C<3>>> Sum<f32, C<3>> for T {
         Ok(out)
     }
 
-    fn scratch_size(&self) -> usize {
+    fn sum_scratch_size(&self) -> usize {
         let mut size = 0;
         unsafe {
             nppiSumGetBufferHostSize_32f_C3R(self.size(), &mut size);
@@ -56,8 +56,8 @@ impl<T: Img<f32, C<3>>> Sum<f32, C<3>> for T {
         size as usize
     }
 
-    fn alloc_scratch(&self) -> ScratchBuffer {
-        ScratchBuffer::alloc(self.scratch_size())
+    fn sum_alloc_scratch(&self) -> ScratchBuffer {
+        ScratchBuffer::alloc(self.sum_scratch_size())
     }
 }
 
@@ -74,9 +74,8 @@ mod tests {
         let dev = cudarc::driver::safe::CudaDevice::new(0).unwrap();
         let img = Image::<f32, C<3>>::malloc(1024, 1024)?;
         let ctx = get_stream_ctx()?;
-        let mut scratch = img.alloc_scratch();
+        let mut scratch = img.sum_alloc_scratch();
         let sum = img.sum(&mut scratch, ctx)?;
-        drop(scratch);
         dev.synchronize().unwrap();
         dbg!(sum);
 
@@ -89,9 +88,8 @@ mod tests {
         let mut img = Image::<f32, C<3>>::malloc(128, 128)?;
         let ctx = get_stream_ctx()?;
         img.set([1.0, 0.0, 0.0], ctx)?;
-        let mut scratch = img.alloc_scratch();
+        let mut scratch = img.sum_alloc_scratch();
         let sum = img.sum(&mut scratch, ctx)?;
-        drop(scratch);
         dev.synchronize().unwrap();
         dbg!(sum);
         assert_eq!(sum, [128.0 * 128.0, 0.0, 0.0]);

@@ -3,7 +3,7 @@ use std::sync::Arc;
 use cudarc::driver::{CudaDevice, CudaFunction, LaunchAsync, LaunchConfig};
 use cudarc::nvrtc::Ptx;
 
-use cuda_npp::{assert_same_size, C};
+use cuda_npp::{assert_same_size, C, P};
 use cuda_npp::safe::{Img, ImgMut};
 
 const PTX_MODULE_NAME: &str = "ssimulacra2";
@@ -14,6 +14,7 @@ pub struct Kernel {
     downscale_by_2: CudaFunction,
     downscale_plane_by_2: CudaFunction,
     linear_to_xyb: CudaFunction,
+    linear_to_xyb_planar: CudaFunction,
     ssim_map: CudaFunction,
     edge_diff_map: CudaFunction,
 }
@@ -30,6 +31,7 @@ impl Kernel {
                 "downscale_by_2",
                 "downscale_plane_by_2",
                 "linear_to_xyb_packed",
+                "linear_to_xyb_planar",
                 "ssim_map",
                 "edge_diff_map",
             ],
@@ -49,6 +51,9 @@ impl Kernel {
                 .unwrap(),
             linear_to_xyb: dev
                 .get_func(PTX_MODULE_NAME, "linear_to_xyb_packed")
+                .unwrap(),
+            linear_to_xyb_planar: dev
+                .get_func(PTX_MODULE_NAME, "linear_to_xyb_planar")
                 .unwrap(),
             ssim_map: dev.get_func(PTX_MODULE_NAME, "ssim_map").unwrap(),
             edge_diff_map: dev.get_func(PTX_MODULE_NAME, "edge_diff_map").unwrap(),
@@ -124,6 +129,42 @@ impl Kernel {
         }
     }
 
+    pub fn downscale_plane_by_2_planar(&self, src: impl Img<f32, P<3>>, mut dst: impl ImgMut<f32, P<3>>) {
+        unsafe {
+            const THREADS_WIDTH: u32 = 16;
+            const THREADS_HEIGHT: u32 = 16;
+            let num_blocks_w = (src.width() + THREADS_WIDTH - 1) / THREADS_WIDTH;
+            let num_blocks_h = (src.height() + THREADS_HEIGHT - 1) / THREADS_HEIGHT;
+
+            let width = dst.width();
+            let height = dst.height();
+            let pitch = dst.pitch();
+
+            for (r, w) in src.alloc_ptrs().zip(dst.alloc_ptrs_mut()) {
+                self.downscale_plane_by_2
+                    .clone()
+                    .launch(
+                        LaunchConfig {
+                            grid_dim: (num_blocks_w, num_blocks_h, 1),
+                            block_dim: (THREADS_WIDTH, THREADS_HEIGHT, 1),
+                            shared_mem_bytes: 0,
+                        },
+                        (
+                            src.width() as usize,
+                            src.height() as usize,
+                            r as usize,
+                            src.pitch() as usize,
+                            width as usize,
+                            height as usize,
+                            w as usize,
+                            pitch as usize,
+                        ),
+                    )
+                    .expect("Could not launch downscale_plane_by_2 kernel");
+            }
+        }
+    }
+
     pub fn linear_to_xyb(&self, src: impl Img<f32, C<3>>, mut dst: impl ImgMut<f32, C<3>>) {
         assert_same_size!(src, dst);
         unsafe {
@@ -137,6 +178,32 @@ impl Kernel {
                         src.device_ptr() as usize,
                         src.pitch() as usize,
                         dst.device_ptr_mut() as usize,
+                        dst.pitch() as usize,
+                    ),
+                )
+                .expect("Could not launch linear_to_xyb kernel");
+        }
+    }
+
+    pub fn linear_to_xyb_planar(&self, src: impl Img<f32, P<3>>, mut dst: impl ImgMut<f32, P<3>>) {
+        assert_same_size!(src, dst);
+        let [src_r, src_g, src_b] = src.storage();
+        let [dst_x, dst_y, dst_b] = src.storage();
+        unsafe {
+            self.linear_to_xyb_planar
+                .clone()
+                .launch(
+                    launch_config_2d(src.width(), src.height()),
+                    (
+                        src.width() as usize,
+                        src.height() as usize,
+                        src_r as usize,
+                        src_g as usize,
+                        src_b as usize,
+                        src.pitch() as usize,
+                        dst_x as usize,
+                        dst_y as usize,
+                        dst_b as usize,
                         dst.pitch() as usize,
                     ),
                 )
