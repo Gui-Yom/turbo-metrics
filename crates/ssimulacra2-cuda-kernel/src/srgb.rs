@@ -1,5 +1,4 @@
-use nvptx_core::{coords_2d};
-use nvptx_core::math::powf;
+use nvptx_core::prelude::*;
 
 // Adjusted for continuity of first derivative.
 const SRGB_ALPHA: f32 = 1.055_010_7;
@@ -13,7 +12,7 @@ unsafe fn srgb_eotf(x: f32) -> f32 {
     if x < 12.92 * SRGB_BETA {
         x / 12.92
     } else {
-        powf((x + (SRGB_ALPHA - 1.0)) / SRGB_ALPHA, 2.4)
+        (x + (SRGB_ALPHA - 1.0)) / SRGB_ALPHA.powf(2.4)
     }
 }
 

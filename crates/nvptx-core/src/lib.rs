@@ -8,6 +8,13 @@ use core::mem::transmute;
 use core::panic::PanicInfo;
 use core::ptr::null;
 
+pub mod math;
+
+pub mod prelude {
+    pub use crate::*;
+    pub use crate::math::*;
+}
+
 #[repr(C)]
 struct PanicFmt<'a>(&'a CStr, u32, u32);
 
@@ -27,22 +34,6 @@ fn panic_handler(info: &PanicInfo) -> ! {
         }
         nvptx::vprintf("\n".as_ptr(), null());
         nvptx::trap();
-    }
-}
-
-pub mod math {
-    // libdevice bindings
-    extern "C" {
-        #[link_name = "__nv_fmaf"]
-        pub fn fma(x: f32, y: f32, z: f32) -> f32;
-        #[link_name = "__nv_cbrtf"]
-        pub fn cbrt(x: f32) -> f32;
-        #[link_name = "__nv_powf"]
-        pub fn powf(x: f32, y: f32) -> f32;
-        #[link_name = "__nv_fabsf"]
-        pub fn abs(x: f32) -> f32;
-        #[link_name = "__nv_roundf"]
-        pub fn round(x: f32) -> f32;
     }
 }
 

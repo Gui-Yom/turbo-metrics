@@ -15,6 +15,7 @@ pub struct Kernel {
     downscale_plane_by_2: CudaFunction,
     linear_to_xyb: CudaFunction,
     linear_to_xyb_planar: CudaFunction,
+    blur_plane: CudaFunction,
     ssim_map: CudaFunction,
     edge_diff_map: CudaFunction,
 }
@@ -32,6 +33,7 @@ impl Kernel {
                 "downscale_plane_by_2",
                 "linear_to_xyb_packed",
                 "linear_to_xyb_planar",
+                "blur_plane",
                 "ssim_map",
                 "edge_diff_map",
             ],
@@ -55,6 +57,7 @@ impl Kernel {
             linear_to_xyb_planar: dev
                 .get_func(PTX_MODULE_NAME, "linear_to_xyb_planar")
                 .unwrap(),
+            blur_plane: dev.get_func(PTX_MODULE_NAME, "blur_plane").unwrap(),
             ssim_map: dev.get_func(PTX_MODULE_NAME, "ssim_map").unwrap(),
             edge_diff_map: dev.get_func(PTX_MODULE_NAME, "edge_diff_map").unwrap(),
         }
@@ -208,6 +211,39 @@ impl Kernel {
                     ),
                 )
                 .expect("Could not launch linear_to_xyb kernel");
+        }
+    }
+
+    pub fn blur_planar(&self, src: impl Img<f32, P<3>>, mut dst: impl ImgMut<f32, P<3>>) {
+        assert_same_size!(src, dst);
+        unsafe {
+            const THREADS_WIDTH: u32 = 32;
+            const THREADS_HEIGHT: u32 = 1;
+            let num_blocks_w = (src.width() + THREADS_WIDTH - 1) / THREADS_WIDTH;
+            let num_blocks_h = 1;
+
+            let pitch = dst.pitch();
+
+            for (r, w) in src.alloc_ptrs().zip(dst.alloc_ptrs_mut()) {
+                self.blur_plane
+                    .clone()
+                    .launch(
+                        LaunchConfig {
+                            grid_dim: (num_blocks_w, num_blocks_h, 1),
+                            block_dim: (THREADS_WIDTH, THREADS_HEIGHT, 1),
+                            shared_mem_bytes: 0,
+                        },
+                        (
+                            src.width() as usize,
+                            src.height() as usize,
+                            r as usize,
+                            src.pitch() as usize,
+                            w as usize,
+                            pitch as usize,
+                        ),
+                    )
+                    .expect("Could not launch blur_planar kernel");
+            }
         }
     }
 

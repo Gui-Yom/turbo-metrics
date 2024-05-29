@@ -3,6 +3,11 @@
 Core functionality for developing cuda kernels in rust. This crate only contains device code and should only be compiled
 with the `nvptx64-nvidia-cuda` target.
 
+## Math std
+
+Some math functions are defined in libstd rather than core (`mul_add`, `cbrt`, ...). This crate defines the extension
+trait `StdMathExt` that mimic those functions. The goal is to be able to import code without changing much.
+
 ## Linking libdevice
 
 The llvm bitcode linker can't link bitcode files in rlib so we cannot link to libdevice in this library directly. You

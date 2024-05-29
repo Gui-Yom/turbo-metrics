@@ -10,3 +10,6 @@ crate-type = ["rlib", "cdylib"]
 
 [dependencies]
 nvptx-core = { version = "0.1", path = "../nvptx-core" }
+
+[build-dependencies]
+nalgebra = "0.32"

@@ -482,6 +482,7 @@ dependencies = [
 name = "ssimulacra2-cuda-kernel"
 version = "0.1.0"
 dependencies = [
+ "nalgebra",
  "nvptx-core",
 ]
 

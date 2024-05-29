@@ -8,7 +8,7 @@ use zune_image::codecs::png::zune_core::options::DecoderOptions;
 use cuda_npp::{C, get_stream_ctx};
 use cuda_npp::safe::{Image, Img, ImgMut, ScratchBuffer};
 use cuda_npp::safe::ial::{Mul, SqrIP};
-use cuda_npp::safe::idei::ConvertChannel;
+use cuda_npp::safe::idei::{ConvertChannel, Transpose};
 use cuda_npp::safe::if_::FilterGaussBorder;
 use cuda_npp::safe::ist::Sum;
 use cuda_npp::safe::isu::Malloc;
@@ -37,9 +37,9 @@ fn main() {
     let mut ssimulacra2 = Ssimulacra2::new(&dev, width as u32, height as u32);
     dbg!(ssimulacra2.compute(ref_bytes, dis_bytes));
 
-    let ref_img = CpuImg::from_srgb(ref_bytes, width, height);
-    let dis_img = CpuImg::from_srgb(dis_bytes, width, height);
-    dbg!(cpu::compute_frame_ssimulacra2(&ref_img, &dis_img));
+    // let ref_img = CpuImg::from_srgb(ref_bytes, width, height);
+    // let dis_img = CpuImg::from_srgb(dis_bytes, width, height);
+    // dbg!(cpu::compute_frame_ssimulacra2(&ref_img, &dis_img));
 }
 
 /// An instance is valid for a specific width and height.
@@ -172,11 +172,22 @@ impl Ssimulacra2 {
 
             self.kernel.linear_to_xyb(self.ref_linear.view(size), self.ref_xyb.view_mut(size));
             self.kernel.linear_to_xyb(self.dis_linear.view(size), self.dis_xyb.view_mut(size));
-            save_img(&self.dev, self.ref_xyb.view(size), &format!("ref_xyb_{scale}"));
+            // save_img(&self.dev, self.ref_xyb.view(size), &format!("ref_xyb_{scale}"));
 
             self.ref_xyb.view(size).mul(self.ref_xyb.view(size), self.tmp0.view_mut(size), self.npp).unwrap();
+            let mut planar = self.tmp0.view(size).convert_channel_new(self.npp).unwrap();
+            let mut planar_blur = planar.malloc_same_size().unwrap();
+            self.kernel.blur_planar(planar.view(size), planar_blur.view_mut(size));
+            let transposed = planar_blur.view(size).transpose_new(self.npp).unwrap();
+            let mut planar_blur = transposed.malloc_same_size().unwrap();
+            self.kernel.blur_planar(&transposed, &mut planar_blur);
+            let res = planar_blur.convert_channel_new(self.npp).unwrap();
+            let res = res.transpose_new(self.npp).unwrap();
+            // save_img(&self.dev, res, &format!("customblur_{scale}"));
             // sigma11 is tmp1
+            // save_img(&self.dev, transposed, &format!("transposed_{scale}"));
             self.tmp0.view(size).filter_gauss_border(self.tmp1.view_mut(size), NppiMaskSize::NPP_MASK_SIZE_5_X_5, self.npp).unwrap();
+            // save_img(&self.dev, self.tmp1.view(size), &format!("sigma11_{scale}"));
 
             self.dis_xyb.view(size).mul(self.dis_xyb.view(size), self.tmp0.view_mut(size), self.npp).unwrap();
             // sigma22 is tmp2

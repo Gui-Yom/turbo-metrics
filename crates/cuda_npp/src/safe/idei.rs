@@ -71,6 +71,14 @@ pub trait ConvertChannel<S: Sample, C: Channels>: __priv::Sealed {
     type Target: Channels;
 
     fn convert_channel(&self, dst: impl ImgMut<S, Self::Target>, ctx: NppStreamContext) -> Result<()>;
+
+    #[cfg(feature = "isu")]
+    fn convert_channel_new(&self, ctx: NppStreamContext) -> Result<Image<S, Self::Target>>
+        where Self: Img<S, C>, Image<S, Self::Target>: crate::safe::isu::Malloc {
+        let mut dst = self.malloc_same_size()?;
+        self.convert_channel(&mut dst, ctx)?;
+        Ok(dst)
+    }
 }
 
 macro_rules! impl_convert_channel {
@@ -195,6 +203,77 @@ macro_rules! impl_scale {
 
 impl_scale!(u8, C<3>, f32, _8u32f, C3);
 impl_scale!(f32, C<3>, u8, _32f8u, C3);
+
+pub trait Transpose<S: Sample, C: Channels>: __priv::Sealed {
+    fn transpose(
+        &self,
+        dst: impl ImgMut<S, C>,
+        ctx: NppStreamContext,
+    ) -> Result<()>;
+
+    #[cfg(feature = "isu")]
+    fn transpose_new(
+        &self,
+        ctx: NppStreamContext,
+    ) -> Result<Image<S, C>>
+        where Self: Img<S, C>, Image<S, C>: crate::safe::isu::Malloc
+    {
+        let mut dst = crate::safe::isu::Malloc::malloc(self.height(), self.width())?;
+        self.transpose(&mut dst, ctx)?;
+        Ok(dst)
+    }
+}
+
+macro_rules! impl_transpose {
+    ($sample_ty:ty, $channel_ty:ty, $sample_id:ident, $channel_id:ident) => {
+        impl<T: Img<$sample_ty, $channel_ty>> Transpose<$sample_ty, $channel_ty> for T {
+            fn transpose(&self, mut dst: impl ImgMut<$sample_ty, $channel_ty>, ctx: NppStreamContext) -> Result<()> {
+                assert_eq!(self.width(), dst.height());
+                assert_eq!(self.height(), dst.width());
+                unsafe {
+                    paste::paste!([<nppi Transpose $sample_id _ $channel_id R_Ctx>])(
+                        self.device_ptr(),
+                        self.pitch(),
+                        dst.device_ptr_mut(),
+                        dst.pitch(),
+                        self.size(),
+                        ctx,
+                    )
+                }.result()?;
+                Ok(())
+            }
+        }
+    };
+}
+
+impl_transpose!(f32, C<3>, _32f, C3);
+
+macro_rules! impl_transpose_planar {
+    ($sample_ty:ty, $channel_ty:ty, $sample_id:ident, $channel_id:ident) => {
+        impl<T: Img<$sample_ty, $channel_ty>> Transpose<$sample_ty, $channel_ty> for T {
+            fn transpose(&self, mut dst: impl ImgMut<$sample_ty, $channel_ty>, ctx: NppStreamContext) -> Result<()> {
+                assert_eq!(self.width(), dst.height());
+                assert_eq!(self.height(), dst.width());
+                unsafe {
+                    let dst_pitch = dst.pitch();
+                    for (r, w) in self.alloc_ptrs().zip(dst.alloc_ptrs_mut()) {
+                        paste::paste!([<nppi Transpose $sample_id _ C1 R_Ctx>])(
+                            r,
+                            self.pitch(),
+                            w,
+                            dst_pitch,
+                            self.size(),
+                            ctx,
+                        ).result()?;
+                    }
+                }
+                Ok(())
+            }
+        }
+    };
+}
+
+impl_transpose_planar!(f32, P<3>, _32f, P3);
 
 #[cfg(test)]
 mod tests {

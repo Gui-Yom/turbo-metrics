@@ -1,11 +1,12 @@
 #![no_std]
+#![feature(stdarch_nvptx)]
 #![feature(abi_ptx)]
 #![feature(asm_experimental_arch)]
 
+use core::arch::nvptx;
 use core::mem;
 
-use nvptx_core::{coords_2d};
-use nvptx_core::math::{abs, fma};
+use nvptx_core::prelude::*;
 
 mod srgb;
 mod downscale;
@@ -36,10 +37,10 @@ pub unsafe extern "ptx-kernel" fn ssim_map(
             let mu22 = mu2 * mu2;
             let mu12 = mu1 * mu2;
             let mu_diff = mu1 - mu2;
-            let num_m = fma(mu_diff, -mu_diff, 1.0f32);
+            let num_m = mu_diff.mul_add(-mu_diff, 1.0f32);
 
             let sigma12 = *sigma12.byte_add(offset);
-            let num_s = fma(2f32, sigma12 - mu12, C2);
+            let num_s = 2f32.mul_add(sigma12 - mu12, C2);
             let sigma11 = *sigma11.byte_add(offset);
             let sigma22 = *sigma22.byte_add(offset);
             let denom_s = (sigma11 - mu11) + (sigma22 - mu22) + C2;
@@ -68,12 +69,12 @@ pub unsafe extern "ptx-kernel" fn edge_diff_map(
             let offset = y * stride + (x * 3 + i) * mem::size_of::<f32>();
             let source = *source.byte_add(offset);
             let mu1 = *mu1.byte_add(offset);
-            let denom = 1.0 / (1.0 + abs(source - mu1));
+            let denom = 1.0 / (1.0 + (source - mu1).abs());
             let distorted = *distorted.byte_add(offset);
             let mu2 = *mu2.byte_add(offset);
-            let numer = 1.0 + abs(distorted - mu2);
+            let numer = 1.0 + (distorted - mu2).abs();
 
-            let d1 = fma(numer, denom, -1.0);
+            let d1 = numer.mul_add(denom, -1.0);
 
             // d1 > 0: distorted has an edge where original is smooth
             //         (indicating ringing, color banding, blockiness, etc)

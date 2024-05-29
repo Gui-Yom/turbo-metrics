@@ -1,4 +1,4 @@
-use nvptx_core::{coords_2d, lane, shfl_down_sync};
+use nvptx_core::prelude::*;
 
 /// Downscale by taking the average of 2x2 patches
 #[no_mangle]

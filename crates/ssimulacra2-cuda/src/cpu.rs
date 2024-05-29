@@ -1,6 +1,8 @@
-use std::{slice};
+use std::slice;
+
 use zune_image::codecs::png::zune_core::colorspace::{ColorCharacteristics, ColorSpace};
-use crate::{Img};
+
+use crate::Img;
 
 // How often to downscale and score the input images.
 // Each scaling step will downscale by a factor of two.
@@ -279,18 +281,24 @@ impl CpuImg {
         for y in 0..height {
             for x in 0..width {
                 for i in 0..3 {
-                    data[y * width + x][i] =
-                        FROM_SRGB8_TABLE[src[y * width * 3 + x * 3 + i] as usize];
-                    // fn srgb_eotf(x: f32) -> f32 {
-                    //     let x = x.max(0.0);
-                    //
-                    //     if x < 12.92 * SRGB_BETA {
-                    //         x / 12.92
-                    //     } else {
-                    //         powf((x + (SRGB_ALPHA - 1.0)) / SRGB_ALPHA, 2.4)
-                    //     }
-                    // }
-                    // data[y * width + x][i] = FROM_SRGB8_TABLE[src[y * width * 3 + x * 3 + i] as usize];
+                    data[y * width + x][i] = FROM_SRGB8_TABLE[src[y * width * 3 + x * 3 + i] as usize];
+                }
+            }
+        }
+        CpuImg {
+            data,
+            width,
+            height,
+        }
+    }
+
+    pub fn from_planes(planes: &[Vec<f32>; 3], width: usize, height: usize) -> Self {
+        let mut data = vec![[0.0, 0.0, 0.0]; width * height];
+        // assert_eq!(src.len(), width * height * 3);
+        for y in 0..height {
+            for x in 0..width {
+                for i in 0..3 {
+                    data[y * width + x][i] = planes[i][y * width + x];
                 }
             }
         }
@@ -376,6 +384,7 @@ pub fn compute_frame_ssimulacra2(source: &CpuImg, distorted: &CpuImg) -> f64 {
 
         image_multiply(&img1, &img1, &mut mul);
         let sigma1_sq = blur.blur(&mul);
+        CpuImg::from_planes(&sigma1_sq, width, height).save(&format!("sigma11_{scale}"));
 
         image_multiply(&img2, &img2, &mut mul);
         let sigma2_sq = blur.blur(&mul);

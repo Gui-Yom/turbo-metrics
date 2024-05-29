@@ -1,5 +1,4 @@
-use nvptx_core::coords_2d;
-use nvptx_core::math::{cbrt, fma};
+use nvptx_core::prelude::*;
 
 const K_M02: f32 = 0.078f32;
 const K_M00: f32 = 0.30f32;
@@ -38,43 +37,37 @@ const NEG_OPSIN_ABSORBANCE_BIAS: [f32; 3] = [-K_B0, -K_B1, -K_B2];
 /// Get all components in more or less 0..1 range
 unsafe fn px_linear_rgb_to_positive_xyb(r: f32, g: f32, b: f32) -> (f32, f32, f32) {
     let (mut rg, mut gr, mut b) = opsin_absorbance(r, g, b);
-    rg = cbrt(rg.max(0.0)) - OPSIN_ABSORBANCE_BIAS_ROOT[0];
-    gr = cbrt(gr.max(0.0)) - OPSIN_ABSORBANCE_BIAS_ROOT[1];
-    b = cbrt(b.max(0.0)) - OPSIN_ABSORBANCE_BIAS_ROOT[2];
+    rg = rg.max(0.0).cbrt() - OPSIN_ABSORBANCE_BIAS_ROOT[0];
+    gr = gr.max(0.0).cbrt() - OPSIN_ABSORBANCE_BIAS_ROOT[1];
+    b = b.max(0.0).cbrt() - OPSIN_ABSORBANCE_BIAS_ROOT[2];
     let x = 0.5f32 * (rg - gr);
     let y = 0.5f32 * (rg + gr);
     // Get all components in more or less 0..1 range
-    (fma(x, 14.0, 0.42), y + 0.01, b - y + 0.55)
+    (x.mul_add(14.0, 0.42), y + 0.01, b - y + 0.55)
 }
 
 #[inline]
 unsafe fn opsin_absorbance(r: f32, g: f32, b: f32) -> (f32, f32, f32) {
     (
-        fma(
-            OPSIN_ABSORBANCE_MATRIX[0],
+        OPSIN_ABSORBANCE_MATRIX[0].mul_add(
             r,
-            fma(
-                OPSIN_ABSORBANCE_MATRIX[1],
+            OPSIN_ABSORBANCE_MATRIX[1].mul_add(
                 g,
-                fma(OPSIN_ABSORBANCE_MATRIX[2], b, OPSIN_ABSORBANCE_BIAS[0]),
+                OPSIN_ABSORBANCE_MATRIX[2].mul_add(b, OPSIN_ABSORBANCE_BIAS[0]),
             ),
         ),
-        fma(
-            OPSIN_ABSORBANCE_MATRIX[3],
+        OPSIN_ABSORBANCE_MATRIX[3].mul_add(
             r,
-            fma(
-                OPSIN_ABSORBANCE_MATRIX[4],
+            OPSIN_ABSORBANCE_MATRIX[4].mul_add(
                 g,
-                fma(OPSIN_ABSORBANCE_MATRIX[5], b, OPSIN_ABSORBANCE_BIAS[1]),
+                OPSIN_ABSORBANCE_MATRIX[5].mul_add(b, OPSIN_ABSORBANCE_BIAS[1]),
             ),
         ),
-        fma(
-            OPSIN_ABSORBANCE_MATRIX[6],
+        OPSIN_ABSORBANCE_MATRIX[6].mul_add(
             r,
-            fma(
-                OPSIN_ABSORBANCE_MATRIX[7],
+            OPSIN_ABSORBANCE_MATRIX[7].mul_add(
                 g,
-                fma(OPSIN_ABSORBANCE_MATRIX[8], b, OPSIN_ABSORBANCE_BIAS[2]),
+                OPSIN_ABSORBANCE_MATRIX[8].mul_add(b, OPSIN_ABSORBANCE_BIAS[2]),
             ),
         ),
     )
