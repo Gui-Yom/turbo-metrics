@@ -2,7 +2,7 @@
 
 use cuda_npp_sys::*;
 
-use crate::{__priv, C, Channels, Sample};
+use crate::{Channels, Sample, __priv, C};
 
 use super::{ImgMut, Result};
 

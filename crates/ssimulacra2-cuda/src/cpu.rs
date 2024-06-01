@@ -281,7 +281,8 @@ impl CpuImg {
         for y in 0..height {
             for x in 0..width {
                 for i in 0..3 {
-                    data[y * width + x][i] = FROM_SRGB8_TABLE[src[y * width * 3 + x * 3 + i] as usize];
+                    data[y * width + x][i] =
+                        FROM_SRGB8_TABLE[src[y * width * 3 + x * 3 + i] as usize];
                 }
             }
         }

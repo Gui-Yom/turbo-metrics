@@ -5,16 +5,16 @@ use std::ptr::null_mut;
 
 use cuda_npp_sys::*;
 
-use crate::{C, P, Channels, Sample};
-use crate::safe::{E, Image};
+use crate::safe::{Image, E};
+use crate::{Channels, Sample, C, P};
 
 use super::Result;
 
 pub trait Malloc {
     /// `malloc` a new image on device
     fn malloc(width: u32, height: u32) -> Result<Self>
-        where
-            Self: Sized;
+    where
+        Self: Sized;
 }
 
 macro_rules! malloc_impl {
@@ -67,8 +67,8 @@ macro_rules! malloc_planar_impl {
     ($sample_ty:ty, $n:literal) => {
         impl Malloc for Image<$sample_ty, P<$n>> {
             fn malloc(width: u32, height: u32) -> Result<Self>
-                where
-                    Self: Sized,
+            where
+                Self: Sized,
             {
                 let mut planes = [null_mut(); $n];
                 let mut pitch = 0;
@@ -88,7 +88,7 @@ macro_rules! malloc_planar_impl {
                 })
             }
         }
-    }
+    };
 }
 
 malloc_planar_impl!(f32, 3);
@@ -108,10 +108,10 @@ impl<S: Sample, C: Channels> Drop for Image<S, C> {
 
 #[cfg(test)]
 mod tests {
-    use crate::C;
-    use crate::safe::{Image, Img};
     use crate::safe::isu::Malloc;
     use crate::safe::Result;
+    use crate::safe::{Image, Img};
+    use crate::C;
 
     #[test]
     fn new_image() -> Result<()> {

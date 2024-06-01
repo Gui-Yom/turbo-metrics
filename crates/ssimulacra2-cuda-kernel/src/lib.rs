@@ -8,10 +8,10 @@ use core::mem;
 
 use nvptx_core::prelude::*;
 
-mod srgb;
-mod downscale;
-mod xyb;
 mod blur;
+mod downscale;
+mod srgb;
+mod xyb;
 
 #[no_mangle]
 pub unsafe extern "ptx-kernel" fn ssim_map(

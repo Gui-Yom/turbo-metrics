@@ -50,8 +50,8 @@ pub trait Channels: __priv::Sealed + 'static {
     fn make_ref<S>(s: &Self::Storage<S>) -> Self::Ref<S>;
     fn make_ref_mut<S>(s: &mut Self::Storage<S>) -> Self::RefMut<S>;
 
-    fn iter_ptrs<S>(s: &Self::Storage<S>) -> impl ExactSizeIterator<Item=*const S>;
-    fn iter_ptrs_mut<S>(s: &mut Self::Storage<S>) -> impl ExactSizeIterator<Item=*mut S>;
+    fn iter_ptrs<S>(s: &Self::Storage<S>) -> impl ExactSizeIterator<Item = *const S>;
+    fn iter_ptrs_mut<S>(s: &mut Self::Storage<S>) -> impl ExactSizeIterator<Item = *mut S>;
 }
 
 /// Packed channels
@@ -80,15 +80,15 @@ macro_rules! impl_channels_packed {
                 *s
             }
 
-            fn iter_ptrs<S>(s: &Self::Storage<S>) -> impl ExactSizeIterator<Item=*const S> {
+            fn iter_ptrs<S>(s: &Self::Storage<S>) -> impl ExactSizeIterator<Item = *const S> {
                 [(*s).cast_const()].into_iter()
             }
 
-            fn iter_ptrs_mut<S>(s: &mut Self::Storage<S>) -> impl ExactSizeIterator<Item=*mut S> {
+            fn iter_ptrs_mut<S>(s: &mut Self::Storage<S>) -> impl ExactSizeIterator<Item = *mut S> {
                 [*s].into_iter()
             }
         }
-    }
+    };
 }
 
 impl_channels_packed!(1);
@@ -114,15 +114,15 @@ macro_rules! impl_channels_planar {
                 s.as_ptr()
             }
 
-            fn iter_ptrs<S>(s: &Self::Storage<S>) -> impl ExactSizeIterator<Item=*const S> {
+            fn iter_ptrs<S>(s: &Self::Storage<S>) -> impl ExactSizeIterator<Item = *const S> {
                 s.clone().into_iter().map(|p| p.cast_const())
             }
 
-            fn iter_ptrs_mut<S>(s: &mut Self::Storage<S>) -> impl ExactSizeIterator<Item=*mut S> {
+            fn iter_ptrs_mut<S>(s: &mut Self::Storage<S>) -> impl ExactSizeIterator<Item = *mut S> {
                 s.iter().copied()
             }
         }
-    }
+    };
 }
 
 impl_channels_planar!(3);

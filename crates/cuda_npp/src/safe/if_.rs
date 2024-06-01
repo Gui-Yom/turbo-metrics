@@ -2,9 +2,9 @@
 
 use cuda_npp_sys::*;
 
-use crate::{__priv, C, Channels, Sample};
+use crate::{Channels, Sample, __priv, C};
 
-use super::{E, Image, Img, ImgMut, Result};
+use super::{Image, Img, ImgMut, Result, E};
 
 pub trait FilterGaussBorder<S: Sample, C: Channels>: __priv::Sealed {
     /// Filters the image using a Gaussian filter kernel with border control.
@@ -30,7 +30,9 @@ pub trait FilterGaussBorder<S: Sample, C: Channels>: __priv::Sealed {
         filter_size: NppiMaskSize,
         ctx: NppStreamContext,
     ) -> Result<Image<S, C>>
-        where Self: Img<S, C>, Image<S, C>: super::isu::Malloc
+    where
+        Self: Img<S, C>,
+        Image<S, C>: super::isu::Malloc,
     {
         let mut dst = self.malloc_same_size()?;
         self.filter_gauss_border(&mut dst, filter_size, ctx)?;

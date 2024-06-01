@@ -66,6 +66,7 @@ unsafe extern "ptx-kernel" fn srgb_to_linear(
 ) {
     let (x, y) = coords_2d();
     // if x < w && y < h {
-    *dst.byte_add(y * dst_line_step).add(x) = SRGB8_TO_LINEARF32_LUT[*src.byte_add(y * src_line_step).add(x) as usize];
+    *dst.byte_add(y * dst_line_step).add(x) =
+        SRGB8_TO_LINEARF32_LUT[*src.byte_add(y * src_line_step).add(x) as usize];
     // }
 }

@@ -3,7 +3,7 @@ use std::ptr::null_mut;
 
 use cuda_npp_sys::*;
 
-use crate::{C, Channels, Sample};
+use crate::{Channels, Sample, C};
 
 use super::{Img, Result, ScratchBuffer};
 
@@ -30,7 +30,7 @@ impl<T: Img<f32, C<3>>> Sum<f32, C<3>> for T {
                 ctx,
             )
         }
-            .result()?;
+        .result()?;
         let mut out = [0.0; 3];
         unsafe {
             assert_eq!(
@@ -63,11 +63,11 @@ impl<T: Img<f32, C<3>>> Sum<f32, C<3>> for T {
 
 #[cfg(test)]
 mod tests {
-    use crate::{C, get_stream_ctx};
     use crate::safe::idei::SetMany;
-    use crate::safe::Image;
     use crate::safe::ist::Sum;
     use crate::safe::isu::Malloc;
+    use crate::safe::Image;
+    use crate::{get_stream_ctx, C};
 
     #[test]
     fn sum() -> crate::safe::Result<()> {

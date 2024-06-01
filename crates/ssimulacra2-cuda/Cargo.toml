@@ -8,6 +8,7 @@ edition = "2021"
 [dependencies]
 array-init.workspace = true
 cudarc.workspace = true
+cuda-driver = { version = "0.1", path = "../cuda-driver" }
 cuda_npp = { version = "0.1", path = "../cuda_npp", features = ["isu", "ial", "idei", "if", "ist"] }
 video-common = { version = "0.1", path = "../video-common" }
 zune-image.workspace = true

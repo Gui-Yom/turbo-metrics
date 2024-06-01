@@ -1,65 +1,38 @@
-use std::sync::Arc;
-
-use cudarc::driver::{CudaDevice, CudaFunction, LaunchAsync, LaunchConfig};
-use cudarc::nvrtc::Ptx;
-
-use cuda_npp::{assert_same_size, C, P};
+use cuda_driver::{kernel_params, CuFunction, CuModule, CuStream, LaunchConfig};
 use cuda_npp::safe::{Img, ImgMut};
+use cuda_npp::{assert_same_size, C, P};
 
 const PTX_MODULE_NAME: &str = "ssimulacra2";
 
 pub struct Kernel {
-    dev: Arc<CudaDevice>,
-    srgb_to_linear: CudaFunction,
-    downscale_by_2: CudaFunction,
-    downscale_plane_by_2: CudaFunction,
-    linear_to_xyb: CudaFunction,
-    linear_to_xyb_planar: CudaFunction,
-    blur_plane: CudaFunction,
-    ssim_map: CudaFunction,
-    edge_diff_map: CudaFunction,
+    module: CuModule,
+    srgb_to_linear: CuFunction,
+    downscale_by_2: CuFunction,
+    downscale_plane_by_2: CuFunction,
+    linear_to_xyb: CuFunction,
+    linear_to_xyb_planar: CuFunction,
+    blur_plane_pass: CuFunction,
+    blur_plane_pass_fused: CuFunction,
+    ssim_map: CuFunction,
+    edge_diff_map: CuFunction,
 }
 
 impl Kernel {
-    pub fn load(dev: &Arc<CudaDevice>) -> Self {
+    pub fn load() -> Self {
         let path = "target/nvptx64-nvidia-cuda/release-nvptx/ssimulacra2_cuda_kernel.ptx";
-
-        dev.load_ptx(
-            Ptx::from_file(path),
-            PTX_MODULE_NAME,
-            &[
-                "srgb_to_linear",
-                "downscale_by_2",
-                "downscale_plane_by_2",
-                "linear_to_xyb_packed",
-                "linear_to_xyb_planar",
-                "blur_plane",
-                "ssim_map",
-                "edge_diff_map",
-            ],
-        )
-            .unwrap();
+        let module = CuModule::load_from_file(path).unwrap();
 
         Self {
-            dev: dev.clone(),
-            srgb_to_linear: dev
-                .get_func(PTX_MODULE_NAME, "srgb_to_linear")
-                .unwrap(),
-            downscale_by_2: dev
-                .get_func(PTX_MODULE_NAME, "downscale_by_2")
-                .unwrap(),
-            downscale_plane_by_2: dev
-                .get_func(PTX_MODULE_NAME, "downscale_plane_by_2")
-                .unwrap(),
-            linear_to_xyb: dev
-                .get_func(PTX_MODULE_NAME, "linear_to_xyb_packed")
-                .unwrap(),
-            linear_to_xyb_planar: dev
-                .get_func(PTX_MODULE_NAME, "linear_to_xyb_planar")
-                .unwrap(),
-            blur_plane: dev.get_func(PTX_MODULE_NAME, "blur_plane").unwrap(),
-            ssim_map: dev.get_func(PTX_MODULE_NAME, "ssim_map").unwrap(),
-            edge_diff_map: dev.get_func(PTX_MODULE_NAME, "edge_diff_map").unwrap(),
+            srgb_to_linear: module.function_by_name("srgb_to_linear").unwrap(),
+            downscale_by_2: module.function_by_name("downscale_by_2").unwrap(),
+            downscale_plane_by_2: module.function_by_name("downscale_plane_by_2").unwrap(),
+            linear_to_xyb: module.function_by_name("linear_to_xyb_packed").unwrap(),
+            linear_to_xyb_planar: module.function_by_name("linear_to_xyb_planar").unwrap(),
+            blur_plane_pass: module.function_by_name("blur_plane_pass").unwrap(),
+            blur_plane_pass_fused: module.function_by_name("blur_plane_pass_fused").unwrap(),
+            ssim_map: module.function_by_name("ssim_map").unwrap(),
+            edge_diff_map: module.function_by_name("edge_diff_map").unwrap(),
+            module,
         }
     }
 
@@ -67,34 +40,34 @@ impl Kernel {
         assert_same_size!(src, dst);
         unsafe {
             self.srgb_to_linear
-                .clone()
                 .launch(
-                    launch_config_2d(src.width() * 3, src.height()),
-                    (
-                        src.device_ptr() as usize,
+                    &launch_config_2d(src.width() * 3, src.height()),
+                    CuStream::DEFAULT,
+                    kernel_params!(
+                        src.device_ptr(),
                         src.pitch() as usize,
-                        dst.device_ptr_mut() as usize,
+                        dst.device_ptr_mut(),
                         dst.pitch() as usize,
                     ),
                 )
-                .expect("Could not launch srgb_to_linear_packed_coalesced kernel");
+                .expect("Could not launch srgb_to_linear kernel");
         }
     }
 
     pub fn downscale_by_2(&self, src: impl Img<f32, C<3>>, mut dst: impl ImgMut<f32, C<3>>) {
         unsafe {
             self.downscale_by_2
-                .clone()
                 .launch(
-                    launch_config_2d(dst.width(), dst.height()),
-                    (
+                    &launch_config_2d(dst.width(), dst.height()),
+                    CuStream::DEFAULT,
+                    kernel_params!(
                         src.width() as usize,
                         src.height() as usize,
-                        src.device_ptr() as usize,
+                        src.device_ptr(),
                         src.pitch() as usize,
                         dst.width() as usize,
                         dst.height() as usize,
-                        dst.device_ptr_mut() as usize,
+                        dst.device_ptr_mut(),
                         dst.pitch() as usize,
                     ),
                 )
@@ -110,21 +83,21 @@ impl Kernel {
             let num_blocks_h = (src.height() + THREADS_HEIGHT - 1) / THREADS_HEIGHT;
 
             self.downscale_plane_by_2
-                .clone()
                 .launch(
-                    LaunchConfig {
+                    &LaunchConfig {
                         grid_dim: (num_blocks_w, num_blocks_h, 1),
                         block_dim: (THREADS_WIDTH, THREADS_HEIGHT, 1),
                         shared_mem_bytes: 0,
                     },
-                    (
+                    CuStream::DEFAULT,
+                    kernel_params!(
                         src.width() as usize,
                         src.height() as usize,
-                        src.device_ptr() as usize,
+                        src.device_ptr(),
                         src.pitch() as usize,
                         dst.width() as usize,
                         dst.height() as usize,
-                        dst.device_ptr_mut() as usize,
+                        dst.device_ptr_mut(),
                         dst.pitch() as usize,
                     ),
                 )
@@ -132,7 +105,11 @@ impl Kernel {
         }
     }
 
-    pub fn downscale_plane_by_2_planar(&self, src: impl Img<f32, P<3>>, mut dst: impl ImgMut<f32, P<3>>) {
+    pub fn downscale_plane_by_2_planar(
+        &self,
+        src: impl Img<f32, P<3>>,
+        mut dst: impl ImgMut<f32, P<3>>,
+    ) {
         unsafe {
             const THREADS_WIDTH: u32 = 16;
             const THREADS_HEIGHT: u32 = 16;
@@ -145,21 +122,21 @@ impl Kernel {
 
             for (r, w) in src.alloc_ptrs().zip(dst.alloc_ptrs_mut()) {
                 self.downscale_plane_by_2
-                    .clone()
                     .launch(
-                        LaunchConfig {
+                        &LaunchConfig {
                             grid_dim: (num_blocks_w, num_blocks_h, 1),
                             block_dim: (THREADS_WIDTH, THREADS_HEIGHT, 1),
                             shared_mem_bytes: 0,
                         },
-                        (
+                        CuStream::DEFAULT,
+                        kernel_params!(
                             src.width() as usize,
                             src.height() as usize,
-                            r as usize,
+                            r,
                             src.pitch() as usize,
                             width as usize,
                             height as usize,
-                            w as usize,
+                            w,
                             pitch as usize,
                         ),
                     )
@@ -172,15 +149,15 @@ impl Kernel {
         assert_same_size!(src, dst);
         unsafe {
             self.linear_to_xyb
-                .clone()
                 .launch(
-                    launch_config_2d(src.width(), src.height()),
-                    (
+                    &launch_config_2d(src.width(), src.height()),
+                    CuStream::DEFAULT,
+                    kernel_params!(
                         src.width() as usize,
                         src.height() as usize,
-                        src.device_ptr() as usize,
+                        src.device_ptr(),
                         src.pitch() as usize,
-                        dst.device_ptr_mut() as usize,
+                        dst.device_ptr_mut(),
                         dst.pitch() as usize,
                     ),
                 )
@@ -194,19 +171,19 @@ impl Kernel {
         let [dst_x, dst_y, dst_b] = src.storage();
         unsafe {
             self.linear_to_xyb_planar
-                .clone()
                 .launch(
-                    launch_config_2d(src.width(), src.height()),
-                    (
+                    &launch_config_2d(src.width(), src.height()),
+                    CuStream::DEFAULT,
+                    kernel_params!(
                         src.width() as usize,
                         src.height() as usize,
-                        src_r as usize,
-                        src_g as usize,
-                        src_b as usize,
+                        src_r,
+                        src_g,
+                        src_b,
                         src.pitch() as usize,
-                        dst_x as usize,
-                        dst_y as usize,
-                        dst_b as usize,
+                        dst_x,
+                        dst_y,
+                        dst_b,
                         dst.pitch() as usize,
                     ),
                 )
@@ -214,10 +191,10 @@ impl Kernel {
         }
     }
 
-    pub fn blur_planar(&self, src: impl Img<f32, P<3>>, mut dst: impl ImgMut<f32, P<3>>) {
+    pub fn blur_pass_planar(&self, src: impl Img<f32, P<3>>, mut dst: impl ImgMut<f32, P<3>>) {
         assert_same_size!(src, dst);
         unsafe {
-            const THREADS_WIDTH: u32 = 32;
+            const THREADS_WIDTH: u32 = 64;
             const THREADS_HEIGHT: u32 = 1;
             let num_blocks_w = (src.width() + THREADS_WIDTH - 1) / THREADS_WIDTH;
             let num_blocks_h = 1;
@@ -225,25 +202,110 @@ impl Kernel {
             let pitch = dst.pitch();
 
             for (r, w) in src.alloc_ptrs().zip(dst.alloc_ptrs_mut()) {
-                self.blur_plane
-                    .clone()
+                self.blur_plane_pass
                     .launch(
-                        LaunchConfig {
+                        &LaunchConfig {
                             grid_dim: (num_blocks_w, num_blocks_h, 1),
                             block_dim: (THREADS_WIDTH, THREADS_HEIGHT, 1),
                             shared_mem_bytes: 0,
                         },
-                        (
+                        CuStream::DEFAULT,
+                        kernel_params!(
                             src.width() as usize,
                             src.height() as usize,
-                            r as usize,
+                            r,
                             src.pitch() as usize,
-                            w as usize,
+                            w,
                             pitch as usize,
                         ),
                     )
-                    .expect("Could not launch blur_planar kernel");
+                    .expect("Could not launch blur_plane_pass kernel");
             }
+        }
+    }
+
+    /// Our planar pass can work on packed image by running on 3*width
+    pub fn blur_pass(&self, src: impl Img<f32, C<3>>, mut dst: impl ImgMut<f32, C<3>>) {
+        assert_same_size!(src, dst);
+
+        const THREADS_WIDTH: u32 = 32;
+        const THREADS_HEIGHT: u32 = 1;
+        let num_blocks_w = (src.width() * 3 + THREADS_WIDTH - 1) / THREADS_WIDTH;
+        let num_blocks_h = 1;
+
+        unsafe {
+            self.blur_plane_pass
+                .launch(
+                    &LaunchConfig {
+                        grid_dim: (num_blocks_w, num_blocks_h, 1),
+                        block_dim: (THREADS_WIDTH, THREADS_HEIGHT, 1),
+                        shared_mem_bytes: 0,
+                    },
+                    CuStream::DEFAULT,
+                    kernel_params!(
+                        src.width() as usize * 3,
+                        src.height() as usize,
+                        src.device_ptr(),
+                        src.pitch() as usize,
+                        dst.device_ptr_mut(),
+                        dst.pitch() as usize,
+                    ),
+                )
+                .expect("Could not launch blur_plane_pass kernel");
+        }
+    }
+
+    pub fn blur_pass_fused(
+        &self,
+        src0: impl Img<f32, C<3>>,
+        mut dst0: impl ImgMut<f32, C<3>>,
+        src1: impl Img<f32, C<3>>,
+        mut dst1: impl ImgMut<f32, C<3>>,
+        src2: impl Img<f32, C<3>>,
+        mut dst2: impl ImgMut<f32, C<3>>,
+        src3: impl Img<f32, C<3>>,
+        mut dst3: impl ImgMut<f32, C<3>>,
+        src4: impl Img<f32, C<3>>,
+        mut dst4: impl ImgMut<f32, C<3>>,
+    ) {
+        assert_same_size!(src0, dst0);
+        assert_same_size!(src1, dst1);
+        assert_same_size!(src2, dst2);
+        assert_same_size!(src3, dst3);
+        assert_same_size!(src4, dst4);
+
+        const THREADS_WIDTH: u32 = 64 + 32;
+        const THREADS_HEIGHT: u32 = 1;
+        let num_blocks_w = (src0.width() * 3 + THREADS_WIDTH - 1) / THREADS_WIDTH;
+        let num_blocks_h = 5;
+
+        unsafe {
+            self.blur_plane_pass_fused
+                .launch(
+                    &LaunchConfig {
+                        grid_dim: (num_blocks_w, num_blocks_h, 1),
+                        block_dim: (THREADS_WIDTH, THREADS_HEIGHT, 1),
+                        shared_mem_bytes: 0,
+                    },
+                    CuStream::DEFAULT,
+                    kernel_params!(
+                        src0.width() as usize * 3,
+                        src0.height() as usize,
+                        src0.device_ptr(),
+                        src1.device_ptr(),
+                        src2.device_ptr(),
+                        src3.device_ptr(),
+                        src4.device_ptr(),
+                        src0.pitch() as usize,
+                        dst0.device_ptr_mut(),
+                        dst1.device_ptr_mut(),
+                        dst2.device_ptr_mut(),
+                        dst3.device_ptr_mut(),
+                        dst4.device_ptr_mut(),
+                        dst0.pitch() as usize,
+                    ),
+                )
+                .expect("Could not launch blur_plane_pass_fused kernel");
         }
     }
 
@@ -263,19 +325,19 @@ impl Kernel {
         assert_same_size!(sigma12, dst);
         unsafe {
             self.ssim_map
-                .clone()
                 .launch(
-                    launch_config_2d(mu1.width(), mu1.height()),
-                    (
+                    &launch_config_2d(mu1.width(), mu1.height()),
+                    CuStream::DEFAULT,
+                    kernel_params!(
                         mu1.width() as usize,
                         mu1.height() as usize,
                         mu1.pitch() as usize,
-                        mu1.device_ptr() as usize,
-                        mu2.device_ptr() as usize,
-                        sigma11.device_ptr() as usize,
-                        sigma22.device_ptr() as usize,
-                        sigma12.device_ptr() as usize,
-                        dst.device_ptr_mut() as usize,
+                        mu1.device_ptr(),
+                        mu2.device_ptr(),
+                        sigma11.device_ptr(),
+                        sigma22.device_ptr(),
+                        sigma12.device_ptr(),
+                        dst.device_ptr_mut(),
                     ),
                 )
                 .expect("Could not launch linear_to_xyb kernel");
@@ -298,19 +360,19 @@ impl Kernel {
         assert_same_size!(artifact, detail_loss);
         unsafe {
             self.edge_diff_map
-                .clone()
                 .launch(
-                    launch_config_2d(src.width(), src.height()),
-                    (
+                    &launch_config_2d(src.width(), src.height()),
+                    CuStream::DEFAULT,
+                    kernel_params!(
                         src.width() as usize,
                         src.height() as usize,
                         src.pitch() as usize,
-                        src.device_ptr() as usize,
-                        mu1.device_ptr() as usize,
-                        distorted.device_ptr() as usize,
-                        mu2.device_ptr() as usize,
-                        artifact.device_ptr_mut() as usize,
-                        detail_loss.device_ptr_mut() as usize,
+                        src.device_ptr(),
+                        mu1.device_ptr(),
+                        distorted.device_ptr(),
+                        mu2.device_ptr(),
+                        artifact.device_ptr_mut(),
+                        detail_loss.device_ptr_mut(),
                     ),
                 )
                 .expect("Could not launch linear_to_xyb kernel");

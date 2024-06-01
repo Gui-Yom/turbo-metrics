@@ -2,7 +2,7 @@
 
 use cuda_npp_sys::*;
 
-use crate::{C, Channels, Sample};
+use crate::{Channels, Sample, C};
 
 use super::{Image, Img, ImgMut, Result};
 
@@ -22,7 +22,8 @@ pub trait Resize<S: Sample, C: Channels> {
         interpolation: NppiInterpolationMode,
         ctx: NppStreamContext,
     ) -> Result<Image<S, C>>
-        where Image<S, C>: super::isu::Malloc
+    where
+        Image<S, C>: super::isu::Malloc,
     {
         let mut dst = super::isu::Malloc::malloc(new_width, new_height)?;
         self.resize(&mut dst, interpolation, ctx)?;
@@ -88,7 +89,8 @@ pub trait ResizeSqrPixel<S: Sample, C: Channels> {
         interpolation: NppiInterpolationMode,
         ctx: NppStreamContext,
     ) -> Result<Image<S, C>>
-        where Image<S, C>: super::isu::Malloc
+    where
+        Image<S, C>: super::isu::Malloc,
     {
         let mut dst = super::isu::Malloc::malloc(new_width, new_height)?;
         self.resize_sqr_pixel(&mut dst, interpolation, ctx)?;
@@ -129,10 +131,10 @@ impl_resize_sqr_pixel!(f32, C<3>, _32f, C3);
 mod tests {
     use cuda_npp_sys::{NppiInterpolationMode, NppiSize};
 
-    use crate::{C, get_stream_ctx};
-    use crate::safe::{Image, Img};
     use crate::safe::ig::Resize;
     use crate::safe::isu::Malloc;
+    use crate::safe::{Image, Img};
+    use crate::{get_stream_ctx, C};
 
     #[test]
     fn resize() -> crate::safe::Result<()> {

@@ -3,9 +3,12 @@ use std::marker::PhantomData;
 use std::mem;
 use std::ptr::null_mut;
 
-use cuda_npp_sys::{cudaError, cudaFreeAsync, cudaMallocAsync, cudaMemcpy2DAsync, cudaMemcpyKind, NppiRect, NppiSize, NppStatus};
+use cuda_npp_sys::{
+    cudaError, cudaFreeAsync, cudaMallocAsync, cudaMemcpy2DAsync, cudaMemcpyKind, NppStatus,
+    NppiRect, NppiSize,
+};
 
-use crate::{__priv, Channels, Sample};
+use crate::{Channels, Sample, __priv};
 
 #[cfg(feature = "ial")]
 pub mod ial;
@@ -123,8 +126,11 @@ impl<'a, S: Sample, C: Channels> __priv::Sealed for ImgViewMut<'a, S, C> {}
 #[macro_export]
 macro_rules! assert_same_size {
     ($img1:expr, $img2:expr) => {
-        debug_assert_eq!(($img1.width(), $img1.height()), ($img2.width(), $img2.height()))
-    }
+        debug_assert_eq!(
+            ($img1.width(), $img1.height()),
+            ($img2.width(), $img2.height())
+        )
+    };
 }
 
 impl<'a, S: Sample, C: Channels> From<&'a Image<S, C>> for ImgView<'a, S, C> {
@@ -192,7 +198,7 @@ pub trait Img<S: Sample, C: Channels>: __priv::Sealed {
     fn device_ptr(&self) -> C::Ref<S>;
 
     /// Iterator over the pointers of the underlying allocations on device
-    fn alloc_ptrs(&self) -> impl ExactSizeIterator<Item=*const S>;
+    fn alloc_ptrs(&self) -> impl ExactSizeIterator<Item = *const S>;
 
     fn size(&self) -> NppiSize {
         NppiSize {
@@ -220,7 +226,8 @@ pub trait Img<S: Sample, C: Channels>: __priv::Sealed {
 
     #[cfg(feature = "isu")]
     fn malloc_same_size<S2: Sample, C2: Channels>(&self) -> Result<Image<S2, C2>>
-        where Image<S2, C2>: isu::Malloc
+    where
+        Image<S2, C2>: isu::Malloc,
     {
         isu::Malloc::malloc(self.width(), self.height())
     }
@@ -238,7 +245,9 @@ pub trait Img<S: Sample, C: Channels>: __priv::Sealed {
         for (i, ptr) in self.alloc_ptrs().enumerate() {
             let res = unsafe {
                 cudaMemcpy2DAsync(
-                    dst[self.width() as usize * self.height() as usize * i..].as_mut_ptr().cast(),
+                    dst[self.width() as usize * self.height() as usize * i..]
+                        .as_mut_ptr()
+                        .cast(),
                     self.width() as usize * pixel_size,
                     ptr.cast(),
                     self.pitch() as usize,
@@ -265,7 +274,7 @@ pub trait ImgMut<S: Sample, C: Channels>: Img<S, C> {
     fn device_ptr_mut(&mut self) -> C::RefMut<S>;
 
     /// Iterator over the pointers of the underlying allocations on device
-    fn alloc_ptrs_mut(&mut self) -> impl ExactSizeIterator<Item=*mut S>;
+    fn alloc_ptrs_mut(&mut self) -> impl ExactSizeIterator<Item = *mut S>;
 
     fn copy_from_cpu(&mut self, data: &[S]) -> Result<()> {
         let width = self.width() as usize;
@@ -324,7 +333,7 @@ impl<S: Sample, C: Channels, T: Img<S, C>> Img<S, C> for &T {
         (*self).device_ptr()
     }
 
-    fn alloc_ptrs(&self) -> impl ExactSizeIterator<Item=*const S> {
+    fn alloc_ptrs(&self) -> impl ExactSizeIterator<Item = *const S> {
         (*self).alloc_ptrs()
     }
 }
@@ -350,7 +359,7 @@ impl<S: Sample, C: Channels, T: Img<S, C>> Img<S, C> for &mut T {
         Img::device_ptr(*self)
     }
 
-    fn alloc_ptrs(&self) -> impl ExactSizeIterator<Item=*const S> {
+    fn alloc_ptrs(&self) -> impl ExactSizeIterator<Item = *const S> {
         Img::alloc_ptrs(*self)
     }
 }
@@ -376,7 +385,7 @@ impl<S: Sample, C: Channels> Img<S, C> for Image<S, C> {
         C::make_ref(&self.data)
     }
 
-    fn alloc_ptrs(&self) -> impl ExactSizeIterator<Item=*const S> {
+    fn alloc_ptrs(&self) -> impl ExactSizeIterator<Item = *const S> {
         C::iter_ptrs(&self.data)
     }
 }
@@ -402,7 +411,7 @@ impl<'a, S: Sample, C: Channels> Img<S, C> for ImgView<'a, S, C> {
         self.parent.device_ptr()
     }
 
-    fn alloc_ptrs(&self) -> impl ExactSizeIterator<Item=*const S> {
+    fn alloc_ptrs(&self) -> impl ExactSizeIterator<Item = *const S> {
         self.parent.alloc_ptrs()
     }
 }
@@ -428,7 +437,7 @@ impl<'a, S: Sample, C: Channels> Img<S, C> for ImgViewMut<'a, S, C> {
         self.parent.device_ptr()
     }
 
-    fn alloc_ptrs(&self) -> impl ExactSizeIterator<Item=*const S> {
+    fn alloc_ptrs(&self) -> impl ExactSizeIterator<Item = *const S> {
         self.parent.alloc_ptrs()
     }
 }
@@ -438,7 +447,7 @@ impl<S: Sample, C: Channels> ImgMut<S, C> for Image<S, C> {
         C::make_ref_mut(&mut self.data)
     }
 
-    fn alloc_ptrs_mut(&mut self) -> impl ExactSizeIterator<Item=*mut S> {
+    fn alloc_ptrs_mut(&mut self) -> impl ExactSizeIterator<Item = *mut S> {
         C::iter_ptrs_mut(&mut self.data)
     }
 }
@@ -448,7 +457,7 @@ impl<S: Sample, C: Channels> ImgMut<S, C> for &mut Image<S, C> {
         C::make_ref_mut(&mut self.data)
     }
 
-    fn alloc_ptrs_mut(&mut self) -> impl ExactSizeIterator<Item=*mut S> {
+    fn alloc_ptrs_mut(&mut self) -> impl ExactSizeIterator<Item = *mut S> {
         C::iter_ptrs_mut(&mut self.data)
     }
 }
@@ -458,7 +467,7 @@ impl<'a, S: Sample, C: Channels> ImgMut<S, C> for ImgViewMut<'a, S, C> {
         self.parent.device_ptr_mut()
     }
 
-    fn alloc_ptrs_mut(&mut self) -> impl ExactSizeIterator<Item=*mut S> {
+    fn alloc_ptrs_mut(&mut self) -> impl ExactSizeIterator<Item = *mut S> {
         self.parent.alloc_ptrs_mut()
     }
 }
@@ -468,7 +477,7 @@ impl<'a, S: Sample, C: Channels> ImgMut<S, C> for &mut ImgViewMut<'a, S, C> {
         self.parent.device_ptr_mut()
     }
 
-    fn alloc_ptrs_mut(&mut self) -> impl ExactSizeIterator<Item=*mut S> {
+    fn alloc_ptrs_mut(&mut self) -> impl ExactSizeIterator<Item = *mut S> {
         self.parent.alloc_ptrs_mut()
     }
 }
@@ -501,9 +510,9 @@ impl Drop for ScratchBuffer {
 
 #[cfg(test)]
 mod tests {
-    use crate::C;
-    use crate::safe::Image;
     use crate::safe::isu::Malloc;
+    use crate::safe::Image;
+    use crate::C;
 
     #[test]
     fn into_inner_does_not_drop() {

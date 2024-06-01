@@ -11,28 +11,29 @@ use core::ptr::null;
 pub mod math;
 
 pub mod prelude {
-    pub use crate::*;
     pub use crate::math::*;
+    pub use crate::*;
 }
 
 #[repr(C)]
 struct PanicFmt<'a>(&'a CStr, u32, u32);
 
+/// You're better off removing any panic places in your kernel code as this adds 3000 lines to the compiled ptx.
 #[panic_handler]
 fn panic_handler(info: &PanicInfo) -> ! {
     unsafe {
-        nvptx::vprintf("CUDA code panicked :(".as_ptr(), null());
+        nvptx::vprintf("CUDA code panicked :(\0".as_ptr(), null());
         if let Some(loc) = info.location() {
             let mut buffer = [0; 64];
             let len = loc.file().len().min(63);
             buffer[..len].copy_from_slice(&loc.file().as_bytes()[..len]);
             let str = CStr::from_bytes_until_nul(&buffer).unwrap();
             nvptx::vprintf(
-                " (in %s at %d:%d)".as_ptr(),
+                " (in %s at %d:%d)\0".as_ptr(),
                 transmute(&PanicFmt(str, loc.line(), loc.column())),
             );
         }
-        nvptx::vprintf("\n".as_ptr(), null());
+        nvptx::vprintf("\n\0".as_ptr(), null());
         nvptx::trap();
     }
 }
@@ -119,9 +120,5 @@ macro_rules! shfl_down_sync_t {
 shfl_down_sync_t!(f32);
 
 fn tex2D() {
-    unsafe {
-        asm!(
-        ""
-        )
-    }
+    unsafe { asm!("") }
 }

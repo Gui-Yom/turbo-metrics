@@ -18,16 +18,20 @@ const K_B1: f32 = K_B0;
 const K_B2: f32 = K_B0;
 
 const OPSIN_ABSORBANCE_MATRIX: [f32; 9] = [
-    K_M00, K_M01, K_M02,
-    K_M10, K_M11, K_M12,
-    K_M20, K_M21, K_M22,
+    K_M00, K_M01, K_M02, K_M10, K_M11, K_M12, K_M20, K_M21, K_M22,
 ];
 const OPSIN_ABSORBANCE_BIAS: [f32; 3] = [K_B0, K_B1, K_B2];
 const OPSIN_ABSORBANCE_BIAS_ROOT: [f32; 3] = [K_B0_ROOT, K_B0_ROOT, K_B0_ROOT];
 const INVERSE_OPSIN_ABSORBANCE_MATRIX: [f32; 9] = [
-    11.031_567_f32, -9.866_944_f32, -0.164_622_99_f32,
-    -3.254_147_3_f32, 4.418_770_3_f32, -0.164_622_99_f32,
-    -3.658_851_4_f32, 2.712_923_f32, 1.945_928_2_f32,
+    11.031_567_f32,
+    -9.866_944_f32,
+    -0.164_622_99_f32,
+    -3.254_147_3_f32,
+    4.418_770_3_f32,
+    -0.164_622_99_f32,
+    -3.658_851_4_f32,
+    2.712_923_f32,
+    1.945_928_2_f32,
 ];
 const NEG_OPSIN_ABSORBANCE_BIAS: [f32; 3] = [-K_B0, -K_B1, -K_B2];
 

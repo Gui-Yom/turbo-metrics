@@ -1,9 +1,9 @@
-use std::{env, io};
+use nalgebra::{Matrix3, Matrix3x1};
 use std::f64::consts::PI;
 use std::fs::File;
 use std::io::Write;
 use std::path::Path;
-use nalgebra::{Matrix3, Matrix3x1};
+use std::{env, io};
 
 fn main() {
     let cuda_path =

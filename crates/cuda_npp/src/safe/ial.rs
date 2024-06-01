@@ -2,18 +2,25 @@
 
 use cuda_npp_sys::*;
 
-use crate::{__priv, assert_same_size, C, Channels, Sample};
+use crate::{__priv, assert_same_size, Channels, Sample, C};
 
 use super::{Image, Img, ImgMut, Result};
 
 pub trait Mul<S: Sample, C: Channels>: __priv::Sealed {
     /// Pixel by pixel multiply of two images.
-    fn mul(&self, other: impl Img<S, C>, dst: impl ImgMut<S, C>, ctx: NppStreamContext) -> Result<()>;
+    fn mul(
+        &self,
+        other: impl Img<S, C>,
+        dst: impl ImgMut<S, C>,
+        ctx: NppStreamContext,
+    ) -> Result<()>;
 
     /// Pixel by pixel multiply of two images into a new image.
     #[cfg(feature = "isu")]
     fn mul_new(&self, other: impl Img<S, C>, ctx: NppStreamContext) -> Result<Image<S, C>>
-        where Self: Img<S, C>, Image<S, C>: super::isu::Malloc
+    where
+        Self: Img<S, C>,
+        Image<S, C>: super::isu::Malloc,
     {
         let mut dst = self.malloc_same_size()?;
         self.mul(other, &mut dst, ctx)?;
@@ -77,11 +84,11 @@ impl_sqrip!(f32, C<1>, _32f, C1);
 mod tests {
     use cudarc::driver::CudaDevice;
 
-    use crate::{C, get_stream_ctx};
     use crate::safe::ial::SqrIP;
-    use crate::safe::Image;
     use crate::safe::isu::Malloc;
+    use crate::safe::Image;
     use crate::safe::Result;
+    use crate::{get_stream_ctx, C};
 
     #[test]
     fn mul() {}

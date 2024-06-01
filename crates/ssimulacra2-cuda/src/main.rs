@@ -5,26 +5,33 @@ use cudarc::driver::CudaDevice;
 use zune_image::codecs::png::zune_core::colorspace::{ColorCharacteristics, ColorSpace};
 use zune_image::codecs::png::zune_core::options::DecoderOptions;
 
-use cuda_npp::{C, get_stream_ctx};
-use cuda_npp::safe::{Image, Img, ImgMut, ScratchBuffer};
 use cuda_npp::safe::ial::{Mul, SqrIP};
 use cuda_npp::safe::idei::{ConvertChannel, Transpose};
 use cuda_npp::safe::if_::FilterGaussBorder;
 use cuda_npp::safe::ist::Sum;
 use cuda_npp::safe::isu::Malloc;
-use cuda_npp::sys::{NppiMaskSize, NppStreamContext};
+use cuda_npp::safe::{Image, Img, ImgMut, ScratchBuffer};
+use cuda_npp::sys::NppStreamContext;
+use cuda_npp::{get_stream_ctx, C};
 
-use crate::cpu::CpuImg;
 use crate::kernel::Kernel;
 
-mod kernel;
 mod cpu;
+mod kernel;
 
 fn main() {
     let dev = CudaDevice::new(0).unwrap();
 
-    let ref_img = zune_image::image::Image::open_with_options("crates/ssimulacra2-cuda/source.png", DecoderOptions::new_fast()).unwrap();
-    let dis_img = zune_image::image::Image::open_with_options("crates/ssimulacra2-cuda/distorted.png", DecoderOptions::new_fast()).unwrap();
+    let ref_img = zune_image::image::Image::open_with_options(
+        "crates/ssimulacra2-cuda/source.png",
+        DecoderOptions::new_fast(),
+    )
+    .unwrap();
+    let dis_img = zune_image::image::Image::open_with_options(
+        "crates/ssimulacra2-cuda/distorted.png",
+        DecoderOptions::new_fast(),
+    )
+    .unwrap();
 
     // Upload to gpu
     let (width, height) = ref_img.dimensions();
@@ -68,6 +75,19 @@ struct Ssimulacra2 {
     tmp3: Image<f32, C<3>>,
     tmp4: Image<f32, C<3>>,
     tmp5: Image<f32, C<3>>,
+    tmp6: Image<f32, C<3>>,
+    tmp7: Image<f32, C<3>>,
+
+    tmpt0: Image<f32, C<3>>,
+    tmpt1: Image<f32, C<3>>,
+    tmpt2: Image<f32, C<3>>,
+    tmpt3: Image<f32, C<3>>,
+    tmpt4: Image<f32, C<3>>,
+    tmpt5: Image<f32, C<3>>,
+    tmpt6: Image<f32, C<3>>,
+    tmpt7: Image<f32, C<3>>,
+    tmpt8: Image<f32, C<3>>,
+    tmpt9: Image<f32, C<3>>,
 }
 
 impl Ssimulacra2 {
@@ -81,18 +101,33 @@ impl Ssimulacra2 {
         let ref_xyb = ref_linear.malloc_same_size().unwrap();
         let dis_xyb = dis_linear.malloc_same_size().unwrap();
 
-        let sum_scratch = ref_linear.sum_alloc_scratch();
-
         let tmp0 = ref_input.malloc_same_size().unwrap();
         let tmp1 = ref_input.malloc_same_size().unwrap();
         let tmp2 = ref_input.malloc_same_size().unwrap();
+
         let tmp3 = ref_input.malloc_same_size().unwrap();
         let tmp4 = ref_input.malloc_same_size().unwrap();
         let tmp5 = ref_input.malloc_same_size().unwrap();
+        let tmp6 = ref_input.malloc_same_size().unwrap();
+        let tmp7 = ref_input.malloc_same_size().unwrap();
+
+        let tmpt0 = Image::malloc(ref_input.height(), ref_input.width()).unwrap();
+        let tmpt1 = tmpt0.malloc_same_size().unwrap();
+        let tmpt2 = tmpt0.malloc_same_size().unwrap();
+        let tmpt3 = tmpt0.malloc_same_size().unwrap();
+        let tmpt4 = tmpt0.malloc_same_size().unwrap();
+
+        let tmpt5 = tmpt0.malloc_same_size().unwrap();
+        let tmpt6 = tmpt0.malloc_same_size().unwrap();
+        let tmpt7 = tmpt0.malloc_same_size().unwrap();
+        let tmpt8 = tmpt0.malloc_same_size().unwrap();
+        let tmpt9 = tmpt0.malloc_same_size().unwrap();
+
+        let sum_scratch = tmpt0.sum_alloc_scratch();
 
         Self {
             dev: Arc::clone(dev),
-            kernel: Kernel::load(dev),
+            kernel: Kernel::load(),
             npp: get_stream_ctx().unwrap(),
             ref_input,
             dis_input,
@@ -107,10 +142,24 @@ impl Ssimulacra2 {
             tmp3,
             tmp4,
             tmp5,
+            tmp6,
+            tmp7,
+            tmpt0,
+            tmpt1,
+            tmpt2,
+            tmpt3,
+            tmpt4,
+            tmpt5,
+            tmpt6,
+            tmpt7,
+            tmpt8,
+            tmpt9,
         }
     }
 
     pub fn compute(&mut self, ref_bytes: &[u8], dis_bytes: &[u8]) -> f64 {
+        const SCALES: usize = 6;
+
         self.ref_input.copy_from_cpu(ref_bytes).unwrap();
         self.dis_input.copy_from_cpu(dis_bytes).unwrap();
 
@@ -118,8 +167,10 @@ impl Ssimulacra2 {
         //  coalescing can already be achieved for kernels which doesn't require access to neighbouring pixels or samples
 
         // Convert to linear
-        self.kernel.srgb_to_linear(&self.ref_input, &mut self.ref_linear);
-        self.kernel.srgb_to_linear(&self.dis_input, &mut self.dis_linear);
+        self.kernel
+            .srgb_to_linear(&self.ref_input, &mut self.ref_linear);
+        self.kernel
+            .srgb_to_linear(&self.dis_input, &mut self.dis_linear);
 
         // save_img(&self.dev, &self.ref_linear, &format!("ref_linear"));
 
@@ -130,8 +181,9 @@ impl Ssimulacra2 {
         let mut scores = [0.0; 108];
 
         let mut size = self.ref_input.rect();
+        let mut sizet = self.tmpt0.rect();
 
-        for scale in 0..6 {
+        for scale in 0..SCALES {
             if scale > 0 {
                 {
                     let ref_linear = self.ref_linear.view_mut(size);
@@ -141,13 +193,18 @@ impl Ssimulacra2 {
                     size.width = (size.width + 1) / 2;
                     size.height = (size.height + 1) / 2;
 
+                    sizet.width = (sizet.width + 1) / 2;
+                    sizet.height = (sizet.height + 1) / 2;
+
                     dbg!(size);
 
                     // TODO this can be done with warp level primitives by having warps sized 16x2
                     //  block size 16x16 would be perfect
                     //  warps would contain 8 2x2 patches which can be summed using shfl_down_sync and friends
-                    self.kernel.downscale_by_2(&ref_linear, self.tmp0.view_mut(size));
-                    self.kernel.downscale_by_2(&dis_linear, self.tmp1.view_mut(size));
+                    self.kernel
+                        .downscale_by_2(&ref_linear, self.tmp0.view_mut(size));
+                    self.kernel
+                        .downscale_by_2(&dis_linear, self.tmp1.view_mut(size));
 
                     // let mut planar = self.ref_linear.malloc_same_size().unwrap();
                     // self.ref_linear.convert_channel(&mut planar, get_stream_ctx().unwrap()).unwrap();
@@ -170,67 +227,157 @@ impl Ssimulacra2 {
             // self.kernel.linear_to_xyb_planar(&planar, &mut dst);
             // self.dev.synchronize().unwrap();
 
-            self.kernel.linear_to_xyb(self.ref_linear.view(size), self.ref_xyb.view_mut(size));
-            self.kernel.linear_to_xyb(self.dis_linear.view(size), self.dis_xyb.view_mut(size));
+            self.kernel
+                .linear_to_xyb(self.ref_linear.view(size), self.ref_xyb.view_mut(size));
+            self.kernel
+                .linear_to_xyb(self.dis_linear.view(size), self.dis_xyb.view_mut(size));
             // save_img(&self.dev, self.ref_xyb.view(size), &format!("ref_xyb_{scale}"));
 
-            self.ref_xyb.view(size).mul(self.ref_xyb.view(size), self.tmp0.view_mut(size), self.npp).unwrap();
-            let mut planar = self.tmp0.view(size).convert_channel_new(self.npp).unwrap();
-            let mut planar_blur = planar.malloc_same_size().unwrap();
-            self.kernel.blur_planar(planar.view(size), planar_blur.view_mut(size));
-            let transposed = planar_blur.view(size).transpose_new(self.npp).unwrap();
-            let mut planar_blur = transposed.malloc_same_size().unwrap();
-            self.kernel.blur_planar(&transposed, &mut planar_blur);
-            let res = planar_blur.convert_channel_new(self.npp).unwrap();
-            let res = res.transpose_new(self.npp).unwrap();
-            // save_img(&self.dev, res, &format!("customblur_{scale}"));
-            // sigma11 is tmp1
-            // save_img(&self.dev, transposed, &format!("transposed_{scale}"));
-            self.tmp0.view(size).filter_gauss_border(self.tmp1.view_mut(size), NppiMaskSize::NPP_MASK_SIZE_5_X_5, self.npp).unwrap();
-            // save_img(&self.dev, self.tmp1.view(size), &format!("sigma11_{scale}"));
+            // tmp0: sigma11
+            self.ref_xyb
+                .view(size)
+                .mul(self.ref_xyb.view(size), self.tmp0.view_mut(size), self.npp)
+                .unwrap();
+            // tmp1: sigma22
+            self.dis_xyb
+                .view(size)
+                .mul(self.dis_xyb.view(size), self.tmp1.view_mut(size), self.npp)
+                .unwrap();
+            // tmp2: sigma12
+            self.ref_xyb
+                .view(size)
+                .mul(self.dis_xyb.view(size), self.tmp2.view_mut(size), self.npp)
+                .unwrap();
 
-            self.dis_xyb.view(size).mul(self.dis_xyb.view(size), self.tmp0.view_mut(size), self.npp).unwrap();
-            // sigma22 is tmp2
-            self.tmp0.view(size).filter_gauss_border(self.tmp2.view_mut(size), NppiMaskSize::NPP_MASK_SIZE_5_X_5, self.npp).unwrap();
+            // TODO make blur work in place
+            // We currently can't compute our blur pass in place,
+            // which means we need 10 full buffers allocated :(
+            #[rustfmt::skip]
+            self.kernel.blur_pass_fused(
+                self.tmp0.view(size), self.tmp3.view_mut(size),
+                self.tmp1.view(size), self.tmp4.view_mut(size),
+                self.tmp2.view(size), self.tmp5.view_mut(size),
+                self.ref_xyb.view(size), self.tmp6.view_mut(size),
+                self.dis_xyb.view(size), self.tmp7.view_mut(size),
+            );
 
-            self.ref_xyb.view(size).mul(self.dis_xyb.view(size), self.tmp0.view_mut(size), self.npp).unwrap();
-            // sigma12 is tmp3
-            self.tmp0.view(size).filter_gauss_border(self.tmp3.view_mut(size), NppiMaskSize::NPP_MASK_SIZE_5_X_5, self.npp).unwrap();
+            self.tmp3
+                .view(size)
+                .transpose(self.tmpt0.view_mut(sizet), self.npp)
+                .unwrap();
+            self.tmp4
+                .view(size)
+                .transpose(self.tmpt1.view_mut(sizet), self.npp)
+                .unwrap();
+            self.tmp5
+                .view(size)
+                .transpose(self.tmpt2.view_mut(sizet), self.npp)
+                .unwrap();
+            self.tmp6
+                .view(size)
+                .transpose(self.tmpt3.view_mut(sizet), self.npp)
+                .unwrap();
+            self.tmp7
+                .view(size)
+                .transpose(self.tmpt4.view_mut(sizet), self.npp)
+                .unwrap();
+
+            // tmpt5: sigma11
+            // tmpt6: sigma22
+            // tmpt7: sigma12
+            // tmpt8: mu1
+            // tmpt9: mu2
+            #[rustfmt::skip]
+            self.kernel.blur_pass_fused(
+                self.tmpt0.view(sizet), self.tmpt5.view_mut(sizet),
+                self.tmpt1.view(sizet), self.tmpt6.view_mut(sizet),
+                self.tmpt2.view(sizet), self.tmpt7.view_mut(sizet),
+                self.tmpt3.view(sizet), self.tmpt8.view_mut(sizet),
+                self.tmpt4.view(sizet), self.tmpt9.view_mut(sizet),
+            );
 
             // mu1 is tmp4
-            self.ref_xyb.view(size).filter_gauss_border(self.tmp4.view_mut(size), NppiMaskSize::NPP_MASK_SIZE_5_X_5, self.npp).unwrap();
+            // self.ref_xyb.view(size).filter_gauss_border(self.tmp4.view_mut(size), NppiMaskSize::NPP_MASK_SIZE_5_X_5, self.npp).unwrap();
             // save_img(&self.dev, self.tmp4.view(size), &format!("mu1_{scale}"));
             // mu2 is tmp5
-            self.dis_xyb.view(size).filter_gauss_border(self.tmp5.view_mut(size), NppiMaskSize::NPP_MASK_SIZE_5_X_5, self.npp).unwrap();
+            // self.dis_xyb.view(size).filter_gauss_border(self.tmp5.view_mut(size), NppiMaskSize::NPP_MASK_SIZE_5_X_5, self.npp).unwrap();
 
-            // ssim is tmp0
-            self.kernel.ssim_map(self.tmp4.view(size), self.tmp5.view(size), self.tmp1.view(size), self.tmp2.view(size), self.tmp3.view(size), self.tmp0.view_mut(size));
+            // tmpt0: ssim
+            self.kernel.ssim_map(
+                self.tmpt8.view(sizet),
+                self.tmpt9.view(sizet),
+                self.tmpt5.view(sizet),
+                self.tmpt6.view(sizet),
+                self.tmpt7.view(sizet),
+                self.tmpt0.view_mut(sizet),
+            );
             // save_img(&self.dev, self.tmp0.view(size), &format!("ssim_{scale}"));
 
-            let sum_ssim = self.tmp0.view(size).sum(&mut self.sum_scratch, self.npp).unwrap();
+            let sum_ssim = self
+                .tmpt0
+                .view(sizet)
+                .sum(&mut self.sum_scratch, self.npp)
+                .unwrap();
             // self.dev.synchronize().unwrap();
             // dbg!(sum_ssim);
-            self.tmp0.view_mut(size).sqr_ip(self.npp).unwrap();
-            self.tmp0.view_mut(size).sqr_ip(self.npp).unwrap();
-            let sum_ssim_4 = self.tmp0.view(size).sum(&mut self.sum_scratch, self.npp).unwrap();
+            self.tmpt0.view_mut(sizet).sqr_ip(self.npp).unwrap();
+            self.tmpt0.view_mut(sizet).sqr_ip(self.npp).unwrap();
+            let sum_ssim_4 = self
+                .tmpt0
+                .view(sizet)
+                .sum(&mut self.sum_scratch, self.npp)
+                .unwrap();
 
-            // artifact is tmp1
-            // detail_loss is tmp2
-            self.kernel.edge_diff_map(self.ref_xyb.view(size), self.tmp4.view(size), self.dis_xyb.view(size), self.tmp5.view(size), self.tmp1.view_mut(size), self.tmp2.view_mut(size));
+            self.ref_xyb
+                .view(size)
+                .transpose(self.tmpt0.view_mut(sizet), self.npp)
+                .unwrap();
+            self.dis_xyb
+                .view(size)
+                .transpose(self.tmpt1.view_mut(sizet), self.npp)
+                .unwrap();
+
+            // artifact is tmpt2
+            // detail_loss is tmpt3
+            self.kernel.edge_diff_map(
+                self.tmpt0.view(sizet),
+                self.tmpt8.view(sizet),
+                self.tmpt1.view(sizet),
+                self.tmpt9.view(sizet),
+                self.tmpt2.view_mut(sizet),
+                self.tmpt3.view_mut(sizet),
+            );
             // save_img(&self.dev, self.tmp1.view(size), &format!("artifact_{scale}"));
             // save_img(&self.dev, self.tmp2.view(size), &format!("detail_loss_{scale}"));
             // self.dev.synchronize().unwrap();
 
             // save_img(&dev, &ssim, &format!("{scale}_artifact"));
             // save_img(&dev, &ssim, &format!("{scale}_detail_loss"));
-            let sum_artifact = self.tmp1.view(size).sum(&mut self.sum_scratch, self.npp).unwrap();
-            self.tmp1.view_mut(size).sqr_ip(self.npp).unwrap();
-            self.tmp1.view_mut(size).sqr_ip(self.npp).unwrap();
-            let sum_artifact_4 = self.tmp1.view(size).sum(&mut self.sum_scratch, self.npp).unwrap();
-            let sum_detail_loss = self.tmp2.view(size).sum(&mut self.sum_scratch, self.npp).unwrap();
-            self.tmp2.view_mut(size).sqr_ip(self.npp).unwrap();
-            self.tmp2.view_mut(size).sqr_ip(self.npp).unwrap();
-            let sum_detail_loss_4 = self.tmp2.view(size).sum(&mut self.sum_scratch, self.npp).unwrap();
+            // TODO fuse those computions
+            let sum_artifact = self
+                .tmpt2
+                .view(sizet)
+                .sum(&mut self.sum_scratch, self.npp)
+                .unwrap();
+            self.tmpt2.view_mut(sizet).sqr_ip(self.npp).unwrap();
+            self.tmpt2.view_mut(sizet).sqr_ip(self.npp).unwrap();
+            let sum_artifact_4 = self
+                .tmpt2
+                .view(sizet)
+                .sum(&mut self.sum_scratch, self.npp)
+                .unwrap();
+            let sum_detail_loss = self
+                .tmpt3
+                .view(sizet)
+                .sum(&mut self.sum_scratch, self.npp)
+                .unwrap();
+            self.tmpt3.view_mut(sizet).sqr_ip(self.npp).unwrap();
+            self.tmpt3.view_mut(sizet).sqr_ip(self.npp).unwrap();
+            let sum_detail_loss_4 = self
+                .tmpt3
+                .view(sizet)
+                .sum(&mut self.sum_scratch, self.npp)
+                .unwrap();
             self.dev.synchronize().unwrap();
 
             let opp = 1.0 / (size.width * size.height) as f64;
