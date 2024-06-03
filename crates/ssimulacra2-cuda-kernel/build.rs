@@ -11,8 +11,14 @@ fn main() {
     println!("cargo:rerun-if-env-changed=CUDA_PATH");
     println!("cargo:rustc-link-arg={cuda_path}/nvvm/libdevice/libdevice.10.bc");
 
+    let root = env::var("CARGO_MANIFEST_DIR").unwrap();
+    // Maybe compile this at build time ?
+    println!("cargo:rustc-link-arg={root}/src/shared.bc");
+    println!("cargo:rerun-if-changed={root}/src/shared.bc");
+
     let out_dir = &env::var("OUT_DIR").expect("can read OUT_DIR");
 
+    // Compute recursive gaussian coefficients
     init_recursive_gaussian(out_dir).expect("can init recursive gaussian");
 }
 

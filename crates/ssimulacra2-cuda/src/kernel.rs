@@ -11,7 +11,6 @@ pub struct Kernel {
     downscale_plane_by_2: CuFunction,
     linear_to_xyb: CuFunction,
     linear_to_xyb_planar: CuFunction,
-    blur_plane_pass: CuFunction,
     blur_plane_pass_fused: CuFunction,
     ssim_map: CuFunction,
     edge_diff_map: CuFunction,
@@ -28,7 +27,6 @@ impl Kernel {
             downscale_plane_by_2: module.function_by_name("downscale_plane_by_2").unwrap(),
             linear_to_xyb: module.function_by_name("linear_to_xyb_packed").unwrap(),
             linear_to_xyb_planar: module.function_by_name("linear_to_xyb_planar").unwrap(),
-            blur_plane_pass: module.function_by_name("blur_plane_pass").unwrap(),
             blur_plane_pass_fused: module.function_by_name("blur_plane_pass_fused").unwrap(),
             ssim_map: module.function_by_name("ssim_map").unwrap(),
             edge_diff_map: module.function_by_name("edge_diff_map").unwrap(),
@@ -191,70 +189,8 @@ impl Kernel {
         }
     }
 
-    pub fn blur_pass_planar(&self, src: impl Img<f32, P<3>>, mut dst: impl ImgMut<f32, P<3>>) {
-        assert_same_size!(src, dst);
-        unsafe {
-            const THREADS_WIDTH: u32 = 64;
-            const THREADS_HEIGHT: u32 = 1;
-            let num_blocks_w = (src.width() + THREADS_WIDTH - 1) / THREADS_WIDTH;
-            let num_blocks_h = 1;
-
-            let pitch = dst.pitch();
-
-            for (r, w) in src.alloc_ptrs().zip(dst.alloc_ptrs_mut()) {
-                self.blur_plane_pass
-                    .launch(
-                        &LaunchConfig {
-                            grid_dim: (num_blocks_w, num_blocks_h, 1),
-                            block_dim: (THREADS_WIDTH, THREADS_HEIGHT, 1),
-                            shared_mem_bytes: 0,
-                        },
-                        CuStream::DEFAULT,
-                        kernel_params!(
-                            src.width() as usize,
-                            src.height() as usize,
-                            r,
-                            src.pitch() as usize,
-                            w,
-                            pitch as usize,
-                        ),
-                    )
-                    .expect("Could not launch blur_plane_pass kernel");
-            }
-        }
-    }
-
-    /// Our planar pass can work on packed image by running on 3*width
-    pub fn blur_pass(&self, src: impl Img<f32, C<3>>, mut dst: impl ImgMut<f32, C<3>>) {
-        assert_same_size!(src, dst);
-
-        const THREADS_WIDTH: u32 = 32;
-        const THREADS_HEIGHT: u32 = 1;
-        let num_blocks_w = (src.width() * 3 + THREADS_WIDTH - 1) / THREADS_WIDTH;
-        let num_blocks_h = 1;
-
-        unsafe {
-            self.blur_plane_pass
-                .launch(
-                    &LaunchConfig {
-                        grid_dim: (num_blocks_w, num_blocks_h, 1),
-                        block_dim: (THREADS_WIDTH, THREADS_HEIGHT, 1),
-                        shared_mem_bytes: 0,
-                    },
-                    CuStream::DEFAULT,
-                    kernel_params!(
-                        src.width() as usize * 3,
-                        src.height() as usize,
-                        src.device_ptr(),
-                        src.pitch() as usize,
-                        dst.device_ptr_mut(),
-                        dst.pitch() as usize,
-                    ),
-                )
-                .expect("Could not launch blur_plane_pass kernel");
-        }
-    }
-
+    /// Blur 5 packed images in one kernel launch.
+    /// We can treat the images as a single plane because each thread only processes a single column.
     pub fn blur_pass_fused(
         &self,
         src0: impl Img<f32, C<3>>,
@@ -274,7 +210,12 @@ impl Kernel {
         assert_same_size!(src3, dst3);
         assert_same_size!(src4, dst4);
 
-        const THREADS_WIDTH: u32 = 64 + 32;
+        // A warp 32 wide is nice because cache line is 128 bytes (32 * 4).
+        // The y coordinate selects the image pair to operate on.
+
+        // 3 warps per block seems to be the sweet spot, more profiling is needed.
+        // Remember to keep this value in sync with the BLOCK_WIDTH constant in the kernel.
+        const THREADS_WIDTH: u32 = 3 * 32;
         const THREADS_HEIGHT: u32 = 1;
         let num_blocks_w = (src0.width() * 3 + THREADS_WIDTH - 1) / THREADS_WIDTH;
         let num_blocks_h = 5;
