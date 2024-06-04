@@ -13,6 +13,16 @@ const BLOCK_WIDTH: usize = 3 * 32;
 
 // We can't allocate shared memory from Rust. This value is defined in shared.bc
 extern "C" {
+    /// The ring buffer.
+    ///
+    /// Logically, for each thread :
+    ///   left=y-N-1        y            right=y+N-1
+    ///   |                 |            |
+    /// [ 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10 ]
+    ///   <------------------------------>
+    ///            RING_SIZE=2N+1
+    ///
+    /// Here we allocate for 33 elements to solve the bank conflict problem.
     static mut RING: [[f32; 33]; BLOCK_WIDTH];
 }
 

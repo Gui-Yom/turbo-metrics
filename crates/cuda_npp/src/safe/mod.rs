@@ -180,6 +180,11 @@ impl<S: Sample, C: Channels> Image<S, C> {
             height: rect.height as u32,
         }
     }
+
+    /// Estimate in bytes the approximate memory usage of this image allocation on device.
+    pub fn device_mem_usage(&self) -> usize {
+        self.pitch as usize * self.height as usize
+    }
 }
 
 pub trait Img<S: Sample, C: Channels>: __priv::Sealed {

@@ -12,8 +12,7 @@ pub struct Kernel {
     linear_to_xyb: CuFunction,
     linear_to_xyb_planar: CuFunction,
     blur_plane_pass_fused: CuFunction,
-    ssim_map: CuFunction,
-    edge_diff_map: CuFunction,
+    compute_error_maps: CuFunction,
 }
 
 impl Kernel {
@@ -28,8 +27,7 @@ impl Kernel {
             linear_to_xyb: module.function_by_name("linear_to_xyb_packed").unwrap(),
             linear_to_xyb_planar: module.function_by_name("linear_to_xyb_planar").unwrap(),
             blur_plane_pass_fused: module.function_by_name("blur_plane_pass_fused").unwrap(),
-            ssim_map: module.function_by_name("ssim_map").unwrap(),
-            edge_diff_map: module.function_by_name("edge_diff_map").unwrap(),
+            compute_error_maps: module.function_by_name("compute_error_maps").unwrap(),
             module,
         }
     }
@@ -250,73 +248,50 @@ impl Kernel {
         }
     }
 
-    pub fn ssim_map(
+    pub fn compute_error_maps(
         &self,
+        source: impl Img<f32, C<3>>,
+        distorted: impl Img<f32, C<3>>,
         mu1: impl Img<f32, C<3>>,
         mu2: impl Img<f32, C<3>>,
         sigma11: impl Img<f32, C<3>>,
         sigma22: impl Img<f32, C<3>>,
         sigma12: impl Img<f32, C<3>>,
-        mut dst: impl ImgMut<f32, C<3>>,
+        mut ssim: impl ImgMut<f32, C<3>>,
+        mut artifact: impl ImgMut<f32, C<3>>,
+        mut detail_loss: impl ImgMut<f32, C<3>>,
     ) {
+        assert_same_size!(source, distorted);
+        assert_same_size!(distorted, mu1);
         assert_same_size!(mu1, mu2);
         assert_same_size!(mu2, sigma11);
         assert_same_size!(sigma11, sigma22);
         assert_same_size!(sigma22, sigma12);
-        assert_same_size!(sigma12, dst);
+        assert_same_size!(sigma12, ssim);
+        assert_same_size!(ssim, artifact);
+        assert_same_size!(artifact, detail_loss);
         unsafe {
-            self.ssim_map
+            self.compute_error_maps
                 .launch(
-                    &launch_config_2d(mu1.width(), mu1.height()),
+                    &launch_config_2d(mu1.width() * 3, mu1.height()),
                     CuStream::DEFAULT,
                     kernel_params!(
-                        mu1.width() as usize,
+                        mu1.width() as usize * 3,
                         mu1.height() as usize,
                         mu1.pitch() as usize,
+                        source.device_ptr(),
+                        distorted.device_ptr(),
                         mu1.device_ptr(),
                         mu2.device_ptr(),
                         sigma11.device_ptr(),
                         sigma22.device_ptr(),
                         sigma12.device_ptr(),
-                        dst.device_ptr_mut(),
-                    ),
-                )
-                .expect("Could not launch linear_to_xyb kernel");
-        }
-    }
-
-    pub fn edge_diff_map(
-        &self,
-        src: impl Img<f32, C<3>>,
-        mu1: impl Img<f32, C<3>>,
-        distorted: impl Img<f32, C<3>>,
-        mu2: impl Img<f32, C<3>>,
-        mut artifact: impl ImgMut<f32, C<3>>,
-        mut detail_loss: impl ImgMut<f32, C<3>>,
-    ) {
-        assert_same_size!(src, mu1);
-        assert_same_size!(mu1, distorted);
-        assert_same_size!(distorted, mu2);
-        assert_same_size!(mu2, artifact);
-        assert_same_size!(artifact, detail_loss);
-        unsafe {
-            self.edge_diff_map
-                .launch(
-                    &launch_config_2d(src.width(), src.height()),
-                    CuStream::DEFAULT,
-                    kernel_params!(
-                        src.width() as usize,
-                        src.height() as usize,
-                        src.pitch() as usize,
-                        src.device_ptr(),
-                        mu1.device_ptr(),
-                        distorted.device_ptr(),
-                        mu2.device_ptr(),
+                        ssim.device_ptr_mut(),
                         artifact.device_ptr_mut(),
                         detail_loss.device_ptr_mut(),
                     ),
                 )
-                .expect("Could not launch linear_to_xyb kernel");
+                .expect("Could not launch compute_error_maps kernel");
         }
     }
 }

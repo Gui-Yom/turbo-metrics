@@ -5,6 +5,7 @@ use cudarc::driver::CudaDevice;
 use zune_image::codecs::png::zune_core::colorspace::{ColorCharacteristics, ColorSpace};
 use zune_image::codecs::png::zune_core::options::DecoderOptions;
 
+use cuda_driver::{profiler_start, profiler_stop, CuStream};
 use cuda_npp::safe::ial::{Mul, SqrIP};
 use cuda_npp::safe::idei::{ConvertChannel, Transpose};
 use cuda_npp::safe::if_::FilterGaussBorder;
@@ -42,6 +43,7 @@ fn main() {
     let dis_bytes = &dis_img.flatten_to_u8()[0];
 
     let mut ssimulacra2 = Ssimulacra2::new(&dev, width as u32, height as u32);
+    dbg!(ssimulacra2.mem_usage());
     dbg!(ssimulacra2.compute(ref_bytes, dis_bytes));
 
     // let ref_img = CpuImg::from_srgb(ref_bytes, width, height);
@@ -52,8 +54,9 @@ fn main() {
 /// An instance is valid for a specific width and height.
 ///
 /// This implementation never allocates during processing and requires a minimum
-/// of 250 MiB of device memory for processing 1920x1080 frames.
-/// Actual memory usage is higher because of padding.
+/// of `270 * width * height` bytes.
+/// e.g. ~400 MiB of device memory for processing 1440x1080 frames.
+/// Actual memory usage is higher because of padding and other state.
 ///
 /// Processing a single image pair results in 192 kernels launches !
 struct Ssimulacra2 {
@@ -157,7 +160,37 @@ impl Ssimulacra2 {
         }
     }
 
+    /// Estimate the approximate memory usage
+    pub fn mem_usage(&self) -> usize {
+        self.ref_input.device_mem_usage()
+            + self.dis_input.device_mem_usage()
+            + self.ref_linear.device_mem_usage()
+            + self.dis_linear.device_mem_usage()
+            + self.ref_xyb.device_mem_usage()
+            + self.dis_xyb.device_mem_usage()
+            + self.tmp0.device_mem_usage()
+            + self.tmp1.device_mem_usage()
+            + self.tmp2.device_mem_usage()
+            + self.tmp3.device_mem_usage()
+            + self.tmp4.device_mem_usage()
+            + self.tmp5.device_mem_usage()
+            + self.tmp6.device_mem_usage()
+            + self.tmp7.device_mem_usage()
+            + self.tmpt0.device_mem_usage()
+            + self.tmpt1.device_mem_usage()
+            + self.tmpt2.device_mem_usage()
+            + self.tmpt3.device_mem_usage()
+            + self.tmpt4.device_mem_usage()
+            + self.tmpt5.device_mem_usage()
+            + self.tmpt6.device_mem_usage()
+            + self.tmpt7.device_mem_usage()
+            + self.tmpt8.device_mem_usage()
+            + self.tmpt9.device_mem_usage()
+    }
+
     pub fn compute(&mut self, ref_bytes: &[u8], dis_bytes: &[u8]) -> f64 {
+        profiler_stop().unwrap();
+
         const SCALES: usize = 6;
 
         self.ref_input.copy_from_cpu(ref_bytes).unwrap();
@@ -183,6 +216,8 @@ impl Ssimulacra2 {
         let mut size = self.ref_input.rect();
         let mut sizet = self.tmpt0.rect();
 
+        // TODO launch independent computations on different streams for parallel execution and maximum gpu utilization.
+        //  Iterations only depend on the previous downscale operation to complete.
         for scale in 0..SCALES {
             if scale > 0 {
                 {
@@ -296,38 +331,8 @@ impl Ssimulacra2 {
                 self.tmpt4.view(sizet), self.tmpt9.view_mut(sizet),
             );
 
-            // mu1 is tmp4
-            // self.ref_xyb.view(size).filter_gauss_border(self.tmp4.view_mut(size), NppiMaskSize::NPP_MASK_SIZE_5_X_5, self.npp).unwrap();
-            // save_img(&self.dev, self.tmp4.view(size), &format!("mu1_{scale}"));
-            // mu2 is tmp5
-            // self.dis_xyb.view(size).filter_gauss_border(self.tmp5.view_mut(size), NppiMaskSize::NPP_MASK_SIZE_5_X_5, self.npp).unwrap();
-
-            // tmpt0: ssim
-            self.kernel.ssim_map(
-                self.tmpt8.view(sizet),
-                self.tmpt9.view(sizet),
-                self.tmpt5.view(sizet),
-                self.tmpt6.view(sizet),
-                self.tmpt7.view(sizet),
-                self.tmpt0.view_mut(sizet),
-            );
-            // save_img(&self.dev, self.tmp0.view(size), &format!("ssim_{scale}"));
-
-            let sum_ssim = self
-                .tmpt0
-                .view(sizet)
-                .sum(&mut self.sum_scratch, self.npp)
-                .unwrap();
-            // self.dev.synchronize().unwrap();
-            // dbg!(sum_ssim);
-            self.tmpt0.view_mut(sizet).sqr_ip(self.npp).unwrap();
-            self.tmpt0.view_mut(sizet).sqr_ip(self.npp).unwrap();
-            let sum_ssim_4 = self
-                .tmpt0
-                .view(sizet)
-                .sum(&mut self.sum_scratch, self.npp)
-                .unwrap();
-
+            // tmpt0: source
+            // tmpt1: distorted
             self.ref_xyb
                 .view(size)
                 .transpose(self.tmpt0.view_mut(sizet), self.npp)
@@ -337,47 +342,69 @@ impl Ssimulacra2 {
                 .transpose(self.tmpt1.view_mut(sizet), self.npp)
                 .unwrap();
 
-            // artifact is tmpt2
-            // detail_loss is tmpt3
-            self.kernel.edge_diff_map(
+            profiler_start().unwrap();
+
+            // tmpt2: ssim
+            // tmpt3: artifact
+            // tmpt4: detail_loss
+            self.kernel.compute_error_maps(
                 self.tmpt0.view(sizet),
-                self.tmpt8.view(sizet),
                 self.tmpt1.view(sizet),
+                self.tmpt8.view(sizet),
                 self.tmpt9.view(sizet),
+                self.tmpt5.view(sizet),
+                self.tmpt6.view(sizet),
+                self.tmpt7.view(sizet),
                 self.tmpt2.view_mut(sizet),
                 self.tmpt3.view_mut(sizet),
+                self.tmpt4.view_mut(sizet),
             );
-            // save_img(&self.dev, self.tmp1.view(size), &format!("artifact_{scale}"));
-            // save_img(&self.dev, self.tmp2.view(size), &format!("detail_loss_{scale}"));
+            // save_img(&self.dev, self.tmp0.view(size), &format!("ssim_{scale}"));
+
+            let sum_ssim = self
+                .tmpt2
+                .view(sizet)
+                .sum(&mut self.sum_scratch, self.npp)
+                .unwrap();
             // self.dev.synchronize().unwrap();
+            // dbg!(sum_ssim);
+            self.tmpt2.view_mut(sizet).sqr_ip(self.npp).unwrap();
+            self.tmpt2.view_mut(sizet).sqr_ip(self.npp).unwrap();
+            let sum_ssim_4 = self
+                .tmpt2
+                .view(sizet)
+                .sum(&mut self.sum_scratch, self.npp)
+                .unwrap();
 
             // save_img(&dev, &ssim, &format!("{scale}_artifact"));
             // save_img(&dev, &ssim, &format!("{scale}_detail_loss"));
             // TODO fuse those computions
             let sum_artifact = self
-                .tmpt2
+                .tmpt3
                 .view(sizet)
                 .sum(&mut self.sum_scratch, self.npp)
                 .unwrap();
-            self.tmpt2.view_mut(sizet).sqr_ip(self.npp).unwrap();
-            self.tmpt2.view_mut(sizet).sqr_ip(self.npp).unwrap();
+            self.tmpt3.view_mut(sizet).sqr_ip(self.npp).unwrap();
+            self.tmpt3.view_mut(sizet).sqr_ip(self.npp).unwrap();
             let sum_artifact_4 = self
-                .tmpt2
+                .tmpt3
                 .view(sizet)
                 .sum(&mut self.sum_scratch, self.npp)
                 .unwrap();
             let sum_detail_loss = self
-                .tmpt3
+                .tmpt4
                 .view(sizet)
                 .sum(&mut self.sum_scratch, self.npp)
                 .unwrap();
-            self.tmpt3.view_mut(sizet).sqr_ip(self.npp).unwrap();
-            self.tmpt3.view_mut(sizet).sqr_ip(self.npp).unwrap();
+            self.tmpt4.view_mut(sizet).sqr_ip(self.npp).unwrap();
+            self.tmpt4.view_mut(sizet).sqr_ip(self.npp).unwrap();
             let sum_detail_loss_4 = self
-                .tmpt3
+                .tmpt4
                 .view(sizet)
                 .sum(&mut self.sum_scratch, self.npp)
                 .unwrap();
+
+            profiler_stop().unwrap();
             self.dev.synchronize().unwrap();
 
             let opp = 1.0 / (size.width * size.height) as f64;

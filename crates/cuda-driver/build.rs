@@ -30,6 +30,7 @@ fn main() {
     let mut bindgen = bindgen::Builder::default()
         .clang_args(["-I", include_path.to_str().unwrap()])
         .header(include(&include_path, "cuda.h"))
+        .header(include(&include_path, "cudaProfiler.h"))
         .generate_comments(false)
         .default_enum_style(EnumVariation::Rust {
             non_exhaustive: false,
