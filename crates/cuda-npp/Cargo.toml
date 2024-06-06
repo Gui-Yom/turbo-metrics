@@ -1,12 +1,12 @@
 [package]
-name = "cuda_npp"
+name = "cuda-npp"
 version = "0.1.0"
 edition = "2021"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-cuda_npp_sys = { version = "0.1", path = "../cuda_npp_sys", default-features = false }
+cuda-npp-sys = { version = "0.1", path = "../cuda-npp-sys", default-features = false }
 paste.workspace = true
 
 [dev-dependencies]
@@ -15,18 +15,18 @@ cudarc.workspace = true
 [features]
 default = ["static"]
 # Static linking against cuda libraries
-static = ["cuda_npp_sys/static"]
+static = ["cuda-npp-sys/static"]
 # Image Arithmetic and Logical operations
-ial = ["cuda_npp_sys/ial"]
+ial = ["cuda-npp-sys/ial"]
 # Image Color Conversions
-icc = ["cuda_npp_sys/icc"]
+icc = ["cuda-npp-sys/icc"]
 # Image Data Exchange and Initialization
-idei = ["cuda_npp_sys/idei"]
+idei = ["cuda-npp-sys/idei"]
 # Image Filtering
-if = ["cuda_npp_sys/if"]
+if = ["cuda-npp-sys/if"]
 # Image Gometric transforms (resize, transforms)
-ig = ["cuda_npp_sys/ig"]
+ig = ["cuda-npp-sys/ig"]
 # Image Statistics
-ist = ["cuda_npp_sys/ist"]
+ist = ["cuda-npp-sys/ist"]
 # Image Support functions (malloc & free)
-isu = ["cuda_npp_sys/isu"]
+isu = ["cuda-npp-sys/isu"]

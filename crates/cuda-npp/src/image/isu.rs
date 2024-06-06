@@ -5,10 +5,8 @@ use std::ptr::null_mut;
 
 use cuda_npp_sys::*;
 
-use crate::safe::{Image, E};
-use crate::{Channels, Sample, C, P};
-
-use super::Result;
+use crate::image::{Channels, Image, Sample, C, P};
+use crate::{get_stream, Result};
 
 pub trait Malloc {
     /// `malloc` a new image on device
@@ -27,7 +25,7 @@ macro_rules! malloc_impl {
                 let mut pitch = 0;
                 let ptr = unsafe { paste::paste!([<nppi Malloc $sample_id _ $channel_id>])(width as i32, height as i32, &mut pitch) };
                 if ptr.is_null() {
-                    Err(E::from(NppStatus::NPP_MEMORY_ALLOCATION_ERR))
+                    Err(Error::from(NppStatus::NPP_MEMORY_ALLOCATION_ERR))
                 } else {
                     dbg!(pitch);
                     Ok(Self {
@@ -99,7 +97,7 @@ impl<S: Sample, C: Channels> Drop for Image<S, C> {
         // println!("Dropping image");
         unsafe {
             for ptr in C::iter_ptrs_mut(&mut self.data) {
-                cudaFreeAsync(ptr.cast(), null_mut());
+                cudaFreeAsync(ptr.cast(), get_stream()).result().unwrap();
                 // nppiFree(self.device_ptr() as _);
             }
         }
@@ -108,10 +106,10 @@ impl<S: Sample, C: Channels> Drop for Image<S, C> {
 
 #[cfg(test)]
 mod tests {
-    use crate::safe::isu::Malloc;
-    use crate::safe::Result;
-    use crate::safe::{Image, Img};
-    use crate::C;
+    use crate::image::isu::Malloc;
+    use crate::image::C;
+    use crate::image::{Image, Img};
+    use crate::Result;
 
     #[test]
     fn new_image() -> Result<()> {

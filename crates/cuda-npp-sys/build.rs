@@ -50,6 +50,8 @@ fn main() {
         .allowlist_type("^Npp.*")
         .allowlist_type("^cuda.*")
         .allowlist_type("^cuuint(32|64)_t")
+        .must_use_type("NppStatus")
+        .must_use_type("cudaError")
         .parse_callbacks(Box::new(CustomCallbacks))
         .parse_callbacks(Box::new(
             bindgen::CargoCallbacks::new().rerun_on_header_files(true),

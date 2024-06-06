@@ -2,9 +2,9 @@
 
 use cuda_npp_sys::*;
 
-use crate::{Channels, Sample, __priv, C};
+use crate::{Result, __priv};
 
-use super::{ImgMut, Result};
+use super::{Channels, ImgMut, Sample, C};
 
 pub trait GammaFwdIP<S: Sample, C: Channels>: __priv::Sealed {
     /// Forward gamma correction in place with gamma = 2.2

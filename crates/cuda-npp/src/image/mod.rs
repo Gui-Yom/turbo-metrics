@@ -1,14 +1,10 @@
-use core::ffi::c_void;
+use std::fmt::Debug;
 use std::marker::PhantomData;
 use std::mem;
-use std::ptr::null_mut;
 
-use cuda_npp_sys::{
-    cudaError, cudaFreeAsync, cudaMallocAsync, cudaMemcpy2DAsync, cudaMemcpyKind, NppStatus,
-    NppiRect, NppiSize,
-};
+use cuda_npp_sys::{cudaMemcpy2DAsync, cudaMemcpyKind, cudaStream_t, NppiRect, NppiSize};
 
-use crate::{Channels, Sample, __priv};
+use crate::__priv;
 
 #[cfg(feature = "ial")]
 pub mod ial;
@@ -25,25 +21,108 @@ pub mod ist;
 #[cfg(feature = "isu")]
 pub mod isu;
 
+/// Image sample type
+pub trait Sample: __priv::Sealed + Default + Copy + 'static {}
+
+impl Sample for u8 {}
+
+impl Sample for u16 {}
+
+impl Sample for i16 {}
+
+impl Sample for i32 {}
+
+impl Sample for f32 {}
+
+/// Layout of the image, either packed channels or planar
+pub trait Channels: __priv::Sealed + 'static {
+    const NUM_SAMPLES: usize;
+    const IS_PLANAR: bool;
+
+    type Storage<S>: Debug + Clone;
+    type Ref<S>: Copy;
+    type RefMut<S>;
+
+    fn make_ref<S>(s: &Self::Storage<S>) -> Self::Ref<S>;
+    fn make_ref_mut<S>(s: &mut Self::Storage<S>) -> Self::RefMut<S>;
+
+    fn iter_ptrs<S>(s: &Self::Storage<S>) -> impl ExactSizeIterator<Item = *const S>;
+    fn iter_ptrs_mut<S>(s: &mut Self::Storage<S>) -> impl ExactSizeIterator<Item = *mut S>;
+}
+
+/// Packed channels
 #[derive(Debug)]
-pub enum E {
-    NppError(NppStatus),
-    CudaError(cudaError),
+pub struct C<const N: usize>;
+
+/// Planar channels
+#[derive(Debug)]
+pub struct P<const N: usize>;
+
+macro_rules! impl_channels_packed {
+    ($n:literal) => {
+        impl __priv::Sealed for C<$n> {}
+        impl Channels for C<$n> {
+            const NUM_SAMPLES: usize = $n;
+            const IS_PLANAR: bool = false;
+            type Storage<S> = *mut S;
+            type Ref<S> = *const S;
+            type RefMut<S> = *mut S;
+
+            fn make_ref<S>(s: &Self::Storage<S>) -> Self::Ref<S> {
+                *s
+            }
+
+            fn make_ref_mut<S>(s: &mut Self::Storage<S>) -> Self::RefMut<S> {
+                *s
+            }
+
+            fn iter_ptrs<S>(s: &Self::Storage<S>) -> impl ExactSizeIterator<Item = *const S> {
+                [(*s).cast_const()].into_iter()
+            }
+
+            fn iter_ptrs_mut<S>(s: &mut Self::Storage<S>) -> impl ExactSizeIterator<Item = *mut S> {
+                [*s].into_iter()
+            }
+        }
+    };
 }
 
-impl From<NppStatus> for E {
-    fn from(value: NppStatus) -> Self {
-        E::NppError(value)
-    }
+impl_channels_packed!(1);
+impl_channels_packed!(2);
+impl_channels_packed!(3);
+impl_channels_packed!(4);
+
+macro_rules! impl_channels_planar {
+    ($n:literal) => {
+        impl __priv::Sealed for P<$n> {}
+        impl Channels for P<$n> {
+            const NUM_SAMPLES: usize = $n;
+            const IS_PLANAR: bool = true;
+            type Storage<S> = [*mut S; Self::NUM_SAMPLES];
+            type Ref<S> = *const *const S;
+            type RefMut<S> = *const *mut S;
+
+            fn make_ref<S>(s: &Self::Storage<S>) -> Self::Ref<S> {
+                s.as_ptr() as _
+            }
+
+            fn make_ref_mut<S>(s: &mut Self::Storage<S>) -> Self::RefMut<S> {
+                s.as_ptr()
+            }
+
+            fn iter_ptrs<S>(s: &Self::Storage<S>) -> impl ExactSizeIterator<Item = *const S> {
+                s.clone().into_iter().map(|p| p.cast_const())
+            }
+
+            fn iter_ptrs_mut<S>(s: &mut Self::Storage<S>) -> impl ExactSizeIterator<Item = *mut S> {
+                s.iter().copied()
+            }
+        }
+    };
 }
 
-impl From<cudaError> for E {
-    fn from(value: cudaError) -> Self {
-        E::CudaError(value)
-    }
-}
-
-pub type Result<T> = std::result::Result<T, E>;
+impl_channels_planar!(3);
+impl_channels_planar!(4);
 
 /// Owned image
 #[derive(Debug)]
@@ -58,6 +137,8 @@ pub struct Image<S: Sample, C: Channels> {
 }
 
 impl<S: Sample, C: Channels> Image<S, C> {
+    /// This method extract the raw device pointers from the [Image].
+    /// The image destructor won't run, it's up to the caller to free the memory.
     fn into_inner(self) -> C::Storage<S> {
         let inner = self.data.clone();
         mem::forget(self);
@@ -230,14 +311,14 @@ pub trait Img<S: Sample, C: Channels>: __priv::Sealed {
     }
 
     #[cfg(feature = "isu")]
-    fn malloc_same_size<S2: Sample, C2: Channels>(&self) -> Result<Image<S2, C2>>
+    fn malloc_same_size<S2: Sample, C2: Channels>(&self) -> crate::Result<Image<S2, C2>>
     where
         Image<S2, C2>: isu::Malloc,
     {
         isu::Malloc::malloc(self.width(), self.height())
     }
 
-    fn copy_to_cpu(&self) -> Result<Vec<S>> {
+    fn copy_to_cpu(&self, stream: cudaStream_t) -> crate::Result<Vec<S>> {
         let mut dst =
             vec![S::default(); self.width() as usize * self.height() as usize * C::NUM_SAMPLES];
 
@@ -248,7 +329,7 @@ pub trait Img<S: Sample, C: Channels>: __priv::Sealed {
         };
 
         for (i, ptr) in self.alloc_ptrs().enumerate() {
-            let res = unsafe {
+            unsafe {
                 cudaMemcpy2DAsync(
                     dst[self.width() as usize * self.height() as usize * i..]
                         .as_mut_ptr()
@@ -259,15 +340,10 @@ pub trait Img<S: Sample, C: Channels>: __priv::Sealed {
                     self.width() as usize * pixel_size,
                     self.height() as usize,
                     cudaMemcpyKind::cudaMemcpyDeviceToHost,
-                    null_mut(),
+                    stream,
                 )
-            };
-            match res {
-                cudaError::cudaSuccess => {}
-                e => {
-                    return Err(e.into());
-                }
             }
+            .result()?;
         }
 
         Ok(dst)
@@ -281,7 +357,7 @@ pub trait ImgMut<S: Sample, C: Channels>: Img<S, C> {
     /// Iterator over the pointers of the underlying allocations on device
     fn alloc_ptrs_mut(&mut self) -> impl ExactSizeIterator<Item = *mut S>;
 
-    fn copy_from_cpu(&mut self, data: &[S]) -> Result<()> {
+    fn copy_from_cpu(&mut self, data: &[S], stream: cudaStream_t) -> crate::Result<()> {
         let width = self.width() as usize;
         let height = self.height() as usize;
         let pitch = self.pitch() as usize;
@@ -294,7 +370,7 @@ pub trait ImgMut<S: Sample, C: Channels>: Img<S, C> {
         };
 
         for (i, ptr) in self.alloc_ptrs_mut().enumerate() {
-            let res = unsafe {
+            unsafe {
                 cudaMemcpy2DAsync(
                     ptr.cast(),
                     pitch,
@@ -303,15 +379,10 @@ pub trait ImgMut<S: Sample, C: Channels>: Img<S, C> {
                     width * pixel_size,
                     height,
                     cudaMemcpyKind::cudaMemcpyHostToDevice,
-                    null_mut(),
+                    stream,
                 )
-            };
-            match res {
-                cudaError::cudaSuccess => {}
-                e => {
-                    return Err(e.into());
-                }
             }
+            .result()?;
         }
         Ok(())
     }
@@ -487,37 +558,11 @@ impl<'a, S: Sample, C: Channels> ImgMut<S, C> for &mut ImgViewMut<'a, S, C> {
     }
 }
 
-/// An opaque scratch buffer needed by some npp routines
-#[derive(Debug, Clone)]
-pub struct ScratchBuffer {
-    pub ptr: *mut c_void,
-    pub size: usize,
-}
-
-impl ScratchBuffer {
-    /// Uses stream ordered cuda malloc and free
-    pub fn alloc(size: usize) -> Self {
-        let mut ptr = null_mut();
-        unsafe {
-            cudaMallocAsync(&mut ptr, size, null_mut());
-        }
-        Self { ptr, size }
-    }
-}
-
-impl Drop for ScratchBuffer {
-    fn drop(&mut self) {
-        unsafe {
-            cudaFreeAsync(self.ptr, null_mut());
-        }
-    }
-}
-
 #[cfg(test)]
 mod tests {
-    use crate::safe::isu::Malloc;
-    use crate::safe::Image;
-    use crate::C;
+    use crate::image::isu::Malloc;
+    use crate::image::Image;
+    use crate::image::C;
 
     #[test]
     fn into_inner_does_not_drop() {

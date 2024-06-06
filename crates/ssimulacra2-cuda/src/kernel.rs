@@ -1,6 +1,6 @@
 use cuda_driver::{kernel_params, CuFunction, CuModule, CuStream, LaunchConfig};
-use cuda_npp::safe::{Img, ImgMut};
-use cuda_npp::{assert_same_size, C, P};
+use cuda_npp::assert_same_size;
+use cuda_npp::image::{Img, ImgMut, C, P};
 
 const PTX_MODULE_NAME: &str = "ssimulacra2";
 
@@ -32,13 +32,18 @@ impl Kernel {
         }
     }
 
-    pub fn srgb_to_linear(&self, src: impl Img<u8, C<3>>, mut dst: impl ImgMut<f32, C<3>>) {
+    pub fn srgb_to_linear(
+        &self,
+        stream: &CuStream,
+        src: impl Img<u8, C<3>>,
+        mut dst: impl ImgMut<f32, C<3>>,
+    ) {
         assert_same_size!(src, dst);
         unsafe {
             self.srgb_to_linear
                 .launch(
                     &launch_config_2d(src.width() * 3, src.height()),
-                    CuStream::DEFAULT,
+                    stream,
                     kernel_params!(
                         src.device_ptr(),
                         src.pitch() as usize,
@@ -50,12 +55,17 @@ impl Kernel {
         }
     }
 
-    pub fn downscale_by_2(&self, src: impl Img<f32, C<3>>, mut dst: impl ImgMut<f32, C<3>>) {
+    pub fn downscale_by_2(
+        &self,
+        stream: &CuStream,
+        src: impl Img<f32, C<3>>,
+        mut dst: impl ImgMut<f32, C<3>>,
+    ) {
         unsafe {
             self.downscale_by_2
                 .launch(
                     &launch_config_2d(dst.width(), dst.height()),
-                    CuStream::DEFAULT,
+                    stream,
                     kernel_params!(
                         src.width() as usize,
                         src.height() as usize,
@@ -71,7 +81,12 @@ impl Kernel {
         }
     }
 
-    pub fn downscale_plane_by_2(&self, src: impl Img<f32, C<1>>, mut dst: impl ImgMut<f32, C<1>>) {
+    pub fn downscale_plane_by_2(
+        &self,
+        stream: &CuStream,
+        src: impl Img<f32, C<1>>,
+        mut dst: impl ImgMut<f32, C<1>>,
+    ) {
         unsafe {
             const THREADS_WIDTH: u32 = 16;
             const THREADS_HEIGHT: u32 = 16;
@@ -85,7 +100,7 @@ impl Kernel {
                         block_dim: (THREADS_WIDTH, THREADS_HEIGHT, 1),
                         shared_mem_bytes: 0,
                     },
-                    CuStream::DEFAULT,
+                    stream,
                     kernel_params!(
                         src.width() as usize,
                         src.height() as usize,
@@ -103,6 +118,7 @@ impl Kernel {
 
     pub fn downscale_plane_by_2_planar(
         &self,
+        stream: &CuStream,
         src: impl Img<f32, P<3>>,
         mut dst: impl ImgMut<f32, P<3>>,
     ) {
@@ -124,7 +140,7 @@ impl Kernel {
                             block_dim: (THREADS_WIDTH, THREADS_HEIGHT, 1),
                             shared_mem_bytes: 0,
                         },
-                        CuStream::DEFAULT,
+                        stream,
                         kernel_params!(
                             src.width() as usize,
                             src.height() as usize,
@@ -141,13 +157,18 @@ impl Kernel {
         }
     }
 
-    pub fn linear_to_xyb(&self, src: impl Img<f32, C<3>>, mut dst: impl ImgMut<f32, C<3>>) {
+    pub fn linear_to_xyb(
+        &self,
+        stream: &CuStream,
+        src: impl Img<f32, C<3>>,
+        mut dst: impl ImgMut<f32, C<3>>,
+    ) {
         assert_same_size!(src, dst);
         unsafe {
             self.linear_to_xyb
                 .launch(
                     &launch_config_2d(src.width(), src.height()),
-                    CuStream::DEFAULT,
+                    stream,
                     kernel_params!(
                         src.width() as usize,
                         src.height() as usize,
@@ -161,7 +182,12 @@ impl Kernel {
         }
     }
 
-    pub fn linear_to_xyb_planar(&self, src: impl Img<f32, P<3>>, mut dst: impl ImgMut<f32, P<3>>) {
+    pub fn linear_to_xyb_planar(
+        &self,
+        stream: &CuStream,
+        src: impl Img<f32, P<3>>,
+        mut dst: impl ImgMut<f32, P<3>>,
+    ) {
         assert_same_size!(src, dst);
         let [src_r, src_g, src_b] = src.storage();
         let [dst_x, dst_y, dst_b] = src.storage();
@@ -169,7 +195,7 @@ impl Kernel {
             self.linear_to_xyb_planar
                 .launch(
                     &launch_config_2d(src.width(), src.height()),
-                    CuStream::DEFAULT,
+                    stream,
                     kernel_params!(
                         src.width() as usize,
                         src.height() as usize,
@@ -191,6 +217,7 @@ impl Kernel {
     /// We can treat the images as a single plane because each thread only processes a single column.
     pub fn blur_pass_fused(
         &self,
+        stream: &CuStream,
         src0: impl Img<f32, C<3>>,
         mut dst0: impl ImgMut<f32, C<3>>,
         src1: impl Img<f32, C<3>>,
@@ -226,7 +253,7 @@ impl Kernel {
                         block_dim: (THREADS_WIDTH, THREADS_HEIGHT, 1),
                         shared_mem_bytes: 0,
                     },
-                    CuStream::DEFAULT,
+                    stream,
                     kernel_params!(
                         src0.width() as usize * 3,
                         src0.height() as usize,
@@ -250,6 +277,7 @@ impl Kernel {
 
     pub fn compute_error_maps(
         &self,
+        stream: &CuStream,
         source: impl Img<f32, C<3>>,
         distorted: impl Img<f32, C<3>>,
         mu1: impl Img<f32, C<3>>,
@@ -274,7 +302,7 @@ impl Kernel {
             self.compute_error_maps
                 .launch(
                     &launch_config_2d(mu1.width() * 3, mu1.height()),
-                    CuStream::DEFAULT,
+                    stream,
                     kernel_params!(
                         mu1.width() as usize * 3,
                         mu1.height() as usize,

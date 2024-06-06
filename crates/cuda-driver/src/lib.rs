@@ -9,11 +9,13 @@ use std::ptr::{null, null_mut};
 
 use crate::sys::{
     cuCtxSetCurrent, cuCtxSynchronize, cuDeviceGet, cuDeviceGetCount, cuDeviceGetName,
-    cuDevicePrimaryCtxRetain, cuDeviceTotalMem_v2, cuDriverGetVersion, cuFuncGetName,
-    cuFuncGetParamInfo, cuFuncIsLoaded, cuFuncLoad, cuFuncSetCacheConfig, cuGetErrorString, cuInit,
-    cuLaunchKernel, cuModuleEnumerateFunctions, cuModuleGetFunction, cuModuleGetFunctionCount,
-    cuModuleLoad, cuModuleUnload, cuStreamCreate, cuStreamDestroy_v2, cuStreamQuery,
-    cuStreamSynchronize,
+    cuDevicePrimaryCtxRetain, cuDeviceTotalMem_v2, cuDriverGetVersion, cuEventCreate,
+    cuEventDestroy_v2, cuEventElapsedTime, cuEventQuery, cuEventRecord, cuEventSynchronize,
+    cuFuncGetName, cuFuncGetParamInfo, cuFuncIsLoaded, cuFuncLoad, cuFuncSetCacheConfig,
+    cuGetErrorString, cuInit, cuLaunchKernel, cuModuleEnumerateFunctions, cuModuleGetFunction,
+    cuModuleGetFunctionCount, cuModuleLoad, cuModuleUnload, cuProfilerStart, cuProfilerStop,
+    cuStreamCreate, cuStreamDestroy_v2, cuStreamQuery, cuStreamSynchronize, cuStreamWaitEvent,
+    CUstream_flags,
 };
 
 pub mod sys {
@@ -67,6 +69,7 @@ impl Display for CuError {
 
 impl Error for CuError {}
 
+/// Initialize the global cuda context. This needs to be called before any API call.
 pub fn init_cuda() -> CuResult<()> {
     unsafe { cuInit(0).result() }
 }
@@ -79,13 +82,24 @@ pub fn cuda_driver_version() -> CuResult<u32> {
     Ok(version as u32)
 }
 
-pub fn sync() -> CuResult<()> {
+/// Synchronize with the whole CUDA context.
+pub fn sync_ctx() -> CuResult<()> {
     unsafe { cuCtxSynchronize().result() }
 }
 
-struct CudaDevice(sys::CUdevice);
+pub fn profiler_start() -> CuResult<()> {
+    unsafe { cuProfilerStart().result() }
+}
 
-impl CudaDevice {
+pub fn profiler_stop() -> CuResult<()> {
+    unsafe { cuProfilerStop().result() }
+}
+
+#[repr(transparent)]
+pub struct CuDevice(sys::CUdevice);
+
+impl CuDevice {
+    /// Total number of devices visible by this cuda driver.
     pub fn count() -> CuResult<i32> {
         let mut count = 0;
         unsafe {
@@ -94,6 +108,7 @@ impl CudaDevice {
         Ok(count)
     }
 
+    /// Get a device by its index.
     pub fn get(index: i32) -> CuResult<Self> {
         let mut device = MaybeUninit::uninit();
         unsafe {
@@ -102,6 +117,7 @@ impl CudaDevice {
         }
     }
 
+    /// Get the device name.
     pub fn name(&self) -> CuResult<String> {
         let mut name = [0; 64];
         let name_str = unsafe {
@@ -111,6 +127,7 @@ impl CudaDevice {
         Ok(name_str.to_string_lossy().to_string())
     }
 
+    /// Get the device total memory in bytes.
     pub fn total_mem(&self) -> CuResult<usize> {
         let mut size = 0;
         unsafe {
@@ -119,6 +136,7 @@ impl CudaDevice {
         Ok(size)
     }
 
+    /// Get the device primary context. Required to use any more complex API calls.
     pub fn retain_primary_ctx(&self) -> CuResult<CuCtx> {
         let mut ctx = null_mut();
         unsafe {
@@ -128,31 +146,41 @@ impl CudaDevice {
     }
 }
 
+#[repr(transparent)]
 pub struct CuCtx(sys::CUcontext);
 
 impl CuCtx {
+    /// Bind this context to the calling thread.
     pub fn set_current(&self) -> CuResult<()> {
         unsafe { cuCtxSetCurrent(self.0).result() }
     }
 }
 
+#[repr(transparent)]
 pub struct CuStream(sys::CUstream);
 
 impl CuStream {
     pub const DEFAULT: Self = CuStream(null_mut());
 
+    /// Create a new CUDA stream.
     pub fn new() -> CuResult<Self> {
         let mut stream = null_mut();
         unsafe {
-            cuStreamCreate(&mut stream, 0).result()?;
+            cuStreamCreate(&mut stream, CUstream_flags::CU_STREAM_NON_BLOCKING as _).result()?;
         }
         Ok(Self(stream))
     }
 
+    pub fn inner(&self) -> *mut c_void {
+        self.0 as _
+    }
+
+    /// Wait for any work on this stream to complete.
     pub fn sync(&self) -> CuResult<()> {
         unsafe { cuStreamSynchronize(self.0).result() }
     }
 
+    /// Return true if this stream has finished any submitted work.
     pub fn completed(&self) -> CuResult<bool> {
         unsafe {
             match cuStreamQuery(self.0) {
@@ -161,6 +189,25 @@ impl CuStream {
                 other => Err(CuError(other)),
             }
         }
+    }
+
+    /// Make this stream wait for an event ot complete.
+    pub fn wait_for_evt(&self, evt: &CuEvent) -> CuResult<()> {
+        unsafe { cuStreamWaitEvent(self.0, evt.0, 0).result() }
+    }
+
+    /// Make this stream wait for the work in another stream to complete
+    pub fn wait_for_stream(&self, other: &Self) -> CuResult<()> {
+        let evt = CuEvent::new()?;
+        evt.record(other)?;
+        self.wait_for_evt(&evt)
+    }
+
+    /// Join two streams by making each one wait for the other.
+    /// After this point, both streams are synchronized with each other.
+    pub fn join(&self, other: &Self) -> CuResult<()> {
+        self.wait_for_stream(other)?;
+        other.wait_for_stream(self)
     }
 }
 
@@ -171,6 +218,50 @@ impl Drop for CuStream {
                 cuStreamDestroy_v2(self.0).result().unwrap();
             }
         }
+    }
+}
+
+/// An event is a point in a stream.
+#[repr(transparent)]
+pub struct CuEvent(sys::CUevent);
+
+impl CuEvent {
+    pub fn new() -> CuResult<Self> {
+        let mut ptr = null_mut();
+        unsafe { cuEventCreate(&mut ptr, 0).result()? };
+        Ok(Self(ptr))
+    }
+
+    /// Return true if this event has completed.
+    pub fn done(&self) -> CuResult<bool> {
+        unsafe {
+            match cuEventQuery(self.0) {
+                sys::CUresult::CUDA_SUCCESS => Ok(true),
+                sys::CUresult::CUDA_ERROR_NOT_READY => Ok(false),
+                other => Err(CuError(other)),
+            }
+        }
+    }
+
+    /// Wait for this event to complete.
+    pub fn sync(&self) -> CuResult<()> {
+        unsafe { cuEventSynchronize(self.0).result() }
+    }
+
+    pub fn elapsed_since(&self, start: &Self) -> CuResult<f32> {
+        let mut elapsed = 0.0;
+        unsafe { cuEventElapsedTime(&mut elapsed, start.0, self.0).result()? }
+        Ok(elapsed)
+    }
+
+    pub fn record(&self, stream: &CuStream) -> CuResult<()> {
+        unsafe { cuEventRecord(self.0, stream.0).result() }
+    }
+}
+
+impl Drop for CuEvent {
+    fn drop(&mut self) {
+        unsafe { cuEventDestroy_v2(self.0).result().unwrap() }
     }
 }
 
@@ -265,7 +356,7 @@ impl CuFunction {
     pub fn launch(
         &self,
         cfg: &LaunchConfig,
-        stream: CuStream,
+        stream: &CuStream,
         params: &[*mut c_void],
     ) -> CuResult<()> {
         assert_eq!(params.len(), self.param_count()?);
@@ -311,12 +402,12 @@ macro_rules! kernel_params {
 mod tests {
     use std::ptr::{null, null_mut};
 
-    use crate::{init_cuda, CuModule, CuResult, CuStream, CudaDevice, LaunchConfig};
+    use crate::{init_cuda, CuDevice, CuModule, CuResult, CuStream, LaunchConfig};
 
     #[test]
     fn test_device() -> CuResult<()> {
         init_cuda()?;
-        let dev = CudaDevice::get(0)?;
+        let dev = CuDevice::get(0)?;
         dbg!(dev.total_mem()?);
         dbg!(dev.name()?);
         Ok(())
@@ -325,7 +416,7 @@ mod tests {
     #[test]
     fn test_module() -> CuResult<()> {
         init_cuda()?;
-        let dev = CudaDevice::get(0)?;
+        let dev = CuDevice::get(0)?;
         let ctx = dev.retain_primary_ctx()?;
         ctx.set_current()?;
         let module = CuModule::load_from_file(
@@ -343,7 +434,7 @@ mod tests {
     #[test]
     fn test_launch() -> CuResult<()> {
         init_cuda()?;
-        let dev = CudaDevice::get(0)?;
+        let dev = CuDevice::get(0)?;
         let ctx = dev.retain_primary_ctx()?;
         ctx.set_current()?;
         let module = CuModule::load_from_file(
@@ -357,7 +448,7 @@ mod tests {
                 block_dim: (32, 1, 1),
                 shared_mem_bytes: 0,
             },
-            CuStream::DEFAULT,
+            &CuStream::DEFAULT,
             kernel_params!(r, 1, w, 1,),
         )?;
         Ok(())

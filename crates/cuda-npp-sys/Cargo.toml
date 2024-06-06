@@ -1,5 +1,5 @@
 [package]
-name = "cuda_npp_sys"
+name = "cuda-npp-sys"
 version = "0.1.0"
 edition = "2021"
 

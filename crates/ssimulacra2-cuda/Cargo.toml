@@ -6,9 +6,9 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-cudarc.workspace = true
+array-init = { workspace = true }
 cuda-driver = { version = "0.1", path = "../cuda-driver" }
-cuda_npp = { version = "0.1", path = "../cuda_npp", features = ["isu", "ial", "idei", "if", "ist"] }
+cuda-npp = { version = "0.1", path = "../cuda-npp", features = ["isu", "ial", "idei", "if", "ist"] }
 zune-image.workspace = true
 
 [build-dependencies]

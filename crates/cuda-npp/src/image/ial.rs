@@ -2,9 +2,9 @@
 
 use cuda_npp_sys::*;
 
-use crate::{__priv, assert_same_size, Channels, Sample, C};
+use crate::{__priv, assert_same_size, Result};
 
-use super::{Image, Img, ImgMut, Result};
+use super::{Channels, Image, Img, ImgMut, Sample, C};
 
 pub trait Mul<S: Sample, C: Channels>: __priv::Sealed {
     /// Pixel by pixel multiply of two images.
@@ -55,6 +55,33 @@ macro_rules! impl_mul {
 impl_mul!(f32, C<3>, _32f, C3);
 impl_mul!(f32, C<1>, _32f, C1);
 
+pub trait Sqr<S: Sample, C: Channels>: __priv::Sealed {
+    fn sqr(&self, dst: impl ImgMut<S, C>, ctx: NppStreamContext) -> Result<()>;
+}
+
+macro_rules! impl_sqr {
+    ($sample_ty:ty, $channel_ty:ty, $sample_id:ident, $channel_id:ident) => {
+        impl<T: Img<$sample_ty, $channel_ty>> Sqr<$sample_ty, $channel_ty> for T {
+            fn sqr(&self, mut dst: impl ImgMut<$sample_ty, $channel_ty>, ctx: NppStreamContext) -> Result<()> {
+                unsafe {
+                    paste::paste!([<nppi Sqr $sample_id _ $channel_id R_Ctx>])(
+                        self.device_ptr(),
+                        self.pitch(),
+                        dst.device_ptr_mut(),
+                        dst.pitch(),
+                        self.size(),
+                        ctx,
+                    )
+                }.result()?;
+                Ok(())
+            }
+        }
+    };
+}
+
+impl_sqr!(f32, C<3>, _32f, C3);
+impl_sqr!(f32, C<1>, _32f, C1);
+
 pub trait SqrIP<S: Sample, C: Channels>: __priv::Sealed {
     fn sqr_ip(&mut self, ctx: NppStreamContext) -> Result<()>;
 }
@@ -84,11 +111,11 @@ impl_sqrip!(f32, C<1>, _32f, C1);
 mod tests {
     use cudarc::driver::CudaDevice;
 
-    use crate::safe::ial::SqrIP;
-    use crate::safe::isu::Malloc;
-    use crate::safe::Image;
-    use crate::safe::Result;
-    use crate::{get_stream_ctx, C};
+    use crate::get_stream_ctx;
+    use crate::image::ial::SqrIP;
+    use crate::image::isu::Malloc;
+    use crate::image::{Image, C};
+    use crate::Result;
 
     #[test]
     fn mul() {}

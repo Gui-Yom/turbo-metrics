@@ -1,19 +1,18 @@
 use std::mem;
-use std::sync::Arc;
+use std::time::Instant;
 
-use cudarc::driver::CudaDevice;
 use zune_image::codecs::png::zune_core::colorspace::{ColorCharacteristics, ColorSpace};
 use zune_image::codecs::png::zune_core::options::DecoderOptions;
 
-use cuda_driver::{profiler_start, profiler_stop, CuStream};
-use cuda_npp::safe::ial::{Mul, SqrIP};
-use cuda_npp::safe::idei::{ConvertChannel, Transpose};
-use cuda_npp::safe::if_::FilterGaussBorder;
-use cuda_npp::safe::ist::Sum;
-use cuda_npp::safe::isu::Malloc;
-use cuda_npp::safe::{Image, Img, ImgMut, ScratchBuffer};
-use cuda_npp::sys::NppStreamContext;
-use cuda_npp::{get_stream_ctx, C};
+use cuda_driver::{CuDevice, CuStream};
+use cuda_npp::image::ial::{Mul, Sqr, SqrIP};
+use cuda_npp::image::idei::{ConvertChannel, Transpose};
+use cuda_npp::image::if_::FilterGaussBorder;
+use cuda_npp::image::ist::Sum;
+use cuda_npp::image::isu::Malloc;
+use cuda_npp::image::{Image, Img, ImgMut, ImgView, ImgViewMut, C};
+use cuda_npp::sys::{cudaStream_t, NppStreamContext, NppiRect, Result};
+use cuda_npp::{get_stream_ctx, ScratchBuffer};
 
 use crate::kernel::Kernel;
 
@@ -21,7 +20,15 @@ mod cpu;
 mod kernel;
 
 fn main() {
-    let dev = CudaDevice::new(0).unwrap();
+    cuda_driver::init_cuda().expect("Could not initialize the CUDA API");
+    let dev = CuDevice::get(0).unwrap();
+    println!(
+        "Using device {} with CUDA version {}",
+        dev.name().unwrap(),
+        cuda_driver::cuda_driver_version().unwrap()
+    );
+    // Bind to main thread
+    dev.retain_primary_ctx().unwrap().set_current().unwrap();
 
     let ref_img = zune_image::image::Image::open_with_options(
         "crates/ssimulacra2-cuda/source.png",
@@ -42,9 +49,14 @@ fn main() {
     assert_eq!((width, height), (dwidth, dheight));
     let dis_bytes = &dis_img.flatten_to_u8()[0];
 
-    let mut ssimulacra2 = Ssimulacra2::new(&dev, width as u32, height as u32);
+    let mut ssimulacra2 = Ssimulacra2::new(width as u32, height as u32).unwrap();
     dbg!(ssimulacra2.mem_usage());
+    let start = Instant::now();
     dbg!(ssimulacra2.compute(ref_bytes, dis_bytes));
+    println!(
+        "Finished computing a single frame in {} ms",
+        start.elapsed().as_millis()
+    );
 
     // let ref_img = CpuImg::from_srgb(ref_bytes, width, height);
     // let dis_img = CpuImg::from_srgb(dis_bytes, width, height);
@@ -60,19 +72,25 @@ fn main() {
 ///
 /// Processing a single image pair results in 192 kernels launches !
 struct Ssimulacra2 {
-    dev: Arc<CudaDevice>,
     kernel: Kernel,
     npp: NppStreamContext,
+
     ref_input: Image<u8, C<3>>,
+
     dis_input: Image<u8, C<3>>,
     ref_linear: Image<f32, C<3>>,
     dis_linear: Image<f32, C<3>>,
     ref_xyb: Image<f32, C<3>>,
     dis_xyb: Image<f32, C<3>>,
-
     sum_scratch: ScratchBuffer,
+    sum_scratch2: ScratchBuffer,
+    sum_scratch3: ScratchBuffer,
+    sum_scratch4: ScratchBuffer,
+    sum_scratch5: ScratchBuffer,
+    sum_scratch6: ScratchBuffer,
 
     tmp0: Image<f32, C<3>>,
+
     tmp1: Image<f32, C<3>>,
     tmp2: Image<f32, C<3>>,
     tmp3: Image<f32, C<3>>,
@@ -80,8 +98,8 @@ struct Ssimulacra2 {
     tmp5: Image<f32, C<3>>,
     tmp6: Image<f32, C<3>>,
     tmp7: Image<f32, C<3>>,
-
     tmpt0: Image<f32, C<3>>,
+
     tmpt1: Image<f32, C<3>>,
     tmpt2: Image<f32, C<3>>,
     tmpt3: Image<f32, C<3>>,
@@ -91,47 +109,62 @@ struct Ssimulacra2 {
     tmpt7: Image<f32, C<3>>,
     tmpt8: Image<f32, C<3>>,
     tmpt9: Image<f32, C<3>>,
+
+    streams: [CuStream; 6 * 6],
 }
 
 impl Ssimulacra2 {
-    pub fn new(dev: &Arc<CudaDevice>, width: u32, height: u32) -> Self {
-        let ref_input = Image::<u8, C<3>>::malloc(width, height).unwrap();
-        let dis_input = Image::<u8, C<3>>::malloc(width, height).unwrap();
+    pub fn new(width: u32, height: u32) -> Result<Self> {
+        let streams = array_init::array_init(|i| CuStream::new().unwrap());
+        let mut npp = get_stream_ctx()?;
+        npp.hStream = streams[0].inner() as _;
+        // Set in the global context too
+        cuda_npp::set_stream(npp.hStream)?;
 
-        let ref_linear = ref_input.malloc_same_size().unwrap();
-        let dis_linear = dis_input.malloc_same_size().unwrap();
+        let ref_input = Image::<u8, C<3>>::malloc(width, height)?;
+        let dis_input = Image::<u8, C<3>>::malloc(width, height)?;
 
-        let ref_xyb = ref_linear.malloc_same_size().unwrap();
-        let dis_xyb = dis_linear.malloc_same_size().unwrap();
+        let ref_linear = ref_input.malloc_same_size()?;
+        let dis_linear = dis_input.malloc_same_size()?;
 
-        let tmp0 = ref_input.malloc_same_size().unwrap();
-        let tmp1 = ref_input.malloc_same_size().unwrap();
-        let tmp2 = ref_input.malloc_same_size().unwrap();
+        let ref_xyb = ref_linear.malloc_same_size()?;
+        let dis_xyb = dis_linear.malloc_same_size()?;
 
-        let tmp3 = ref_input.malloc_same_size().unwrap();
-        let tmp4 = ref_input.malloc_same_size().unwrap();
-        let tmp5 = ref_input.malloc_same_size().unwrap();
-        let tmp6 = ref_input.malloc_same_size().unwrap();
-        let tmp7 = ref_input.malloc_same_size().unwrap();
+        let tmp0 = ref_input.malloc_same_size()?;
+        let tmp1 = ref_input.malloc_same_size()?;
+        let tmp2 = ref_input.malloc_same_size()?;
 
-        let tmpt0 = Image::malloc(ref_input.height(), ref_input.width()).unwrap();
-        let tmpt1 = tmpt0.malloc_same_size().unwrap();
-        let tmpt2 = tmpt0.malloc_same_size().unwrap();
-        let tmpt3 = tmpt0.malloc_same_size().unwrap();
-        let tmpt4 = tmpt0.malloc_same_size().unwrap();
+        let tmp3 = ref_input.malloc_same_size()?;
+        let tmp4 = ref_input.malloc_same_size()?;
+        let tmp5 = ref_input.malloc_same_size()?;
+        let tmp6 = ref_input.malloc_same_size()?;
+        let tmp7 = ref_input.malloc_same_size()?;
 
-        let tmpt5 = tmpt0.malloc_same_size().unwrap();
-        let tmpt6 = tmpt0.malloc_same_size().unwrap();
-        let tmpt7 = tmpt0.malloc_same_size().unwrap();
-        let tmpt8 = tmpt0.malloc_same_size().unwrap();
-        let tmpt9 = tmpt0.malloc_same_size().unwrap();
+        let tmpt0 = Image::malloc(ref_input.height(), ref_input.width())?;
+        let tmpt1 = tmpt0.malloc_same_size()?;
+        let tmpt2 = tmpt0.malloc_same_size()?;
+        let tmpt3 = tmpt0.malloc_same_size()?;
+        let tmpt4 = tmpt0.malloc_same_size()?;
 
-        let sum_scratch = tmpt0.sum_alloc_scratch();
+        let tmpt5 = tmpt0.malloc_same_size()?;
+        let tmpt6 = tmpt0.malloc_same_size()?;
+        let tmpt7 = tmpt0.malloc_same_size()?;
+        let tmpt8 = tmpt0.malloc_same_size()?;
+        let tmpt9 = tmpt0.malloc_same_size()?;
 
-        Self {
-            dev: Arc::clone(dev),
+        let sum_scratch = tmpt0.sum_alloc_scratch(npp)?;
+        let sum_scratch2 = tmpt0.sum_alloc_scratch(npp)?;
+        let sum_scratch3 = tmpt0.sum_alloc_scratch(npp)?;
+        let sum_scratch4 = tmpt0.sum_alloc_scratch(npp)?;
+        let sum_scratch5 = tmpt0.sum_alloc_scratch(npp)?;
+        let sum_scratch6 = tmpt0.sum_alloc_scratch(npp)?;
+
+        // Wait for allocations to complete
+        streams[0].sync().unwrap();
+
+        Ok(Self {
             kernel: Kernel::load(),
-            npp: get_stream_ctx().unwrap(),
+            npp,
             ref_input,
             dis_input,
             ref_linear,
@@ -139,6 +172,11 @@ impl Ssimulacra2 {
             ref_xyb,
             dis_xyb,
             sum_scratch,
+            sum_scratch2,
+            sum_scratch3,
+            sum_scratch4,
+            sum_scratch5,
+            sum_scratch6,
             tmp0,
             tmp1,
             tmp2,
@@ -157,7 +195,8 @@ impl Ssimulacra2 {
             tmpt7,
             tmpt8,
             tmpt9,
-        }
+            streams,
+        })
     }
 
     /// Estimate the approximate memory usage
@@ -188,22 +227,24 @@ impl Ssimulacra2 {
             + self.tmpt9.device_mem_usage()
     }
 
-    pub fn compute(&mut self, ref_bytes: &[u8], dis_bytes: &[u8]) -> f64 {
-        profiler_stop().unwrap();
+    pub fn compute(&mut self, ref_bytes: &[u8], dis_bytes: &[u8]) -> Result<f64> {
+        // profiler_stop().unwrap();
 
         const SCALES: usize = 6;
 
-        self.ref_input.copy_from_cpu(ref_bytes).unwrap();
-        self.dis_input.copy_from_cpu(dis_bytes).unwrap();
+        self.ref_input
+            .copy_from_cpu(ref_bytes, self.streams[0].inner() as _)?;
+        self.dis_input
+            .copy_from_cpu(dis_bytes, self.streams[1].inner() as _)?;
 
         // TODO we should work with planar images, as it would allow us to coalesce read and writes
         //  coalescing can already be achieved for kernels which doesn't require access to neighbouring pixels or samples
 
         // Convert to linear
         self.kernel
-            .srgb_to_linear(&self.ref_input, &mut self.ref_linear);
+            .srgb_to_linear(&self.streams[0], &self.ref_input, &mut self.ref_linear);
         self.kernel
-            .srgb_to_linear(&self.dis_input, &mut self.dis_linear);
+            .srgb_to_linear(&self.streams[1], &self.dis_input, &mut self.dis_linear);
 
         // save_img(&self.dev, &self.ref_linear, &format!("ref_linear"));
 
@@ -236,10 +277,16 @@ impl Ssimulacra2 {
                     // TODO this can be done with warp level primitives by having warps sized 16x2
                     //  block size 16x16 would be perfect
                     //  warps would contain 8 2x2 patches which can be summed using shfl_down_sync and friends
-                    self.kernel
-                        .downscale_by_2(&ref_linear, self.tmp0.view_mut(size));
-                    self.kernel
-                        .downscale_by_2(&dis_linear, self.tmp1.view_mut(size));
+                    self.kernel.downscale_by_2(
+                        &self.streams[0],
+                        &ref_linear,
+                        self.tmp0.view_mut(size),
+                    );
+                    self.kernel.downscale_by_2(
+                        &self.streams[1],
+                        &dis_linear,
+                        self.tmp1.view_mut(size),
+                    );
 
                     // let mut planar = self.ref_linear.malloc_same_size().unwrap();
                     // self.ref_linear.convert_channel(&mut planar, get_stream_ctx().unwrap()).unwrap();
@@ -262,150 +309,17 @@ impl Ssimulacra2 {
             // self.kernel.linear_to_xyb_planar(&planar, &mut dst);
             // self.dev.synchronize().unwrap();
 
-            self.kernel
-                .linear_to_xyb(self.ref_linear.view(size), self.ref_xyb.view_mut(size));
-            self.kernel
-                .linear_to_xyb(self.dis_linear.view(size), self.dis_xyb.view_mut(size));
-            // save_img(&self.dev, self.ref_xyb.view(size), &format!("ref_xyb_{scale}"));
+            let [sum_ssim, sum_artifact, sum_detail_loss, sum_ssim_4, sum_artifact_4, sum_detail_loss_4] =
+                self.process_scale(scale, size, sizet)?;
 
-            // tmp0: sigma11
-            self.ref_xyb
-                .view(size)
-                .mul(self.ref_xyb.view(size), self.tmp0.view_mut(size), self.npp)
-                .unwrap();
-            // tmp1: sigma22
-            self.dis_xyb
-                .view(size)
-                .mul(self.dis_xyb.view(size), self.tmp1.view_mut(size), self.npp)
-                .unwrap();
-            // tmp2: sigma12
-            self.ref_xyb
-                .view(size)
-                .mul(self.dis_xyb.view(size), self.tmp2.view_mut(size), self.npp)
-                .unwrap();
+            for i in 1..6 {
+                self.streams[scale * 6 + i]
+                    .wait_for_stream(&self.streams[scale * 6])
+                    .unwrap();
+            }
 
-            // TODO make blur work in place
-            // We currently can't compute our blur pass in place,
-            // which means we need 10 full buffers allocated :(
-            #[rustfmt::skip]
-            self.kernel.blur_pass_fused(
-                self.tmp0.view(size), self.tmp3.view_mut(size),
-                self.tmp1.view(size), self.tmp4.view_mut(size),
-                self.tmp2.view(size), self.tmp5.view_mut(size),
-                self.ref_xyb.view(size), self.tmp6.view_mut(size),
-                self.dis_xyb.view(size), self.tmp7.view_mut(size),
-            );
-
-            self.tmp3
-                .view(size)
-                .transpose(self.tmpt0.view_mut(sizet), self.npp)
-                .unwrap();
-            self.tmp4
-                .view(size)
-                .transpose(self.tmpt1.view_mut(sizet), self.npp)
-                .unwrap();
-            self.tmp5
-                .view(size)
-                .transpose(self.tmpt2.view_mut(sizet), self.npp)
-                .unwrap();
-            self.tmp6
-                .view(size)
-                .transpose(self.tmpt3.view_mut(sizet), self.npp)
-                .unwrap();
-            self.tmp7
-                .view(size)
-                .transpose(self.tmpt4.view_mut(sizet), self.npp)
-                .unwrap();
-
-            // tmpt5: sigma11
-            // tmpt6: sigma22
-            // tmpt7: sigma12
-            // tmpt8: mu1
-            // tmpt9: mu2
-            #[rustfmt::skip]
-            self.kernel.blur_pass_fused(
-                self.tmpt0.view(sizet), self.tmpt5.view_mut(sizet),
-                self.tmpt1.view(sizet), self.tmpt6.view_mut(sizet),
-                self.tmpt2.view(sizet), self.tmpt7.view_mut(sizet),
-                self.tmpt3.view(sizet), self.tmpt8.view_mut(sizet),
-                self.tmpt4.view(sizet), self.tmpt9.view_mut(sizet),
-            );
-
-            // tmpt0: source
-            // tmpt1: distorted
-            self.ref_xyb
-                .view(size)
-                .transpose(self.tmpt0.view_mut(sizet), self.npp)
-                .unwrap();
-            self.dis_xyb
-                .view(size)
-                .transpose(self.tmpt1.view_mut(sizet), self.npp)
-                .unwrap();
-
-            profiler_start().unwrap();
-
-            // tmpt2: ssim
-            // tmpt3: artifact
-            // tmpt4: detail_loss
-            self.kernel.compute_error_maps(
-                self.tmpt0.view(sizet),
-                self.tmpt1.view(sizet),
-                self.tmpt8.view(sizet),
-                self.tmpt9.view(sizet),
-                self.tmpt5.view(sizet),
-                self.tmpt6.view(sizet),
-                self.tmpt7.view(sizet),
-                self.tmpt2.view_mut(sizet),
-                self.tmpt3.view_mut(sizet),
-                self.tmpt4.view_mut(sizet),
-            );
-            // save_img(&self.dev, self.tmp0.view(size), &format!("ssim_{scale}"));
-
-            let sum_ssim = self
-                .tmpt2
-                .view(sizet)
-                .sum(&mut self.sum_scratch, self.npp)
-                .unwrap();
-            // self.dev.synchronize().unwrap();
-            // dbg!(sum_ssim);
-            self.tmpt2.view_mut(sizet).sqr_ip(self.npp).unwrap();
-            self.tmpt2.view_mut(sizet).sqr_ip(self.npp).unwrap();
-            let sum_ssim_4 = self
-                .tmpt2
-                .view(sizet)
-                .sum(&mut self.sum_scratch, self.npp)
-                .unwrap();
-
-            // save_img(&dev, &ssim, &format!("{scale}_artifact"));
-            // save_img(&dev, &ssim, &format!("{scale}_detail_loss"));
-            // TODO fuse those computions
-            let sum_artifact = self
-                .tmpt3
-                .view(sizet)
-                .sum(&mut self.sum_scratch, self.npp)
-                .unwrap();
-            self.tmpt3.view_mut(sizet).sqr_ip(self.npp).unwrap();
-            self.tmpt3.view_mut(sizet).sqr_ip(self.npp).unwrap();
-            let sum_artifact_4 = self
-                .tmpt3
-                .view(sizet)
-                .sum(&mut self.sum_scratch, self.npp)
-                .unwrap();
-            let sum_detail_loss = self
-                .tmpt4
-                .view(sizet)
-                .sum(&mut self.sum_scratch, self.npp)
-                .unwrap();
-            self.tmpt4.view_mut(sizet).sqr_ip(self.npp).unwrap();
-            self.tmpt4.view_mut(sizet).sqr_ip(self.npp).unwrap();
-            let sum_detail_loss_4 = self
-                .tmpt4
-                .view(sizet)
-                .sum(&mut self.sum_scratch, self.npp)
-                .unwrap();
-
-            profiler_stop().unwrap();
-            self.dev.synchronize().unwrap();
+            // profiler_stop().unwrap();
+            self.streams[scale * 6].sync().unwrap();
 
             let opp = 1.0 / (size.width * size.height) as f64;
 
@@ -420,10 +334,218 @@ impl Ssimulacra2 {
             }
         }
 
-        self.dev.synchronize().unwrap();
+        CuStream::DEFAULT.sync().unwrap();
 
         dbg!(scores);
-        post_process_scores(&scores)
+        Ok(post_process_scores(&scores))
+    }
+
+    fn process_scale(
+        &mut self,
+        scale: usize,
+        size: NppiRect,
+        sizet: NppiRect,
+    ) -> Result<[Box<[f64; 3]>; 6]> {
+        let streams: [&CuStream; 6] = self.streams.each_ref()[scale * 6..(scale + 1) * 6]
+            .try_into()
+            .unwrap();
+
+        self.kernel.linear_to_xyb(
+            streams[0],
+            self.ref_linear.view(size),
+            self.ref_xyb.view_mut(size),
+        );
+        self.kernel.linear_to_xyb(
+            streams[1],
+            self.dis_linear.view(size),
+            self.dis_xyb.view_mut(size),
+        );
+        // save_img(&self.dev, self.ref_xyb.view(size), &format!("ref_xyb_{scale}"));
+
+        streams[0].join(streams[1]).unwrap();
+        streams[2].wait_for_stream(streams[0]).unwrap();
+
+        // tmp0: sigma11
+        self.ref_xyb
+            .view(size)
+            .mul(
+                self.ref_xyb.view(size),
+                self.tmp0.view_mut(size),
+                self.npp.with_stream(streams[0].inner() as _),
+            )
+            .unwrap();
+        // tmp1: sigma22
+        self.dis_xyb
+            .view(size)
+            .mul(
+                self.dis_xyb.view(size),
+                self.tmp1.view_mut(size),
+                self.npp.with_stream(streams[1].inner() as _),
+            )
+            .unwrap();
+        // tmp2: sigma12
+        self.ref_xyb
+            .view(size)
+            .mul(
+                self.dis_xyb.view(size),
+                self.tmp2.view_mut(size),
+                self.npp.with_stream(streams[2].inner() as _),
+            )
+            .unwrap();
+
+        streams[0].wait_for_stream(streams[1]).unwrap();
+        streams[0].wait_for_stream(streams[2]).unwrap();
+
+        // TODO make blur work in place
+        // We currently can't compute our blur pass in place,
+        // which means we need 10 full buffers allocated :(
+        #[rustfmt::skip]
+        self.kernel.blur_pass_fused(streams[0],
+                                    self.tmp0.view(size), self.tmp3.view_mut(size),
+                                    self.tmp1.view(size), self.tmp4.view_mut(size),
+                                    self.tmp2.view(size), self.tmp5.view_mut(size),
+                                    self.ref_xyb.view(size), self.tmp6.view_mut(size),
+                                    self.dis_xyb.view(size), self.tmp7.view_mut(size),
+        );
+
+        streams[1].wait_for_stream(streams[0]).unwrap();
+        streams[2].wait_for_stream(streams[0]).unwrap();
+        streams[3].wait_for_stream(streams[0]).unwrap();
+        streams[4].wait_for_stream(streams[0]).unwrap();
+
+        self.tmp3.view(size).transpose(
+            self.tmpt0.view_mut(sizet),
+            self.npp.with_stream(streams[0].inner() as _),
+        )?;
+        self.tmp4.view(size).transpose(
+            self.tmpt1.view_mut(sizet),
+            self.npp.with_stream(streams[1].inner() as _),
+        )?;
+        self.tmp5.view(size).transpose(
+            self.tmpt2.view_mut(sizet),
+            self.npp.with_stream(streams[2].inner() as _),
+        )?;
+        self.tmp6.view(size).transpose(
+            self.tmpt3.view_mut(sizet),
+            self.npp.with_stream(streams[3].inner() as _),
+        )?;
+        self.tmp7.view(size).transpose(
+            self.tmpt4.view_mut(sizet),
+            self.npp.with_stream(streams[4].inner() as _),
+        )?;
+
+        streams[0].wait_for_stream(streams[1]).unwrap();
+        streams[0].wait_for_stream(streams[2]).unwrap();
+        streams[0].wait_for_stream(streams[3]).unwrap();
+        streams[0].wait_for_stream(streams[4]).unwrap();
+
+        // tmpt5: sigma11
+        // tmpt6: sigma22
+        // tmpt7: sigma12
+        // tmpt8: mu1
+        // tmpt9: mu2
+        #[rustfmt::skip]
+        self.kernel.blur_pass_fused(streams[0],
+                                    self.tmpt0.view(sizet), self.tmpt5.view_mut(sizet),
+                                    self.tmpt1.view(sizet), self.tmpt6.view_mut(sizet),
+                                    self.tmpt2.view(sizet), self.tmpt7.view_mut(sizet),
+                                    self.tmpt3.view(sizet), self.tmpt8.view_mut(sizet),
+                                    self.tmpt4.view(sizet), self.tmpt9.view_mut(sizet),
+        );
+
+        streams[1].wait_for_stream(streams[0]).unwrap();
+
+        // tmpt0: source
+        // tmpt1: distorted
+        self.ref_xyb.view(size).transpose(
+            self.tmpt0.view_mut(sizet),
+            self.npp.with_stream(streams[0].inner() as _),
+        )?;
+        self.dis_xyb.view(size).transpose(
+            self.tmpt1.view_mut(sizet),
+            self.npp.with_stream(streams[1].inner() as _),
+        )?;
+
+        streams[0].wait_for_stream(streams[1]).unwrap();
+
+        // profiler_start().unwrap();
+
+        // tmpt2: ssim
+        // tmpt3: artifact
+        // tmpt4: detail_loss
+        self.kernel.compute_error_maps(
+            streams[0],
+            self.tmpt0.view(sizet),
+            self.tmpt1.view(sizet),
+            self.tmpt8.view(sizet),
+            self.tmpt9.view(sizet),
+            self.tmpt5.view(sizet),
+            self.tmpt6.view(sizet),
+            self.tmpt7.view(sizet),
+            self.tmpt2.view_mut(sizet),
+            self.tmpt3.view_mut(sizet),
+            self.tmpt4.view_mut(sizet),
+        );
+        // save_img(&self.dev, self.tmp0.view(size), &format!("ssim_{scale}"));
+
+        streams[1].wait_for_stream(streams[0]).unwrap();
+        streams[2].wait_for_stream(streams[0]).unwrap();
+        streams[3].wait_for_stream(streams[0]).unwrap();
+        streams[4].wait_for_stream(streams[0]).unwrap();
+        streams[5].wait_for_stream(streams[0]).unwrap();
+
+        let [sum_ssim, sum_ssim_4] = Self::reduce(
+            self.tmpt2.view(sizet),
+            self.tmpt5.view_mut(sizet),
+            [&mut self.sum_scratch, &mut self.sum_scratch2],
+            [
+                self.npp.with_stream(streams[0].inner() as _),
+                self.npp.with_stream(streams[1].inner() as _),
+            ],
+        )?;
+
+        let [sum_artifact, sum_artifact_4] = Self::reduce(
+            self.tmpt3.view(sizet),
+            self.tmpt6.view_mut(sizet),
+            [&mut self.sum_scratch3, &mut self.sum_scratch4],
+            [
+                self.npp.with_stream(streams[2].inner() as _),
+                self.npp.with_stream(streams[3].inner() as _),
+            ],
+        )?;
+
+        let [sum_detail_loss, sum_detail_loss_4] = Self::reduce(
+            self.tmpt4.view(sizet),
+            self.tmpt7.view_mut(sizet),
+            [&mut self.sum_scratch5, &mut self.sum_scratch6],
+            [
+                self.npp.with_stream(streams[4].inner() as _),
+                self.npp.with_stream(streams[5].inner() as _),
+            ],
+        )?;
+
+        Ok([
+            sum_ssim,
+            sum_artifact,
+            sum_detail_loss,
+            sum_ssim_4,
+            sum_artifact_4,
+            sum_detail_loss_4,
+        ])
+    }
+
+    fn reduce(
+        img: ImgView<f32, C<3>>,
+        mut tmp: ImgViewMut<f32, C<3>>,
+        scratch: [&mut ScratchBuffer; 2],
+        ctx: [NppStreamContext; 2],
+    ) -> Result<[Box<[f64; 3]>; 2]> {
+        let sum_ssim = img.sum(scratch[0], ctx[0])?;
+        img.sqr(&mut tmp, ctx[1])?;
+        tmp.sqr_ip(ctx[1])?;
+        let sum_ssim_4 = tmp.sum(scratch[1], ctx[1])?;
+
+        Ok([sum_ssim, sum_ssim_4])
     }
 }
 
@@ -562,10 +684,9 @@ fn post_process_scores(scores: &[f64; 108]) -> f64 {
     score
 }
 
-fn save_img(dev: &Arc<CudaDevice>, img: impl Img<f32, C<3>>, name: &str) {
+fn save_img(img: impl Img<f32, C<3>>, name: &str, stream: cudaStream_t) {
     // dev.synchronize().unwrap();
-    let bytes = img.copy_to_cpu().unwrap();
-    dev.synchronize().unwrap();
+    let bytes = img.copy_to_cpu(stream).unwrap();
     let mut img = zune_image::image::Image::from_f32(
         &bytes,
         img.width() as usize,

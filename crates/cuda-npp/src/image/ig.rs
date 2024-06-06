@@ -2,9 +2,9 @@
 
 use cuda_npp_sys::*;
 
-use crate::{Channels, Sample, C};
+use crate::Result;
 
-use super::{Image, Img, ImgMut, Result};
+use super::{Channels, Image, Img, ImgMut, Sample, C};
 
 pub trait Resize<S: Sample, C: Channels> {
     fn resize(
@@ -131,13 +131,13 @@ impl_resize_sqr_pixel!(f32, C<3>, _32f, C3);
 mod tests {
     use cuda_npp_sys::{NppiInterpolationMode, NppiSize};
 
-    use crate::safe::ig::Resize;
-    use crate::safe::isu::Malloc;
-    use crate::safe::{Image, Img};
-    use crate::{get_stream_ctx, C};
+    use crate::get_stream_ctx;
+    use crate::image::ig::Resize;
+    use crate::image::isu::Malloc;
+    use crate::image::{Image, Img, C};
 
     #[test]
-    fn resize() -> crate::safe::Result<()> {
+    fn resize() -> crate::Result<()> {
         let dev = cudarc::driver::safe::CudaDevice::new(0).unwrap();
         let img = Image::<f32, C<3>>::malloc(1024, 1024)?;
         let ctx = get_stream_ctx()?;

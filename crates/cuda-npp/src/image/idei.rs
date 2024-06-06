@@ -4,9 +4,9 @@ use std::ops::Range;
 
 use cuda_npp_sys::*;
 
-use crate::{__priv, assert_same_size, Channels, Sample, C, P};
+use crate::{__priv, assert_same_size, Result};
 
-use super::{Image, Img, ImgMut, Result};
+use super::{Channels, Image, Img, ImgMut, Sample, C, P};
 
 pub trait Set<S: Sample, C: Channels>: __priv::Sealed {
     fn set(&mut self, value: S, ctx: NppStreamContext) -> Result<()>;
@@ -80,7 +80,7 @@ pub trait ConvertChannel<S: Sample, C: Channels>: __priv::Sealed {
     fn convert_channel_new(&self, ctx: NppStreamContext) -> Result<Image<S, Self::Target>>
     where
         Self: Img<S, C>,
-        Image<S, Self::Target>: crate::safe::isu::Malloc,
+        Image<S, Self::Target>: crate::image::isu::Malloc,
     {
         let mut dst = self.malloc_same_size()?;
         self.convert_channel(&mut dst, ctx)?;
@@ -127,7 +127,7 @@ pub trait Convert<S: Sample, C: Channels>: __priv::Sealed {
     fn convert_new(&self, ctx: NppStreamContext) -> Result<Image<Self::Target, C>>
     where
         Self: Img<S, C>,
-        Image<Self::Target, C>: crate::safe::isu::Malloc,
+        Image<Self::Target, C>: crate::image::isu::Malloc,
     {
         let mut dst = self.malloc_same_size()?;
         self.convert(&mut dst, ctx)?;
@@ -179,7 +179,7 @@ pub trait Scale<S: Sample, C: Channels>: __priv::Sealed {
     ) -> Result<Image<Self::Target, C>>
     where
         Self: Img<S, C>,
-        Image<Self::Target, C>: crate::safe::isu::Malloc,
+        Image<Self::Target, C>: crate::image::isu::Malloc,
     {
         let mut dst = self.malloc_same_size()?;
         self.scale_float(&mut dst, bounds, ctx)?;
@@ -222,9 +222,9 @@ pub trait Transpose<S: Sample, C: Channels>: __priv::Sealed {
     fn transpose_new(&self, ctx: NppStreamContext) -> Result<Image<S, C>>
     where
         Self: Img<S, C>,
-        Image<S, C>: crate::safe::isu::Malloc,
+        Image<S, C>: crate::image::isu::Malloc,
     {
-        let mut dst = crate::safe::isu::Malloc::malloc(self.height(), self.width())?;
+        let mut dst = crate::image::isu::Malloc::malloc(self.height(), self.width())?;
         self.transpose(&mut dst, ctx)?;
         Ok(dst)
     }
@@ -283,11 +283,11 @@ impl_transpose_planar!(f32, P<3>, _32f, P3);
 
 #[cfg(test)]
 mod tests {
-    use crate::safe::idei::{Convert, Scale, Set, SetMany};
-    use crate::safe::isu::Malloc;
-    use crate::safe::Image;
-    use crate::safe::Result;
-    use crate::{get_stream_ctx, C};
+    use crate::get_stream_ctx;
+    use crate::image::idei::{Convert, Scale, Set, SetMany};
+    use crate::image::isu::Malloc;
+    use crate::image::{Image, C};
+    use crate::Result;
 
     #[test]
     fn set_single() -> Result<()> {

@@ -2,9 +2,9 @@
 
 use cuda_npp_sys::*;
 
-use crate::{Channels, Sample, __priv, C};
+use crate::__priv;
 
-use super::{Image, Img, ImgMut, Result, E};
+use super::{Channels, Image, Img, ImgMut, Sample, C};
 
 pub trait FilterGaussBorder<S: Sample, C: Channels>: __priv::Sealed {
     /// Filters the image using a Gaussian filter kernel with border control.
@@ -64,7 +64,7 @@ macro_rules! impl_filtergaussborder {
                 if status == NppStatus::NPP_NO_ERROR {
                     Ok(())
                 } else {
-                    Err(E::from(status))
+                    Err(Error::from(status))
                 }
             }
         }
