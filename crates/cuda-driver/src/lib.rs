@@ -12,10 +12,10 @@ use crate::sys::{
     cuDevicePrimaryCtxRetain, cuDeviceTotalMem_v2, cuDriverGetVersion, cuEventCreate,
     cuEventDestroy_v2, cuEventElapsedTime, cuEventQuery, cuEventRecord, cuEventSynchronize,
     cuFuncGetName, cuFuncGetParamInfo, cuFuncIsLoaded, cuFuncLoad, cuFuncSetCacheConfig,
-    cuGetErrorString, cuInit, cuLaunchKernel, cuModuleEnumerateFunctions, cuModuleGetFunction,
-    cuModuleGetFunctionCount, cuModuleLoad, cuModuleUnload, cuProfilerStart, cuProfilerStop,
-    cuStreamCreate, cuStreamDestroy_v2, cuStreamQuery, cuStreamSynchronize, cuStreamWaitEvent,
-    CUstream_flags,
+    cuGetErrorString, cuInit, cuLaunchKernel, cuMemGetInfo_v2, cuModuleEnumerateFunctions,
+    cuModuleGetFunction, cuModuleGetFunctionCount, cuModuleLoad, cuModuleUnload, cuProfilerStart,
+    cuProfilerStop, cuStreamCreate, cuStreamDestroy_v2, cuStreamQuery, cuStreamSynchronize,
+    cuStreamWaitEvent, CUstream_flags,
 };
 
 pub mod sys {
@@ -93,6 +93,15 @@ pub fn profiler_start() -> CuResult<()> {
 
 pub fn profiler_stop() -> CuResult<()> {
     unsafe { cuProfilerStop().result() }
+}
+
+pub fn mem_info() -> CuResult<(usize, usize)> {
+    let mut free = 0;
+    let mut total = 0;
+    unsafe {
+        cuMemGetInfo_v2(&mut free, &mut total).result()?;
+    }
+    Ok((free, total))
 }
 
 #[repr(transparent)]

@@ -160,6 +160,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "indices"
+version = "0.3.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7b74521b74ce3f8b51092195e400e1424fbb67044c2ad4562dcad188f2fb0d7b"
+
+[[package]]
 name = "itertools"
 version = "0.12.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -473,6 +479,7 @@ dependencies = [
  "array-init",
  "cuda-driver",
  "cuda-npp",
+ "indices",
  "nalgebra",
  "zune-image",
 ]

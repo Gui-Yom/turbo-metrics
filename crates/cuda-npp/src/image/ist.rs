@@ -37,7 +37,7 @@ impl<T: Img<f32, C<3>>> Sum<f32, C<3>> for T {
             cudaMemcpyAsync(
                 out.as_mut_ptr().cast(),
                 out_dev.ptr.cast_const(),
-                out_dev.size,
+                out_dev.len,
                 cudaMemcpyKind::cudaMemcpyDeviceToHost,
                 ctx.hStream,
             )

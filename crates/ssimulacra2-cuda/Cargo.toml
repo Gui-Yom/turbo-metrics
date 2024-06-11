@@ -9,6 +9,7 @@ edition = "2021"
 array-init = { workspace = true }
 cuda-driver = { version = "0.1", path = "../cuda-driver" }
 cuda-npp = { version = "0.1", path = "../cuda-npp", features = ["isu", "ial", "idei", "if", "ist"] }
+indices = { workspace = true }
 zune-image.workspace = true
 
 [build-dependencies]

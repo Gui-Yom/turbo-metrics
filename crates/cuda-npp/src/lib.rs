@@ -74,18 +74,24 @@ pub fn set_stream(stream: cudaStream_t) -> Result<()> {
     unsafe { nppSetStream(stream) }.result()
 }
 
-/// An opaque scratch buffer needed by some npp routines
+/// An opaque scratch buffer on device needed by some npp routines
 #[derive(Debug, Clone)]
 pub struct ScratchBuffer {
+    // Device ptr !
     pub ptr: *mut c_void,
-    pub size: usize,
+    pub len: usize,
 }
 
 impl ScratchBuffer {
     /// Uses stream ordered cuda malloc and free
-    pub fn alloc(size: usize, stream: cudaStream_t) -> Result<Self> {
+    pub fn alloc(len: usize, stream: cudaStream_t) -> Result<Self> {
         let mut ptr = null_mut();
-        unsafe { cudaMallocAsync(&mut ptr, size, stream).result_with(Self { ptr, size }) }
+        unsafe { cudaMallocAsync(&mut ptr, len, stream).result_with(Self { ptr, len }) }
+    }
+
+    /// Size of the allocation on device
+    pub fn len(&self) -> usize {
+        self.len
     }
 
     /// The drop impl will free memory on the currently set NPP global stream *at the time of drop*.
