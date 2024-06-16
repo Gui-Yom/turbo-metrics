@@ -61,24 +61,24 @@ fn main() {
         "GPU result {gpu_score:.6} not equal to expected {c_score:.6}",
     );
 
-    // let start = Instant::now();
-    // let ref_img = CpuImg::from_srgb(ref_bytes, width, height);
-    // let dis_img = CpuImg::from_srgb(dis_bytes, width, height);
-    // let cpu_score = dbg!(cpu::compute_frame_ssimulacra2(&ref_img, &dis_img));
-    // let elapsed = start.elapsed().as_millis();
+    let start = Instant::now();
+    let ref_img = CpuImg::from_srgb(ref_bytes, width, height);
+    let dis_img = CpuImg::from_srgb(dis_bytes, width, height);
+    let cpu_score = dbg!(cpu::compute_frame_ssimulacra2(&ref_img, &dis_img));
+    let elapsed = start.elapsed().as_millis();
     println!(
         "CPU: Finished computing a single frame in {} ms ({:.1} fps)",
         elapsed,
         1000.0 / elapsed as f64
     );
 
-    // assert!(
-    //     (cpu_score - c_score).abs() < 0.25f64,
-    //     "CPU result {cpu_score:.6} not equal to expected {c_score:.6}",
-    // );
+    assert!(
+        (cpu_score - c_score).abs() < 0.25f64,
+        "CPU result {cpu_score:.6} not equal to expected {c_score:.6}",
+    );
 
-    // println!(
-    //     "Error between CPU and GPU : {}",
-    //     (cpu_score - gpu_score).abs()
-    // );
+    println!(
+        "Error between CPU and GPU : {}",
+        (cpu_score - gpu_score).abs()
+    );
 }

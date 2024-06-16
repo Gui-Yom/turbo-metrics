@@ -1,9 +1,7 @@
-use std::pin::pin;
-
 use indices::indices_ordered;
 use zune_image::codecs::png::zune_core::colorspace::{ColorCharacteristics, ColorSpace};
 
-use cuda_driver::CuStream;
+use cuda_driver::{CuGraphExec, CuStream};
 use cuda_npp::image::ial::{Mul, Sqr, SqrIP};
 use cuda_npp::image::idei::Transpose;
 use cuda_npp::image::ist::Sum;
@@ -27,10 +25,11 @@ const SCALES: usize = 6;
 /// e.g. ~800 MiB of device memory for processing 1440x1080 frames.
 /// Actual memory usage is higher because of padding and other state.
 ///
-/// Processing a single image pair results in 192 kernels launches !
+/// Processing a single image pair results in 305 kernels launches !
 pub struct Ssimulacra2 {
     kernel: Kernel,
     npp: NppStreamContext,
+    exec: Option<CuGraphExec>,
 
     sizes: [NppiRect; SCALES],
     sizes_t: [NppiRect; SCALES],
@@ -49,6 +48,7 @@ pub struct Ssimulacra2 {
     main_ref: CuStream,
     main_dis: CuStream,
     streams: [[CuStream; 6]; SCALES],
+    scores: Box<[f64; 3 * 6 * SCALES]>,
 }
 
 impl Ssimulacra2 {
@@ -98,9 +98,10 @@ impl Ssimulacra2 {
         // Wait for allocations to complete
         main_ref.sync().unwrap();
 
-        Ok(Self {
+        let mut s = Self {
             kernel: Kernel::load(),
             npp,
+            exec: None,
             sizes,
             sizes_t,
             ref_input,
@@ -113,7 +114,12 @@ impl Ssimulacra2 {
             main_ref,
             main_dis,
             streams,
-        })
+            scores: Box::new([0.0; 3 * 6 * SCALES]),
+        };
+
+        s.exec = Some(s.record().unwrap());
+
+        Ok(s)
     }
 
     /// Estimate the minimum memory usage
@@ -150,16 +156,13 @@ impl Ssimulacra2 {
                 .sum::<usize>()
     }
 
-    pub fn compute(&mut self, ref_bytes: &[u8], dis_bytes: &[u8]) -> Result<f64> {
-        // profiler_stop().unwrap();
-
-        self.ref_input
-            .copy_from_cpu(ref_bytes, self.main_ref.inner() as _)?;
-        self.dis_input
-            .copy_from_cpu(dis_bytes, self.main_dis.inner() as _)?;
-
+    pub fn record(&mut self) -> Result<CuGraphExec> {
         // TODO we should work with planar images, as it would allow us to coalesce read and writes
         //  coalescing can already be achieved for kernels which doesn't require access to neighbouring pixels or samples
+
+        self.main_ref.begin_capture().unwrap();
+
+        self.main_dis.wait_for_stream(&self.main_ref).unwrap();
 
         // Convert to linear
         self.kernel
@@ -172,8 +175,6 @@ impl Ssimulacra2 {
         // linear -> xyb -> ...
         //    |-> /2 -> xyb -> ...
         //         |-> /2 -> xyb -> ...
-
-        let mut scores = pin!([0.0; 108]);
 
         for scale in 0..SCALES {
             if scale > 0 {
@@ -188,12 +189,7 @@ impl Ssimulacra2 {
                 self.kernel.downscale_by_2(&self.main_dis, prev, curr);
             }
 
-            self.process_scale(
-                scale,
-                (&mut scores[scale * 6 * 3..scale * 6 * 3 + 18])
-                    .try_into()
-                    .unwrap(),
-            )?;
+            self.process_scale(scale)?;
 
             // profiler_stop().unwrap();
         }
@@ -208,12 +204,28 @@ impl Ssimulacra2 {
         }
         println!("Scheduled all work !");
 
+        let graph = self.main_ref.end_capture().unwrap();
+        let exec = graph.instantiate().unwrap();
         self.main_ref.sync().unwrap();
-
-        Ok(self.post_process_scores(&mut scores))
+        Ok(exec)
     }
 
-    fn process_scale(&mut self, scale: usize, scores: &mut [f64; 3 * 6]) -> Result<()> {
+    pub fn compute(&mut self, ref_bytes: &[u8], dis_bytes: &[u8]) -> Result<f64> {
+        // profiler_stop().unwrap();
+
+        self.ref_input
+            .copy_from_cpu(ref_bytes, self.main_ref.inner() as _)?;
+        self.dis_input
+            .copy_from_cpu(dis_bytes, self.main_dis.inner() as _)?;
+
+        self.exec.as_ref().unwrap().launch(&self.main_ref).unwrap();
+
+        self.main_ref.sync().unwrap();
+
+        Ok(self.post_process_scores())
+    }
+
+    fn process_scale(&mut self, scale: usize) -> Result<()> {
         let streams: [&CuStream; 6] = self.streams[scale].each_ref().try_into().unwrap();
 
         streams[0].wait_for_stream(&self.main_ref).unwrap();
@@ -349,25 +361,14 @@ impl Ssimulacra2 {
         streams[4].wait_for_stream(streams[0]).unwrap();
         streams[5].wait_for_stream(streams[0]).unwrap();
 
-        let [ssim, artifact, detail_loss, ssim4, artifact4, detail_loss4] =
-            array_init::from_iter(scores.chunks_exact_mut(3).map(|c| c.try_into().unwrap()))
-                .unwrap();
-        self.reduce(scale, 2, 5, 0, ssim, ssim4)?;
-        self.reduce(scale, 3, 6, 2, artifact, artifact4)?;
-        self.reduce(scale, 4, 7, 4, detail_loss, detail_loss4)?;
+        self.reduce(scale, 2, 5, 0)?;
+        self.reduce(scale, 3, 6, 2)?;
+        self.reduce(scale, 4, 7, 4)?;
 
         Ok(())
     }
 
-    fn reduce(
-        &mut self,
-        scale: usize,
-        data: usize,
-        tmp: usize,
-        offset: usize,
-        into: &mut [f64; 3],
-        into4: &mut [f64; 3],
-    ) -> Result<()> {
+    fn reduce(&mut self, scale: usize, data: usize, tmp: usize, offset: usize) -> Result<()> {
         let [scratch0, scratch1] = &mut self.sum_scratch[scale][offset..offset + 2] else {
             unreachable!()
         };
@@ -378,18 +379,28 @@ impl Ssimulacra2 {
             let (ssim, tmp) = indices_ordered!(&mut self.imgt[scale], data, tmp);
             ssim.sum_into(
                 scratch0,
-                into,
+                (&mut self.scores
+                    [scale * 6 * 3 + offset / 2 * 3..scale * 6 * 3 + offset / 2 * 3 + 3])
+                    .try_into()
+                    .unwrap(),
                 self.npp
                     .with_stream(self.streams[scale][offset].inner() as _),
             )?;
             ssim.sqr(tmp, ctx1)?;
         }
         self.imgt[scale][tmp].sqr_ip(ctx1)?;
-        self.imgt[scale][tmp].sum_into(scratch1, into4, ctx1)?;
+        self.imgt[scale][tmp].sum_into(
+            scratch1,
+            (&mut self.scores
+                [scale * 6 * 3 + offset / 2 * 3 + 9..scale * 6 * 3 + offset / 2 * 3 + 12])
+                .try_into()
+                .unwrap(),
+            ctx1,
+        )?;
         Ok(())
     }
 
-    fn post_process_scores(&self, scores: &mut [f64; 3 * 6 * SCALES]) -> f64 {
+    fn post_process_scores(&mut self) -> f64 {
         // TODO jeez that's a lot of zeros
         //  Computing with a finer granularity (e.g. separated planes)
         //  may allow us to reduce total computations since there are a lot of zeros
@@ -532,19 +543,21 @@ impl Ssimulacra2 {
             for c in 0..3 {
                 let offset = offset + c;
                 let offsetw = c * 6 * 6 + 6 * scale;
-                scores[offset] = (scores[offset] * opp).abs() * WEIGHT[offsetw];
-                scores[offset + 3] = (scores[offset + 3] * opp).abs() * WEIGHT[offsetw + 1];
-                scores[offset + 2 * 3] = (scores[offset + 2 * 3] * opp).abs() * WEIGHT[offsetw + 2];
-                scores[offset + 3 * 3] =
-                    (scores[offset + 3 * 3] * opp).sqrt().sqrt() * WEIGHT[offsetw + 3];
-                scores[offset + 4 * 3] =
-                    (scores[offset + 4 * 3] * opp).sqrt().sqrt() * WEIGHT[offsetw + 4];
-                scores[offset + 5 * 3] =
-                    (scores[offset + 5 * 3] * opp).sqrt().sqrt() * WEIGHT[offsetw + 5];
+                self.scores[offset] = (self.scores[offset] * opp).abs() * WEIGHT[offsetw];
+                self.scores[offset + 3] =
+                    (self.scores[offset + 3] * opp).abs() * WEIGHT[offsetw + 1];
+                self.scores[offset + 2 * 3] =
+                    (self.scores[offset + 2 * 3] * opp).abs() * WEIGHT[offsetw + 2];
+                self.scores[offset + 3 * 3] =
+                    (self.scores[offset + 3 * 3] * opp).sqrt().sqrt() * WEIGHT[offsetw + 3];
+                self.scores[offset + 4 * 3] =
+                    (self.scores[offset + 4 * 3] * opp).sqrt().sqrt() * WEIGHT[offsetw + 4];
+                self.scores[offset + 5 * 3] =
+                    (self.scores[offset + 5 * 3] * opp).sqrt().sqrt() * WEIGHT[offsetw + 5];
             }
         }
 
-        let mut score: f64 = scores.iter().sum();
+        let mut score: f64 = self.scores.iter().sum();
 
         score *= 0.956_238_261_683_484_4_f64;
         score = (6.248_496_625_763_138e-5 * score * score).mul_add(

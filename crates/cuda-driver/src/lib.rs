@@ -12,10 +12,12 @@ use crate::sys::{
     cuDevicePrimaryCtxRetain, cuDeviceTotalMem_v2, cuDriverGetVersion, cuEventCreate,
     cuEventDestroy_v2, cuEventElapsedTime, cuEventQuery, cuEventRecord, cuEventSynchronize,
     cuFuncGetName, cuFuncGetParamInfo, cuFuncIsLoaded, cuFuncLoad, cuFuncSetCacheConfig,
-    cuGetErrorString, cuInit, cuLaunchKernel, cuMemGetInfo_v2, cuModuleEnumerateFunctions,
-    cuModuleGetFunction, cuModuleGetFunctionCount, cuModuleLoad, cuModuleUnload, cuProfilerStart,
-    cuProfilerStop, cuStreamCreate, cuStreamDestroy_v2, cuStreamQuery, cuStreamSynchronize,
-    cuStreamWaitEvent, CUstream_flags,
+    cuGetErrorString, cuGraphDebugDotPrint, cuGraphDestroy, cuGraphExecDestroy,
+    cuGraphInstantiateWithFlags, cuGraphLaunch, cuInit, cuLaunchKernel, cuMemGetInfo_v2,
+    cuModuleEnumerateFunctions, cuModuleGetFunction, cuModuleGetFunctionCount, cuModuleLoad,
+    cuModuleUnload, cuProfilerStart, cuProfilerStop, cuStreamBeginCapture_v2, cuStreamCreate,
+    cuStreamDestroy_v2, cuStreamEndCapture, cuStreamQuery, cuStreamSynchronize, cuStreamWaitEvent,
+    CUstreamCaptureMode_enum, CUstream_flags,
 };
 
 pub mod sys {
@@ -218,6 +220,26 @@ impl CuStream {
         self.wait_for_stream(other)?;
         other.wait_for_stream(self)
     }
+
+    pub fn begin_capture(&self) -> CuResult<()> {
+        unsafe {
+            cuStreamBeginCapture_v2(
+                self.0,
+                CUstreamCaptureMode_enum::CU_STREAM_CAPTURE_MODE_GLOBAL,
+            )
+            .result()
+        }
+    }
+
+    pub fn end_capture(&self) -> CuResult<CuGraph> {
+        let mut graph = null_mut();
+        unsafe { cuStreamEndCapture(self.0, &mut graph).result()? };
+        if graph.is_null() {
+            panic!("Invalid graph")
+        } else {
+            Ok(CuGraph(graph))
+        }
+    }
 }
 
 impl Drop for CuStream {
@@ -405,6 +427,43 @@ macro_rules! kernel_params {
     ($($p:expr,)*) => {
         &[$(kernel_params!(@single $p)),*]
     };
+}
+
+pub struct CuGraph(sys::CUgraph);
+
+impl CuGraph {
+    pub fn dot(&self, path: impl AsRef<Path>) -> CuResult<()> {
+        let path = CString::new(path.as_ref().as_os_str().as_encoded_bytes()).unwrap();
+        unsafe { cuGraphDebugDotPrint(self.0, path.as_ptr(), 0).result() }
+    }
+
+    pub fn instantiate(&self) -> CuResult<CuGraphExec> {
+        let mut exec = null_mut();
+        unsafe {
+            cuGraphInstantiateWithFlags(&mut exec, self.0, 0).result()?;
+        }
+        Ok(CuGraphExec(exec))
+    }
+}
+
+impl Drop for CuGraph {
+    fn drop(&mut self) {
+        unsafe { cuGraphDestroy(self.0).result().unwrap() }
+    }
+}
+
+pub struct CuGraphExec(sys::CUgraphExec);
+
+impl CuGraphExec {
+    pub fn launch(&self, stream: &CuStream) -> CuResult<()> {
+        unsafe { cuGraphLaunch(self.0, stream.0).result() }
+    }
+}
+
+impl Drop for CuGraphExec {
+    fn drop(&mut self) {
+        unsafe { cuGraphExecDestroy(self.0).result().unwrap() }
+    }
 }
 
 #[cfg(test)]
