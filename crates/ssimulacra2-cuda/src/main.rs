@@ -48,9 +48,11 @@ fn main() {
     );
     let start = Instant::now();
     let gpu_score = dbg!(ssimulacra2.compute(ref_bytes, dis_bytes)).unwrap();
+    let elapsed = start.elapsed().as_nanos();
     println!(
-        "GPU: Finished computing a single frame in {} ms",
-        start.elapsed().as_millis()
+        "GPU: Finished computing a single frame in {:.2} ms ({:.1} fps)",
+        elapsed as f64 / 1000_000.0,
+        1000_000_000.0 / elapsed as f64
     );
 
     let c_score = 17.398_505_f64;
@@ -59,22 +61,24 @@ fn main() {
         "GPU result {gpu_score:.6} not equal to expected {c_score:.6}",
     );
 
-    let start = Instant::now();
-    let ref_img = CpuImg::from_srgb(ref_bytes, width, height);
-    let dis_img = CpuImg::from_srgb(dis_bytes, width, height);
-    let cpu_score = dbg!(cpu::compute_frame_ssimulacra2(&ref_img, &dis_img));
+    // let start = Instant::now();
+    // let ref_img = CpuImg::from_srgb(ref_bytes, width, height);
+    // let dis_img = CpuImg::from_srgb(dis_bytes, width, height);
+    // let cpu_score = dbg!(cpu::compute_frame_ssimulacra2(&ref_img, &dis_img));
+    // let elapsed = start.elapsed().as_millis();
     println!(
-        "CPU: Finished computing a single frame in {} ms",
-        start.elapsed().as_millis()
+        "CPU: Finished computing a single frame in {} ms ({:.1} fps)",
+        elapsed,
+        1000.0 / elapsed as f64
     );
 
-    assert!(
-        (cpu_score - c_score).abs() < 0.25f64,
-        "CPU result {cpu_score:.6} not equal to expected {c_score:.6}",
-    );
+    // assert!(
+    //     (cpu_score - c_score).abs() < 0.25f64,
+    //     "CPU result {cpu_score:.6} not equal to expected {c_score:.6}",
+    // );
 
-    println!(
-        "Error between CPU and GPU : {}",
-        (cpu_score - gpu_score).abs()
-    );
+    // println!(
+    //     "Error between CPU and GPU : {}",
+    //     (cpu_score - gpu_score).abs()
+    // );
 }

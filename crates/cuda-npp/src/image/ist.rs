@@ -10,15 +10,40 @@ pub trait Sum<S: Sample, C: Channels> {
     type SumResult;
 
     /// You should not use the result until synchronized with the CUDA stream.
-    fn sum(&self, scratch: &mut ScratchBuffer, ctx: NppStreamContext) -> Result<Self::SumResult>;
+    fn sum(
+        &self,
+        scratch: &mut ScratchBuffer,
+        ctx: NppStreamContext,
+    ) -> Result<Box<Self::SumResult>>;
+    fn sum_into(
+        &self,
+        scratch: &mut ScratchBuffer,
+        out: &mut Self::SumResult,
+        ctx: NppStreamContext,
+    ) -> Result<()>;
     fn sum_scratch_size(&self) -> Result<usize>;
     fn sum_alloc_scratch(&self, ctx: NppStreamContext) -> Result<ScratchBuffer>;
 }
 
 impl<T: Img<f32, C<3>>> Sum<f32, C<3>> for T {
-    type SumResult = Box<[f64; 3]>;
+    type SumResult = [f64; 3];
 
-    fn sum(&self, scratch: &mut ScratchBuffer, ctx: NppStreamContext) -> Result<Self::SumResult> {
+    fn sum(
+        &self,
+        scratch: &mut ScratchBuffer,
+        ctx: NppStreamContext,
+    ) -> Result<Box<Self::SumResult>> {
+        let mut out = Box::new([0.0; 3]);
+        self.sum_into(scratch, &mut out, ctx)?;
+        Ok(out)
+    }
+
+    fn sum_into(
+        &self,
+        scratch: &mut ScratchBuffer,
+        out: &mut Self::SumResult,
+        ctx: NppStreamContext,
+    ) -> Result<()> {
         let mut out_dev = ScratchBuffer::alloc(3 * mem::size_of::<f64>(), ctx.hStream)?;
         unsafe {
             nppiSum_32f_C3R_Ctx(
@@ -32,7 +57,6 @@ impl<T: Img<f32, C<3>>> Sum<f32, C<3>> for T {
             .result()?;
         }
 
-        let mut out = Box::new([0.0; 3]);
         unsafe {
             cudaMemcpyAsync(
                 out.as_mut_ptr().cast(),
@@ -46,7 +70,7 @@ impl<T: Img<f32, C<3>>> Sum<f32, C<3>> for T {
         // This alloc will be freed asynchronously
         out_dev.manual_drop(ctx.hStream)?;
 
-        Ok(out)
+        Ok(())
     }
 
     fn sum_scratch_size(&self) -> Result<usize> {
