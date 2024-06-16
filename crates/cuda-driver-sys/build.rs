@@ -1,8 +1,6 @@
 use std::env;
-use std::fmt::Debug;
 use std::path::{Path, PathBuf};
 
-use bindgen::callbacks::{DeriveInfo, ParseCallbacks};
 use bindgen::EnumVariation;
 
 fn link_lib(lib: &str) {
@@ -27,7 +25,7 @@ fn main() {
     // println!("cargo:rustc-link-lib=cuda");
     link_lib("cuda");
     println!("cargo:rustc-link-search={}", link_path.display());
-    let mut bindgen = bindgen::Builder::default()
+    let bindgen = bindgen::Builder::default()
         .clang_args(["-I", include_path.to_str().unwrap()])
         .header(include(&include_path, "cuda.h"))
         .header(include(&include_path, "cudaProfiler.h"))

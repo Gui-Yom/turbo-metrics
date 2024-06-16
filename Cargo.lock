@@ -103,6 +103,13 @@ dependencies = [
 name = "cuda-driver"
 version = "0.1.0"
 dependencies = [
+ "cuda-driver-sys",
+]
+
+[[package]]
+name = "cuda-driver-sys"
+version = "0.1.0"
+dependencies = [
  "bindgen",
 ]
 

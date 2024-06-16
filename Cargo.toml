@@ -1,6 +1,7 @@
 [workspace]
 members = [
     "crates/cuda-driver",
+    "crates/cuda-driver-sys",
     "crates/cuda-npp",
     "crates/cuda-npp-sys",
     "crates/nv_video_codec_sdk",
