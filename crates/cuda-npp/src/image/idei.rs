@@ -288,54 +288,55 @@ mod tests {
     use crate::image::isu::Malloc;
     use crate::image::{Image, C};
     use crate::Result;
+    use cuda_driver::{full_init, sync_ctx};
 
     #[test]
     fn set_single() -> Result<()> {
-        let dev = cudarc::driver::safe::CudaDevice::new(0).unwrap();
+        full_init().unwrap();
         let mut img = Image::<u8, C<1>>::malloc(1024, 1024)?;
         let ctx = get_stream_ctx()?;
         img.set(127, ctx)?;
-        dev.synchronize().unwrap();
+        sync_ctx().unwrap();
         Ok(())
     }
 
     #[test]
     fn set() -> Result<()> {
-        let dev = cudarc::driver::safe::CudaDevice::new(0).unwrap();
+        full_init().unwrap();
         let mut img = Image::<f32, C<3>>::malloc(1024, 1024)?;
         let ctx = get_stream_ctx()?;
         img.set([1.0, 1.0, 0.0], ctx)?;
-        dev.synchronize().unwrap();
+        sync_ctx().unwrap();
         Ok(())
     }
 
     #[test]
     fn convert() -> Result<()> {
-        let dev = cudarc::driver::safe::CudaDevice::new(0).unwrap();
+        full_init().unwrap();
         let img = Image::<u8, C<3>>::malloc(1024, 1024)?;
         let ctx = get_stream_ctx()?;
         let img2 = img.convert_new(ctx)?;
-        dev.synchronize().unwrap();
+        sync_ctx().unwrap();
         Ok(())
     }
 
     #[test]
     fn into_f32() -> Result<()> {
-        let dev = cudarc::driver::safe::CudaDevice::new(0).unwrap();
+        full_init().unwrap();
         let img = Image::<u8, C<3>>::malloc(1024, 1024)?;
         let ctx = get_stream_ctx()?;
         let img2 = img.scale_float_new(0.0..1.0, ctx)?;
-        dev.synchronize().unwrap();
+        sync_ctx().unwrap();
         Ok(())
     }
 
     #[test]
     fn into_u8() -> Result<()> {
-        let dev = cudarc::driver::safe::CudaDevice::new(0).unwrap();
+        full_init().unwrap();
         let img = Image::<f32, C<3>>::malloc(1024, 1024)?;
         let ctx = get_stream_ctx()?;
         let img2 = img.scale_float_new(0.0..1.0, ctx)?;
-        dev.synchronize().unwrap();
+        sync_ctx().unwrap();
         Ok(())
     }
 }

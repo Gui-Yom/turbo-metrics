@@ -4,7 +4,8 @@ members = [
     "crates/cuda-driver-sys",
     "crates/cuda-npp",
     "crates/cuda-npp-sys",
-    "crates/nv_video_codec_sdk",
+    "crates/nv-video-codec",
+    "crates/nv-video-codec-sys",
     "crates/nvptx-core",
     "crates/ssimulacra2-cuda-kernel",
     "crates/ssimulacra2-cuda",
@@ -12,6 +13,7 @@ members = [
 ]
 resolver = "2"
 
+# Profile specifically for building nvptx code
 [profile.release-nvptx]
 inherits = "release"
 opt-level = 3
@@ -23,7 +25,7 @@ overflow-checks = false
 [workspace.dependencies]
 array-init = "2"
 bindgen = "0.69"
-cudarc = { version = "0.10", default-features = false, features = ["std", "driver"] }#, "cuda-version-from-build-system", "dynamic-linking"] }
+#cudarc = { version = "0.10", default-features = false, features = ["std", "driver"] }#, "cuda-version-from-build-system", "dynamic-linking"] }
 indices = "0.3"
 nalgebra = "0.32"
 paste = "1"
@@ -41,6 +43,7 @@ edition = "2021"
 
 [dependencies]
 video-common = { version = "0.1", path = "crates/video-common" }
-nv_video_codec_sdk = { version = "0.1", path = "crates/nv_video_codec_sdk" }
+cuda-driver = { version = "0.1", path = "crates/cuda-driver" }
+nv-video-codec = { version = "0.1", path = "crates/nv-video-codec" }
 matroska-demuxer = "0.5"
 bitstream-io = "2"

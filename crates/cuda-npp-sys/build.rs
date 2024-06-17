@@ -19,7 +19,7 @@ fn include(path: &Path, header: &str) -> String {
 
 fn main() {
     let cuda_path = PathBuf::from(env::var("CUDA_PATH").expect(
-        "environment variable CUDA_PATH must be set for cuda_npp_sys to find the CUDA SDK",
+        "environment variable CUDA_PATH must be set for cuda-npp-sys to find the CUDA SDK",
     ));
     let include_path = cuda_path.join("include");
     let link_path = cuda_path.join("lib/x64");

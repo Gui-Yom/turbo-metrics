@@ -7,3 +7,8 @@ edition = "2021"
 
 [build-dependencies]
 bindgen.workspace = true
+
+[features]
+default = ["static"]
+# Static linking against cuda libraries
+static = []

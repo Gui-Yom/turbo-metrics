@@ -129,6 +129,7 @@ impl_resize_sqr_pixel!(f32, C<3>, _32f, C3);
 
 #[cfg(test)]
 mod tests {
+    use cuda_driver::{full_init, sync_ctx};
     use cuda_npp_sys::{NppiInterpolationMode, NppiSize};
 
     use crate::get_stream_ctx;
@@ -138,11 +139,11 @@ mod tests {
 
     #[test]
     fn resize() -> crate::Result<()> {
-        let dev = cudarc::driver::safe::CudaDevice::new(0).unwrap();
+        full_init().unwrap();
         let img = Image::<f32, C<3>>::malloc(1024, 1024)?;
         let ctx = get_stream_ctx()?;
         let resized = img.resize_new(2048, 2048, NppiInterpolationMode::NPPI_INTER_LANCZOS, ctx)?;
-        dev.synchronize().unwrap();
+        sync_ctx().unwrap();
 
         assert_eq!(
             resized.size(),

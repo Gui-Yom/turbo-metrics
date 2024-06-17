@@ -85,6 +85,8 @@ impl<T: Img<f32, C<3>>> Sum<f32, C<3>> for T {
 
 #[cfg(test)]
 mod tests {
+    use cuda_driver::{full_init, sync_ctx};
+
     use crate::get_stream_ctx;
     use crate::image::idei::SetMany;
     use crate::image::ist::Sum;
@@ -93,12 +95,12 @@ mod tests {
 
     #[test]
     fn sum() -> crate::Result<()> {
-        let dev = cudarc::driver::safe::CudaDevice::new(0).unwrap();
+        full_init().unwrap();
         let img = Image::<f32, C<3>>::malloc(1024, 1024)?;
         let ctx = get_stream_ctx()?;
         let mut scratch = img.sum_alloc_scratch(ctx)?;
         let sum = img.sum(&mut scratch, ctx)?;
-        dev.synchronize().unwrap();
+        sync_ctx().unwrap();
         dbg!(sum);
 
         Ok(())
@@ -106,14 +108,14 @@ mod tests {
 
     #[test]
     fn sum_value() -> crate::Result<()> {
-        let dev = cudarc::driver::safe::CudaDevice::new(0).unwrap();
+        full_init().unwrap();
         let mut img = Image::<f32, C<3>>::malloc(128, 128)?;
         let ctx = get_stream_ctx()?;
         img.set([1.0, 0.0, 0.0], ctx)?;
         let mut scratch = img.sum_alloc_scratch(ctx)?;
         let sum = img.sum(&mut scratch, ctx)?;
-        dev.synchronize().unwrap();
-        dbg!(sum);
+        sync_ctx().unwrap();
+        dbg!(&sum);
         assert_eq!(sum.as_ref(), &[128.0 * 128.0, 0.0, 0.0]);
 
         Ok(())

@@ -16,19 +16,28 @@ fn include(path: &Path, header: &str) -> String {
 }
 
 fn main() {
+    let sdk_path = PathBuf::from("C:\\apps\\Video_Codec_SDK");
+    let sdk_include = sdk_path.join("Interface");
+    let sdk_lib = sdk_path.join("Lib/x64");
     let cuda_path = PathBuf::from(env::var("CUDA_PATH").expect(
-        "environment variable CUDA_PATH must be set for cuda-driver-sys to find the CUDA SDK",
+        "environment variable CUDA_PATH must be set for nv-video-codec-sys to find the CUDA SDK",
     ));
     let include_path = cuda_path.join("include");
     let link_path = cuda_path.join("lib/x64");
 
     // println!("cargo:rustc-link-lib=cuda");
     link_lib("cuda");
+    link_lib("nvcuvid");
     println!("cargo:rustc-link-search={}", link_path.display());
+    println!("cargo:rustc-link-search={}", sdk_lib.display());
     let bindgen = bindgen::Builder::default()
-        .clang_args(["-I", include_path.to_str().unwrap()])
-        .header(include(&include_path, "cuda.h"))
-        .header(include(&include_path, "cudaProfiler.h"))
+        .clang_args([
+            "-I",
+            include_path.to_str().unwrap(),
+            "-I",
+            sdk_include.to_str().unwrap(),
+        ])
+        .header(include(&sdk_include, "nvcuvid.h"))
         .generate_comments(false)
         .default_enum_style(EnumVariation::Rust {
             non_exhaustive: false,
@@ -37,12 +46,16 @@ fn main() {
         .use_core()
         .sort_semantically(true)
         .merge_extern_blocks(true)
-        .allowlist_function("^cu.*")
-        .allowlist_var("^CU.*")
-        .allowlist_type("^CU.*")
-        .allowlist_type("^cuda.*")
-        .allowlist_type("^cudaError_enum")
-        .allowlist_type("^cuuint(32|64)_t")
+        .allowlist_function("^cuvid.*")
+        .allowlist_type("^CUvideo.*")
+        .allowlist_type("^CUVIDEO.*")
+        .allowlist_type("^cudaAudio.*")
+        .allowlist_type("^CUAUDIO.*")
+        .allowlist_type("^CUVID.*")
+        .blocklist_type("^CUresult")
+        .blocklist_type("^CUcontext")
+        .blocklist_item("CUcontext")
+        .bitfield_enum("CUvideopacketflags")
         .must_use_type("^CUresult")
         .parse_callbacks(Box::new(
             bindgen::CargoCallbacks::new().rerun_on_header_files(true),

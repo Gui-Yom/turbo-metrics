@@ -7,8 +7,9 @@ use std::time::{Duration, Instant};
 use bitstream_io::{BigEndian, BitRead, BitReader};
 use matroska_demuxer::{Frame, TrackType};
 
-use nv_video_codec_sdk::NvDecoder;
-use video_common::VideoCodec;
+use cuda_driver::CuDevice;
+use nv_video_codec::sys::cudaVideoCodec;
+use nv_video_codec::{CommonCallbacks, CuVideoParser};
 
 fn main() {
     let mut matroska = matroska_demuxer::MatroskaFile::open(BufReader::new(
@@ -26,10 +27,19 @@ fn main() {
 
     let extradata = read_avc_config_record(matroska.tracks()[0].codec_private().unwrap());
 
-    nv_video_codec_sdk::init();
+    cuda_driver::init_cuda().expect("Could not initialize the CUDA API");
+    let dev = CuDevice::get(0).unwrap();
+    println!(
+        "Using device {} with CUDA version {}",
+        dev.name().unwrap(),
+        cuda_driver::cuda_driver_version().unwrap()
+    );
+    // Bind to main thread
+    dev.retain_primary_ctx().unwrap().set_current().unwrap();
 
-    let (mut decoder, frames) = NvDecoder::new(VideoCodec::H264);
-    decoder.feed_packet(&extradata, 0);
+    let mut cb = CommonCallbacks {};
+    let mut parser = CuVideoParser::new(cudaVideoCodec::cudaVideoCodec_H264, &mut cb).unwrap();
+    parser.feed_packet(&extradata, 0).unwrap();
     let mut frame = Frame::default();
     let mut num_packets = 0;
     let mut packet = vec![0, 0, 0, 1];
@@ -42,20 +52,19 @@ fn main() {
             packet.truncate(4);
             // Ignore first 4 bytes (slice len)
             packet.extend_from_slice(&frame.data[4..]);
-            decoder.feed_packet(&packet, frame.timestamp as i64);
+            parser.feed_packet(&packet, frame.timestamp as i64).unwrap();
             num_packets += 1;
             if num_packets > 1000 {
                 break;
             }
         }
-        if let Ok(frame) = frames.try_recv() {
-            // let fps = 1000000 / last_frame.elapsed().as_micros();
-            // println!("{} fps", fps);
-            last_frame = Instant::now();
-            num_frames += 1;
-        }
+        // if let Ok(frame) = frames.try_recv() {
+        //     // let fps = 1000000 / last_frame.elapsed().as_micros();
+        //     // println!("{} fps", fps);
+        //     last_frame = Instant::now();
+        //     num_frames += 1;
+        // }
     }
-    nv_video_codec_sdk::sync();
 
     thread::sleep(Duration::from_secs_f32(2.0));
 }

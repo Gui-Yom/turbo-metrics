@@ -1,6 +1,6 @@
 use std::ffi::CStr;
 use std::mem::MaybeUninit;
-use std::ptr::null_mut;
+use std::ptr::{null_mut, NonNull};
 
 use sys::{
     cuDeviceGet, cuDeviceGetCount, cuDeviceGetName, cuDevicePrimaryCtxRetain, cuDeviceTotalMem_v2,
@@ -56,6 +56,6 @@ impl CuDevice {
         unsafe {
             cuDevicePrimaryCtxRetain(&mut ctx, self.0).result()?;
         }
-        Ok(CuCtx(ctx))
+        Ok(CuCtx(NonNull::new(ctx).unwrap()))
     }
 }

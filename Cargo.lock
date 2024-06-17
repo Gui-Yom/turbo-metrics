@@ -63,9 +63,9 @@ checksum = "cf4b9d6a944f767f8e5e0db018570623c85f3d925ac718db4e06d0187adb21c1"
 
 [[package]]
 name = "bitstream-io"
-version = "2.4.1"
+version = "2.4.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "eac55ccd165b210af261b1812cf29a0b9e6303b480ff0df603c037129ff357fe"
+checksum = "415f8399438eb5e4b2f73ed3152a3448b98149dda642a957ee704e1daa5cf1d8"
 
 [[package]]
 name = "bytemuck"
@@ -117,8 +117,8 @@ dependencies = [
 name = "cuda-npp"
 version = "0.1.0"
 dependencies = [
+ "cuda-driver",
  "cuda-npp-sys",
- "cudarc",
  "paste",
 ]
 
@@ -128,12 +128,6 @@ version = "0.1.0"
 dependencies = [
  "bindgen",
 ]
-
-[[package]]
-name = "cudarc"
-version = "0.10.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9395df0cab995685664e79cc35ad6302bf08fb9c5d82301875a183affe1278b1"
 
 [[package]]
 name = "either"
@@ -339,12 +333,21 @@ dependencies = [
 ]
 
 [[package]]
-name = "nv_video_codec_sdk"
+name = "nv-video-codec"
 version = "0.1.0"
 dependencies = [
- "cudarc",
+ "cuda-driver",
+ "nv-video-codec-sys",
  "video-common",
  "zune-image",
+]
+
+[[package]]
+name = "nv-video-codec-sys"
+version = "0.1.0"
+dependencies = [
+ "bindgen",
+ "cuda-driver-sys",
 ]
 
 [[package]]
@@ -447,9 +450,9 @@ dependencies = [
 
 [[package]]
 name = "safe_arch"
-version = "0.7.1"
+version = "0.7.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f398075ce1e6a179b46f51bd88d0598b92b00d3551f1a2d4ac49e771b56ac354"
+checksum = "c3460605018fdc9612bce72735cba0d27efbcd9904780d44c7e3a9948f96148a"
 dependencies = [
  "bytemuck",
 ]
@@ -538,8 +541,9 @@ name = "video"
 version = "0.1.0"
 dependencies = [
  "bitstream-io",
+ "cuda-driver",
  "matroska-demuxer",
- "nv_video_codec_sdk",
+ "nv-video-codec",
  "video-common",
 ]
 

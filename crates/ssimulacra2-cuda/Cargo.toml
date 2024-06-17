@@ -7,10 +7,15 @@ edition = "2021"
 
 [dependencies]
 array-init = { workspace = true }
-cuda-driver = { version = "0.1", path = "../cuda-driver" }
-cuda-npp = { version = "0.1", path = "../cuda-npp", features = ["isu", "ial", "idei", "if", "ist"] }
+cuda-driver = { version = "0.1", path = "../cuda-driver", default-features = false }
+cuda-npp = { version = "0.1", path = "../cuda-npp", default-features = false, features = ["isu", "ial", "idei", "if", "ist"] }
 indices = { workspace = true }
 zune-image.workspace = true
 
 [build-dependencies]
 nalgebra = "0.32"
+
+[features]
+default = ["static"]
+# Static linking against cuda libraries
+static = ["cuda-driver/static", "cuda-npp/static"]

@@ -1,7 +1,9 @@
 use std::error::Error;
 use std::fmt::{Debug, Display};
+use std::ptr::{null_mut, NonNull};
 
 pub use cuda_driver_sys as sys;
+use cuda_driver_sys::cuCtxGetCurrent;
 pub use device::*;
 pub use event::*;
 pub use function::*;
@@ -23,6 +25,12 @@ mod stream;
 /// Initialize the global cuda context. This needs to be called before any API call.
 pub fn init_cuda() -> CuResult<()> {
     unsafe { cuInit(0).result() }
+}
+
+pub fn full_init() -> CuResult<()> {
+    init_cuda()?;
+    let dev = CuDevice::get(0)?;
+    dev.retain_primary_ctx()?.set_current()
 }
 
 pub fn cuda_driver_version() -> CuResult<u32> {
@@ -55,13 +63,30 @@ pub fn mem_info() -> CuResult<(usize, usize)> {
     Ok((free, total))
 }
 
+enum MaybeDrop<T> {
+    Owned(T),
+    Borrowed(T),
+}
+
 #[repr(transparent)]
-pub struct CuCtx(sys::CUcontext);
+pub struct CuCtx(pub(crate) NonNull<sys::CUctx_st>);
 
 impl CuCtx {
     /// Bind this context to the calling thread.
     pub fn set_current(&self) -> CuResult<()> {
-        unsafe { cuCtxSetCurrent(self.0).result() }
+        unsafe { cuCtxSetCurrent(self.0.as_ptr()).result() }
+    }
+
+    pub fn get_current() -> CuResult<Self> {
+        let mut ctx = null_mut();
+        unsafe {
+            cuCtxGetCurrent(&mut ctx).result()?;
+        }
+        Ok(Self(NonNull::new(ctx).unwrap()))
+    }
+
+    pub fn inner(&self) -> sys::CUcontext {
+        self.0.as_ptr()
     }
 }
 

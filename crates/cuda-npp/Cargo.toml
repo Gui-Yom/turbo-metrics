@@ -10,7 +10,7 @@ cuda-npp-sys = { version = "0.1", path = "../cuda-npp-sys", default-features = f
 paste.workspace = true
 
 [dev-dependencies]
-cudarc.workspace = true
+cuda-driver = { path = "../cuda-driver" }
 
 [features]
 default = ["static"]
