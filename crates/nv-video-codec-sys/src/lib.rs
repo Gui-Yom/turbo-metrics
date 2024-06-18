@@ -5,3 +5,9 @@
 pub use cuda_driver_sys::{CUcontext, CUresult};
 
 include!(concat!(env!("OUT_DIR"), "/bindings.rs"));
+
+impl CUVIDDECODECAPS {
+    pub fn is_output_format_supported(&self, format: cudaVideoSurfaceFormat) -> bool {
+        self.nOutputFormatMask & (1 << format as u16) > 0
+    }
+}

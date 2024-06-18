@@ -7,9 +7,12 @@ use std::time::{Duration, Instant};
 use bitstream_io::{BigEndian, BitRead, BitReader};
 use matroska_demuxer::{Frame, TrackType};
 
-use cuda_driver::CuDevice;
-use nv_video_codec::sys::cudaVideoCodec;
-use nv_video_codec::{CommonCallbacks, CuVideoParser};
+use cuda_driver::{CuCtx, CuDevice, CuStream};
+use nv_video_codec::sys::{
+    cudaVideoCodec, cudaVideoSurfaceFormat, CUVIDEOFORMAT, CUVIDOPERATINGPOINTINFO,
+    CUVIDPARSERDISPINFO, CUVIDPICPARAMS, CUVIDSEIMESSAGEINFO,
+};
+use nv_video_codec::{query_caps, CuVideoCtxLock, CuVideoDecoder, CuVideoParser, VideoParserCb};
 
 fn main() {
     let mut matroska = matroska_demuxer::MatroskaFile::open(BufReader::new(
@@ -37,7 +40,10 @@ fn main() {
     // Bind to main thread
     dev.retain_primary_ctx().unwrap().set_current().unwrap();
 
-    let mut cb = CommonCallbacks {};
+    let mut cb = DecoderState {
+        decoder: None,
+        stream: CuStream::new().unwrap(),
+    };
     let mut parser = CuVideoParser::new(cudaVideoCodec::cudaVideoCodec_H264, &mut cb).unwrap();
     parser.feed_packet(&extradata, 0).unwrap();
     let mut frame = Frame::default();
@@ -98,4 +104,87 @@ fn read_avc_config_record(codec_private: &[u8]) -> Vec<u8> {
     }
 
     nalus
+}
+
+pub struct DecoderState {
+    decoder: Option<CuVideoDecoder>,
+    stream: CuStream,
+}
+
+impl VideoParserCb for DecoderState {
+    fn sequence_callback(&mut self, format: &CUVIDEOFORMAT) -> i32 {
+        let format = &dbg!(*format);
+
+        let caps = query_caps(
+            format.codec,
+            format.chroma_format,
+            format.bit_depth_luma_minus8 as u32 + 8,
+        )
+        .unwrap();
+        if dbg!(caps).bIsSupported == 0 {
+            println!("Unsupported codec/chroma/bitdepth");
+            return 0;
+        }
+
+        assert!(
+            caps.is_output_format_supported(cudaVideoSurfaceFormat::cudaVideoSurfaceFormat_NV12)
+        );
+
+        let lock = CuVideoCtxLock::new(&CuCtx::get_current().unwrap()).unwrap();
+
+        self.decoder = Some(
+            CuVideoDecoder::new(
+                format,
+                cudaVideoSurfaceFormat::cudaVideoSurfaceFormat_NV12,
+                &lock,
+            )
+            .unwrap(),
+        );
+
+        let surfaces = (*format).min_num_decode_surfaces;
+        dbg!(surfaces.max(1) as i32)
+    }
+
+    fn decode_picture(&mut self, pic: &CUVIDPICPARAMS) -> i32 {
+        if let Some(decoder) = &self.decoder {
+            decoder.decode(pic).unwrap();
+            // dbg!(pic.CurrPicIdx);
+        }
+        1
+    }
+
+    fn display_picture(&mut self, disp: &CUVIDPARSERDISPINFO) -> i32 {
+        if let Some(decoder) = &self.decoder {
+            let mapping = decoder.map(disp, &self.stream).unwrap();
+            dbg!(mapping);
+        }
+        // let mut buf = vec![0u8; 1920 * 1080 + 1920 * 540];
+        // let mut copy = bindings::CUDA_MEMCPY2D {
+        //     srcMemoryType: bindings::CUmemorytype::CU_MEMORYTYPE_DEVICE,
+        //     srcDevice: srcDev,
+        //     srcPitch: srcPitch as usize,
+        //     dstMemoryType: bindings::CUmemorytype::CU_MEMORYTYPE_HOST,
+        //     dstHost: buf.as_mut_ptr() as *mut c_void,
+        //     dstPitch: 1920,
+        //     WidthInBytes: 1920,
+        //     Height: 1080,
+        //     ..Default::default()
+        // };
+        // bindings::cuMemcpy2DAsync_v2(&copy, inner.stream);
+        // copy.srcDevice = srcDev + (srcPitch * 1080) as u64;
+        // copy.dstHost = buf[copy.dstPitch * 1080..].as_mut_ptr() as *mut c_void;
+        // copy.Height = 540;
+        // bindings::cuStreamSynchronize(inner.stream);
+        // bindings::cuvidUnmapVideoFrame64(inner.video_decoder, srcDev);
+        //
+        // inner
+        //     .frames
+        //     .send(FrameNV12 {
+        //         width: 1920,
+        //         height: 1080,
+        //         buf,
+        //     })
+        //     .unwrap();
+        1
+    }
 }
