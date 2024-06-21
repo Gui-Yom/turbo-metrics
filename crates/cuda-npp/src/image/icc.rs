@@ -4,7 +4,7 @@ use cuda_npp_sys::*;
 
 use crate::{Result, __priv};
 
-use super::{Channels, ImgMut, Sample, C};
+use super::{Channels, Img, ImgMut, Sample, C, P};
 
 pub trait GammaFwdIP<S: Sample, C: Channels>: __priv::Sealed {
     /// Forward gamma correction in place with gamma = 2.2
@@ -45,3 +45,23 @@ macro_rules! impl_gammainvip {
 }
 
 impl_gammainvip!(u8, C<3>, _8u, C3);
+
+pub trait NV12toRGB: __priv::Sealed {
+    fn nv12_to_rgb(&self, dst: impl ImgMut<u8, C<3>>, ctx: NppStreamContext) -> Result<()>;
+}
+
+impl<T: Img<u8, P<2>>> NV12toRGB for T {
+    fn nv12_to_rgb(&self, mut dst: impl ImgMut<u8, C<3>>, ctx: NppStreamContext) -> Result<()> {
+        unsafe {
+            nppiNV12ToRGB_8u_P2C3R_Ctx(
+                self.device_ptr(),
+                self.pitch(),
+                dst.device_ptr_mut(),
+                dst.pitch(),
+                self.size(),
+                ctx,
+            )
+            .result()
+        }
+    }
+}

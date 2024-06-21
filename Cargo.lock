@@ -542,9 +542,11 @@ version = "0.1.0"
 dependencies = [
  "bitstream-io",
  "cuda-driver",
+ "cuda-npp",
  "matroska-demuxer",
  "nv-video-codec",
- "video-common",
+ "ssimulacra2-cuda",
+ "zune-image",
 ]
 
 [[package]]

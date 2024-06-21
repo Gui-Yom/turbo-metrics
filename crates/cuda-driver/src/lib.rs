@@ -3,7 +3,7 @@ use std::fmt::{Debug, Display};
 use std::ptr::{null_mut, NonNull};
 
 pub use cuda_driver_sys as sys;
-use cuda_driver_sys::cuCtxGetCurrent;
+use cuda_driver_sys::{cuCtxGetCurrent, cuMemcpy2DAsync_v2, CUDA_MEMCPY2D};
 pub use device::*;
 pub use event::*;
 pub use function::*;
@@ -88,6 +88,10 @@ impl CuCtx {
     pub fn inner(&self) -> sys::CUcontext {
         self.0.as_ptr()
     }
+}
+
+pub fn copy(copy: &CUDA_MEMCPY2D, stream: &CuStream) -> CuResult<()> {
+    unsafe { cuMemcpy2DAsync_v2(copy, stream.0).result() }
 }
 
 #[cfg(test)]

@@ -121,6 +121,7 @@ macro_rules! impl_channels_planar {
     };
 }
 
+impl_channels_planar!(2);
 impl_channels_planar!(3);
 impl_channels_planar!(4);
 
@@ -227,6 +228,18 @@ impl<'a, S: Sample, C: Channels> From<&'a mut Image<S, C>> for ImgViewMut<'a, S,
 }
 
 impl<S: Sample, C: Channels> Image<S, C> {
+    /// Warning ! Will try to free the device memory when dropped. Use [mem::forget] if needed.
+    pub fn from_raw(width: u32, height: u32, pitch: i32, data: C::Storage<S>) -> Self {
+        Self {
+            width,
+            height,
+            pitch,
+            data,
+            marker: Default::default(),
+            marker_: Default::default(),
+        }
+    }
+
     pub fn full_view(&self) -> ImgView<S, C> {
         ImgView {
             parent: self,
