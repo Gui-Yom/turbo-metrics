@@ -2,6 +2,7 @@ use std::ffi::CStr;
 use std::mem::MaybeUninit;
 use std::ptr::{null_mut, NonNull};
 
+use cuda_driver_sys::cuDevicePrimaryCtxRelease_v2;
 use sys::{
     cuDeviceGet, cuDeviceGetCount, cuDeviceGetName, cuDevicePrimaryCtxRetain, cuDeviceTotalMem_v2,
     CuResult,
@@ -57,5 +58,10 @@ impl CuDevice {
             cuDevicePrimaryCtxRetain(&mut ctx, self.0).result()?;
         }
         Ok(CuCtx(NonNull::new(ctx).unwrap()))
+    }
+
+    /// Release the primary context on the GPU.
+    pub fn release_primary_ctx(&self) -> CuResult<()> {
+        unsafe { cuDevicePrimaryCtxRelease_v2(self.0).result() }
     }
 }

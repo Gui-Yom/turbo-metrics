@@ -1,4 +1,4 @@
-use indices::indices_ordered;
+use indices::{indices, indices_ordered};
 use zune_image::codecs::png::zune_core::colorspace::{ColorCharacteristics, ColorSpace};
 
 use cuda_driver::{CuGraphExec, CuStream};
@@ -183,9 +183,9 @@ impl Ssimulacra2 {
                 //  warps would contain 8 2x2 patches which can be summed using shfl_down_sync and friends
                 //  This would require a planar format ...
 
-                let (prev, curr) = indices_ordered!(&mut self.ref_linear, scale - 1, scale);
+                let (prev, curr) = indices!(&mut self.ref_linear, scale - 1, scale);
                 self.kernel.downscale_by_2(&self.main_ref, prev, curr);
-                let (prev, curr) = indices_ordered!(&mut self.dis_linear, scale - 1, scale);
+                let (prev, curr) = indices!(&mut self.dis_linear, scale - 1, scale);
                 self.kernel.downscale_by_2(&self.main_dis, prev, curr);
             }
 
@@ -376,7 +376,7 @@ impl Ssimulacra2 {
             .npp
             .with_stream(self.streams[scale][offset + 1].inner() as _);
         {
-            let (ssim, tmp) = indices_ordered!(&mut self.imgt[scale], data, tmp);
+            let (ssim, tmp) = indices!(&mut self.imgt[scale], data, tmp);
             ssim.sum_into(
                 scratch0,
                 (&mut self.scores

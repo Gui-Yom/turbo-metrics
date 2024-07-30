@@ -6,7 +6,7 @@ use crate::__priv;
 
 use super::{Channels, Image, Img, ImgMut, Sample, C};
 
-pub trait FilterGaussBorder<S: Sample, C: Channels>: __priv::Sealed {
+pub trait FilterGaussBorder<S: Sample, C: Channels> {
     /// Filters the image using a Gaussian filter kernel with border control.
     /// Use filter_gauss_advanced_border if you want to supply your own filter coefficients.
     ///

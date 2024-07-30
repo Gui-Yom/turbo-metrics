@@ -71,6 +71,9 @@ enum MaybeDrop<T> {
 #[repr(transparent)]
 pub struct CuCtx(pub(crate) NonNull<sys::CUctx_st>);
 
+unsafe impl Send for CuCtx {}
+unsafe impl Sync for CuCtx {}
+
 impl CuCtx {
     /// Bind this context to the calling thread.
     pub fn set_current(&self) -> CuResult<()> {

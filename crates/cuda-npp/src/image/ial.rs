@@ -6,7 +6,7 @@ use crate::{__priv, assert_same_size, Result};
 
 use super::{Channels, Image, Img, ImgMut, Sample, C};
 
-pub trait Mul<S: Sample, C: Channels>: __priv::Sealed {
+pub trait Mul<S: Sample, C: Channels> {
     /// Pixel by pixel multiply of two images.
     fn mul(
         &self,
@@ -55,7 +55,7 @@ macro_rules! impl_mul {
 impl_mul!(f32, C<3>, _32f, C3);
 impl_mul!(f32, C<1>, _32f, C1);
 
-pub trait Sqr<S: Sample, C: Channels>: __priv::Sealed {
+pub trait Sqr<S: Sample, C: Channels> {
     fn sqr(&self, dst: impl ImgMut<S, C>, ctx: NppStreamContext) -> Result<()>;
 }
 
@@ -82,7 +82,7 @@ macro_rules! impl_sqr {
 impl_sqr!(f32, C<3>, _32f, C3);
 impl_sqr!(f32, C<1>, _32f, C1);
 
-pub trait SqrIP<S: Sample, C: Channels>: __priv::Sealed {
+pub trait SqrIP<S: Sample, C: Channels> {
     fn sqr_ip(&mut self, ctx: NppStreamContext) -> Result<()>;
 }
 

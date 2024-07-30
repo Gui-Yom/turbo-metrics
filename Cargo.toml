@@ -23,13 +23,25 @@ codegen-units = 1
 overflow-checks = false
 
 [workspace.dependencies]
+cuda-driver = { path = "crates/cuda-driver", default-features = false }
+cuda-driver-sys = { path = "crates/cuda-driver-sys", default-features = false }
+cuda-npp = { path = "crates/cuda-npp", default-features = false }
+cuda-npp-sys = { path = "crates/cuda-npp-sys", default-features = false }
+nv-video-codec = { path = "crates/nv-video-codec", default-features = false }
+nv-video-codec-sys = { path = "crates/nv-video-codec-sys", default-features = false }
+nvptx-core = { path = "crates/nvptx-core", default-features = false }
+ssimulacra2-cuda = { path = "crates/ssimulacra2-cuda", default-features = false }
+
 array-init = "2"
 bindgen = "0.69"
+bitstream-io = "2"
 #cudarc = { version = "0.10", default-features = false, features = ["std", "driver"] }#, "cuda-version-from-build-system", "dynamic-linking"] }
 indices = "0.3"
-nalgebra = "0.32"
+matroska-demuxer = "0.5"
+nalgebra = "0.33"
 paste = "1"
-rerun = "0.16"
+rerun = "0.17"
+spsc = { path = "../spsc" }
 zune-image = { version = "0.4", default-features = false, features = ["png", "simd", "metadata"] }
 
 [package]
@@ -40,10 +52,10 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-cuda-driver = { version = "0.1", path = "crates/cuda-driver" }
-nv-video-codec = { version = "0.1", path = "crates/nv-video-codec" }
-cuda-npp = { path = "crates/cuda-npp", features = ["isu", "icc"] }
-ssimulacra2-cuda = { path = "crates/ssimulacra2-cuda" }
-matroska-demuxer = "0.5"
-bitstream-io = "2"
+bitstream-io = { workspace = true }
+spsc = { workspace = true }
+cuda-driver = { workspace = true }
+matroska-demuxer = { workspace = true }
+nv-video-codec = { workspace = true, features = ["cuda-npp"] }
+ssimulacra2-cuda = { workspace = true }
 zune-image = { workspace = true }

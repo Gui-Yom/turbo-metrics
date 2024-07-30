@@ -13,7 +13,7 @@ indices = { workspace = true }
 zune-image.workspace = true
 
 [build-dependencies]
-nalgebra = "0.32"
+nalgebra = { workspace = true }
 
 [features]
 default = ["static"]

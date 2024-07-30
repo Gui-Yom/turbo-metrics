@@ -8,7 +8,7 @@ use crate::{__priv, assert_same_size, Result};
 
 use super::{Channels, Image, Img, ImgMut, Sample, C, P};
 
-pub trait Set<S: Sample, C: Channels>: __priv::Sealed {
+pub trait Set<S: Sample, C: Channels> {
     fn set(&mut self, value: S, ctx: NppStreamContext) -> Result<()>;
 }
 
@@ -36,7 +36,7 @@ impl_set_single!(u16, C<1>, _16u, C1);
 impl_set_single!(i16, C<1>, _16s, C1);
 impl_set_single!(f32, C<1>, _32f, C1);
 
-pub trait SetMany<S: Sample, C: Channels, const N: usize>: __priv::Sealed {
+pub trait SetMany<S: Sample, C: Channels, const N: usize> {
     fn set(&mut self, value: [S; N], ctx: NppStreamContext) -> Result<()>;
 }
 
@@ -67,7 +67,7 @@ impl_set!(f32, C<2>, 2, _32f, C2);
 impl_set!(f32, C<3>, 3, _32f, C3);
 impl_set!(f32, C<4>, 4, _32f, C4);
 
-pub trait ConvertChannel<S: Sample, C: Channels>: __priv::Sealed {
+pub trait ConvertChannel<S: Sample, C: Channels> {
     type Target: Channels;
 
     fn convert_channel(
@@ -116,7 +116,7 @@ impl_convert_channel!(f32, C<4>, P<4>, _32f, C4P4);
 impl_convert_channel!(f32, P<3>, C<3>, _32f, P3C3);
 impl_convert_channel!(f32, P<4>, C<4>, _32f, P4C4);
 
-pub trait Convert<S: Sample, C: Channels>: __priv::Sealed {
+pub trait Convert<S: Sample, C: Channels> {
     // Associated type because we want to be able to use T in return position only
     type Target: Sample;
 
@@ -160,7 +160,7 @@ macro_rules! impl_convert {
 
 impl_convert!(u8, C<3>, f32, _8u32f, C3);
 
-pub trait Scale<S: Sample, C: Channels>: __priv::Sealed {
+pub trait Scale<S: Sample, C: Channels> {
     // Associated type because we want to be able to use T in return position only
     type Target: Sample;
 
@@ -215,7 +215,7 @@ macro_rules! impl_scale {
 impl_scale!(u8, C<3>, f32, _8u32f, C3);
 impl_scale!(f32, C<3>, u8, _32f8u, C3);
 
-pub trait Transpose<S: Sample, C: Channels>: __priv::Sealed {
+pub trait Transpose<S: Sample, C: Channels> {
     fn transpose(&self, dst: impl ImgMut<S, C>, ctx: NppStreamContext) -> Result<()>;
 
     #[cfg(feature = "isu")]

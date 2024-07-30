@@ -6,7 +6,7 @@ use crate::{Result, __priv};
 
 use super::{Channels, Img, ImgMut, Sample, C, P};
 
-pub trait GammaFwdIP<S: Sample, C: Channels>: __priv::Sealed {
+pub trait GammaFwdIP<S: Sample, C: Channels> {
     /// Forward gamma correction in place with gamma = 2.2
     fn gamma_fwd_ip(&mut self, ctx: NppStreamContext) -> Result<()>;
 }
@@ -26,7 +26,7 @@ macro_rules! impl_gammafwdip {
 
 impl_gammafwdip!(u8, C<3>, _8u, C3);
 
-pub trait GammaInvIP<S: Sample, C: Channels>: __priv::Sealed {
+pub trait GammaInvIP<S: Sample, C: Channels> {
     /// Inverse gamma correction in place with gamma = 2.2
     fn gamma_inv_ip(&mut self, ctx: NppStreamContext) -> Result<()>;
 }
@@ -46,7 +46,7 @@ macro_rules! impl_gammainvip {
 
 impl_gammainvip!(u8, C<3>, _8u, C3);
 
-pub trait NV12toRGB: __priv::Sealed {
+pub trait NV12toRGB {
     fn nv12_to_rgb(&self, dst: impl ImgMut<u8, C<3>>, ctx: NppStreamContext) -> Result<()>;
 }
 

@@ -6,12 +6,15 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-cuda-driver = { path = "../cuda-driver", default-features = false }
-nv-video-codec-sys = { path = "../nv-video-codec-sys", default-features = false }
-video-common = { version = "0.1", path = "../video-common" }
+cuda-driver = { workspace = true }
+cuda-npp = { workspace = true, optional = true, features = ["icc", "isu"] }
+nv-video-codec-sys = { workspace = true }
+spsc = { workspace = true }
 zune-image.workspace = true
 
 [features]
 default = ["static"]
 # Static linking against cuda libraries
-static = ["cuda-driver/static", "nv-video-codec-sys/static"]
+static = ["cuda-driver/static", "nv-video-codec-sys/static", "cuda-npp?/static"]
+# Convert decoded images into NPP images
+npp = ["cuda-npp"]

@@ -35,7 +35,7 @@ impl Sample for i32 {}
 impl Sample for f32 {}
 
 /// Layout of the image, either packed channels or planar
-pub trait Channels: __priv::Sealed + 'static {
+pub trait Channels {
     const NUM_SAMPLES: usize;
     const IS_PLANAR: bool;
 
@@ -281,7 +281,7 @@ impl<S: Sample, C: Channels> Image<S, C> {
     }
 }
 
-pub trait Img<S: Sample, C: Channels>: __priv::Sealed {
+pub trait Img<S: Sample, C: Channels> {
     const SAMPLE_SIZE: usize = mem::size_of::<S>();
     /// Pixel size in bytes
     const PIXEL_SIZE: usize = C::NUM_SAMPLES * Self::SAMPLE_SIZE;

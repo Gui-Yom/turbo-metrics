@@ -1,8 +1,9 @@
 use std::ffi::{c_int, c_short, c_ulong, c_void};
 use std::marker::PhantomData;
 use std::mem;
-use std::ptr::{null_mut, NonNull};
+use std::ptr::{null, null_mut, NonNull};
 
+use crate::sys;
 use cuda_driver::sys::CuResult;
 use cuda_driver::{CuCtx, CuStream};
 use sys::{
@@ -17,15 +18,13 @@ use sys::{
     CUVIDSOURCEDATAPACKET,
 };
 
-use crate::sys;
-
 pub trait VideoParserCb {
     /// Called when a new sequence is being parsed (parameters change)
     fn sequence_callback(&mut self, format: &CUVIDEOFORMAT) -> i32;
     /// Called when a picture has been parsed and can be decoded
     fn decode_picture(&mut self, pic: &CUVIDPICPARAMS) -> i32;
     /// Called when a picture has been decoded and can be displayed
-    fn display_picture(&mut self, disp: &CUVIDPARSERDISPINFO) -> i32;
+    fn display_picture(&mut self, disp: Option<&CUVIDPARSERDISPINFO>) -> i32;
     fn get_operating_point(&mut self, point: &CUVIDOPERATINGPOINTINFO) -> i32 {
         1
     }
@@ -55,7 +54,12 @@ extern "C" fn display_picture<CB: VideoParserCb>(
     disp: *mut CUVIDPARSERDISPINFO,
 ) -> i32 {
     let s = unsafe { &mut *(user.cast::<CB>()) };
-    s.display_picture(unsafe { &*disp })
+    let disp = if disp.is_null() {
+        None
+    } else {
+        Some(unsafe { &*disp })
+    };
+    s.display_picture(disp)
 }
 
 extern "C" fn get_operating_point<CB: VideoParserCb>(
@@ -80,20 +84,21 @@ pub struct CuVideoParser<'a> {
 }
 
 impl<'a> CuVideoParser<'a> {
-    pub fn new<CB: VideoParserCb>(codec: cudaVideoCodec, cb: &'a mut CB) -> CuResult<Self> {
+    pub fn new<CB: VideoParserCb>(codec: cudaVideoCodec, cb: &'a CB) -> CuResult<Self> {
         let mut ptr = null_mut();
         let mut params = CUVIDPARSERPARAMS {
             CodecType: codec,
             ulMaxNumDecodeSurfaces: 1,
             ulErrorThreshold: 0,
-            ulMaxDisplayDelay: 0,
-            pUserData: (cb as *mut CB).cast(),
+            ulMaxDisplayDelay: 4,
+            pUserData: (cb as *const CB as *mut CB).cast(),
             pfnSequenceCallback: Some(sequence_callback::<CB>),
             pfnDecodePicture: Some(decode_picture::<CB>),
             pfnDisplayPicture: Some(display_picture::<CB>),
             pfnGetOperatingPoint: Some(get_operating_point::<CB>),
             pfnGetSEIMsg: Some(get_sei_msg::<CB>),
             pExtVideoInfo: null_mut(),
+            ulClockRate: 1000000,
             ..Default::default()
         };
         unsafe {
@@ -106,9 +111,9 @@ impl<'a> CuVideoParser<'a> {
     }
 
     pub fn feed_packet(&mut self, packet: &[u8], timestamp: i64) -> CuResult<()> {
-        let mut flags = CUvideopacketflags::CUVID_PKT_TIMESTAMP;
-        if timestamp == 0 {
-            flags |= CUvideopacketflags::CUVID_PKT_DISCONTINUITY;
+        let mut flags = CUvideopacketflags(0);
+        if timestamp != 0 {
+            flags |= CUvideopacketflags::CUVID_PKT_TIMESTAMP;
         }
         if packet.len() == 0 {
             flags |= CUvideopacketflags::CUVID_PKT_ENDOFSTREAM;
@@ -119,6 +124,18 @@ impl<'a> CuVideoParser<'a> {
             payload_size: packet.len() as c_ulong,
             payload: packet.as_ptr(),
             timestamp,
+        };
+        unsafe { cuvidParseVideoData(self.inner.as_ptr(), &mut packet).result() }
+    }
+
+    pub fn flush(&mut self) -> CuResult<()> {
+        let mut packet = CUVIDSOURCEDATAPACKET {
+            flags: (CUvideopacketflags::CUVID_PKT_ENDOFSTREAM
+                | CUvideopacketflags::CUVID_PKT_NOTIFY_EOS)
+                .0 as _,
+            payload_size: 0,
+            payload: null(),
+            timestamp: 0,
         };
         unsafe { cuvidParseVideoData(self.inner.as_ptr(), &mut packet).result() }
     }
@@ -181,6 +198,9 @@ pub fn query_caps(
 #[repr(transparent)]
 pub struct CuVideoDecoder(pub(crate) NonNull<c_void>);
 
+unsafe impl Sync for CuVideoDecoder {}
+unsafe impl Send for CuVideoDecoder {}
+
 impl CuVideoDecoder {
     pub fn new(
         format: &CUVIDEOFORMAT,
@@ -191,34 +211,41 @@ impl CuVideoDecoder {
         let mut create_info = CUVIDDECODECREATEINFO {
             ulWidth: format.coded_width,
             ulHeight: format.coded_height,
-            ulNumDecodeSurfaces: format.min_num_decode_surfaces.next_power_of_two() as c_ulong,
-            CodecType: format.codec,
-            ChromaFormat: format.chroma_format,
-            ulCreationFlags: 0,
-            bitDepthMinus8: format.bit_depth_luma_minus8 as c_ulong,
-            ulIntraDecodeOnly: 0,
-            ulMaxWidth: format.coded_width,
-            ulMaxHeight: format.coded_height,
-            Reserved1: 0,
-            display_area: _CUVIDDECODECREATEINFO__bindgen_ty_1 {
-                left: format.display_area.left as c_short,
-                top: format.display_area.left as c_short,
-                right: format.display_area.left as c_short,
-                bottom: format.display_area.left as c_short,
-            },
-            OutputFormat: surface_format,
-            DeinterlaceMode: cudaVideoDeinterlaceMode::cudaVideoDeinterlaceMode_Adaptive,
+            // 0 means same as ulWidth
+            ulMaxWidth: 0,
+            ulMaxHeight: 0,
+            // Same as ulWidth means no scaling
             ulTargetWidth: format.coded_width,
             ulTargetHeight: format.coded_height,
-            ulNumOutputSurfaces: 1,
-            vidLock: lock.0.as_ptr(),
+
+            display_area: _CUVIDDECODECREATEINFO__bindgen_ty_1 {
+                left: format.display_area.left as c_short,
+                top: format.display_area.top as c_short,
+                right: format.display_area.right as c_short,
+                bottom: format.display_area.bottom as c_short,
+            },
             target_rect: _CUVIDDECODECREATEINFO__bindgen_ty_2 {
                 left: format.display_area.left as c_short,
-                top: format.display_area.left as c_short,
-                right: format.display_area.left as c_short,
-                bottom: format.display_area.left as c_short,
+                top: format.display_area.top as c_short,
+                right: format.display_area.right as c_short,
+                bottom: format.display_area.bottom as c_short,
             },
+
+            CodecType: format.codec,
+            ChromaFormat: format.chroma_format,
+            bitDepthMinus8: format.bit_depth_luma_minus8 as c_ulong,
+            OutputFormat: surface_format,
+            DeinterlaceMode: cudaVideoDeinterlaceMode::cudaVideoDeinterlaceMode_Weave,
+
+            ulNumDecodeSurfaces: format.min_num_decode_surfaces.next_power_of_two() as c_ulong,
+            ulNumOutputSurfaces: 1,
+
+            ulCreationFlags: 0,
+            ulIntraDecodeOnly: 0,
             enableHistogram: 0,
+            vidLock: lock.0.as_ptr(),
+
+            Reserved1: 0,
             Reserved2: [0; 4],
         };
         unsafe {
@@ -249,10 +276,9 @@ impl CuVideoDecoder {
         let mut ptr = 0;
         let mut pitch = 0;
         let mut proc = CUVIDPROCPARAMS {
-            progressive_frame: info.progressive_frame,
-            second_field: info.repeat_first_field + 1,
+            progressive_frame: 1,
+            second_field: 1,
             top_field_first: info.top_field_first,
-            unpaired_field: c_int::from(info.repeat_first_field < 0),
             output_stream: stream.inner() as _,
             ..Default::default()
         };
@@ -273,6 +299,7 @@ impl CuVideoDecoder {
         })
     }
 
+    /// FrameMapping has a drop impl, but you can manually destroy it to get any possible errors.
     pub fn unmap(&self, mapping: FrameMapping) -> CuResult<()> {
         self.unmap_inner(mapping.ptr)?;
         mem::forget(mapping);
@@ -295,7 +322,7 @@ impl Drop for CuVideoDecoder {
 /// Handle to a frame mapped by nvdec in device memory.
 ///
 /// The frame is unmapped when this handle is dropped.
-/// You can also call [CuVideoDecoder::unmap] to unmap it manually (and gather any possible errors).
+/// You can also call [CuVideoDecoder::unmap] to unmap it manually (and handle any possible errors).
 #[derive(Debug)]
 pub struct FrameMapping<'a> {
     pub ptr: u64,
