@@ -1,14 +1,15 @@
 [package]
 name = "ssimulacra2-cuda"
 version = "0.1.0"
-edition = "2021"
+authors.workspace = true
+edition.workspace = true
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
 array-init = { workspace = true }
-cuda-driver = { version = "0.1", path = "../cuda-driver", default-features = false }
-cuda-npp = { version = "0.1", path = "../cuda-npp", default-features = false, features = ["isu", "ial", "idei", "if", "ist"] }
+cuda-driver = { workspace = true }
+cuda-npp = { workspace = true, features = ["isu", "ial", "idei", "if", "ist"] }
 indices = { workspace = true }
 zune-image.workspace = true
 

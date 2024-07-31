@@ -1,7 +1,8 @@
 [package]
 name = "ssimulacra2-cuda-kernel"
 version = "0.1.0"
-edition = "2021"
+authors.workspace = true
+edition.workspace = true
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
@@ -9,7 +10,7 @@ edition = "2021"
 crate-type = ["rlib", "cdylib"]
 
 [dependencies]
-nvptx-core = { version = "0.1", path = "../nvptx-core" }
+nvptx-core = { workspace = true }
 
 [build-dependencies]
 nalgebra = { workspace = true }

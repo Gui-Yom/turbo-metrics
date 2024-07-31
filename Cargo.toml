@@ -10,23 +10,22 @@ members = [
     "crates/ssimulacra2-cuda-kernel",
     "crates/ssimulacra2-cuda",
     "crates/video-common",
+    "crates/ssimulacra2-cuda-cli",
+    "crates/codec-cfg-record",
 ]
 resolver = "2"
 
-# Profile specifically for building nvptx code
-[profile.release-nvptx]
-inherits = "release"
-opt-level = 3
-lto = "fat"
-debug = "full"
-codegen-units = 1
-overflow-checks = false
+[workspace.package]
+authors = ["Guillaume Anthouard"]
+homepage = "https://github.com/Gui-Yom/video-hw-rs"
+edition = "2021"
 
 [workspace.dependencies]
 cuda-driver = { path = "crates/cuda-driver", default-features = false }
 cuda-driver-sys = { path = "crates/cuda-driver-sys", default-features = false }
 cuda-npp = { path = "crates/cuda-npp", default-features = false }
 cuda-npp-sys = { path = "crates/cuda-npp-sys", default-features = false }
+codec-cfg-record = { path = "crates/codec-cfg-record", default-features = false }
 nv-video-codec = { path = "crates/nv-video-codec", default-features = false }
 nv-video-codec-sys = { path = "crates/nv-video-codec-sys", default-features = false }
 nvptx-core = { path = "crates/nvptx-core", default-features = false }
@@ -37,6 +36,7 @@ bindgen = "0.69"
 bitstream-io = "2"
 #cudarc = { version = "0.10", default-features = false, features = ["std", "driver"] }#, "cuda-version-from-build-system", "dynamic-linking"] }
 indices = "0.3"
+h264-reader = "0.7"
 matroska-demuxer = "0.5"
 nalgebra = "0.33"
 paste = "1"
@@ -44,18 +44,35 @@ rerun = "0.17"
 spsc = { path = "../spsc" }
 zune-image = { version = "0.4", default-features = false, features = ["png", "simd", "metadata"] }
 
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
 [package]
 name = "video"
 version = "0.1.0"
-edition = "2021"
-
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+authors.workspace = true
+edition.workspace = true
 
 [dependencies]
-bitstream-io = { workspace = true }
-spsc = { workspace = true }
 cuda-driver = { workspace = true }
+codec-cfg-record = { workspace = true }
 matroska-demuxer = { workspace = true }
 nv-video-codec = { workspace = true, features = ["cuda-npp"] }
 ssimulacra2-cuda = { workspace = true }
+spsc = { workspace = true }
 zune-image = { workspace = true }
+
+# Profile specifically for building nvptx code
+[profile.release-nvptx]
+inherits = "release"
+opt-level = 3
+lto = "fat"
+debug = "full"
+codegen-units = 1
+overflow-checks = false
+
+[profile.release]
+opt-level = 3
+lto = "fat"
+debug = "full"
+split-debuginfo = "packed"
+codegen-units = 1

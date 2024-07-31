@@ -27,7 +27,7 @@ macro_rules! malloc_impl {
                 if ptr.is_null() {
                     Err(Error::from(NppStatus::NPP_MEMORY_ALLOCATION_ERR))
                 } else {
-                    dbg!(pitch);
+                    // dbg!(pitch);
                     Ok(Self {
                         width,
                         height,

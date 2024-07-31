@@ -34,8 +34,8 @@ pub struct Ssimulacra2 {
     sizes: [NppiRect; SCALES],
     sizes_t: [NppiRect; SCALES],
 
-    ref_input: Image<u8, C<3>>,
-    dis_input: Image<u8, C<3>>,
+    pub ref_input: Image<u8, C<3>>,
+    pub dis_input: Image<u8, C<3>>,
 
     ref_linear: [Image<f32, C<3>>; SCALES],
     dis_linear: [Image<f32, C<3>>; SCALES],
@@ -45,8 +45,8 @@ pub struct Ssimulacra2 {
 
     sum_scratch: [[ScratchBuffer; 6]; SCALES],
 
-    main_ref: CuStream,
-    main_dis: CuStream,
+    pub main_ref: CuStream,
+    pub main_dis: CuStream,
     streams: [[CuStream; 6]; SCALES],
     scores: Box<[f64; 3 * 6 * SCALES]>,
 }
@@ -156,7 +156,7 @@ impl Ssimulacra2 {
                 .sum::<usize>()
     }
 
-    pub fn record(&mut self) -> Result<CuGraphExec> {
+    fn record(&mut self) -> Result<CuGraphExec> {
         // TODO we should work with planar images, as it would allow us to coalesce read and writes
         //  coalescing can already be achieved for kernels which doesn't require access to neighbouring pixels or samples
 
@@ -202,7 +202,6 @@ impl Ssimulacra2 {
                     .unwrap();
             }
         }
-        println!("Scheduled all work !");
 
         let graph = self.main_ref.end_capture().unwrap();
         let exec = graph.instantiate().unwrap();
@@ -210,7 +209,8 @@ impl Ssimulacra2 {
         Ok(exec)
     }
 
-    pub fn compute(&mut self, ref_bytes: &[u8], dis_bytes: &[u8]) -> Result<f64> {
+    /// Compute ssimulacra2 metric using image bytes in CPU memory.
+    pub fn compute_from_cpu(&mut self, ref_bytes: &[u8], dis_bytes: &[u8]) -> Result<f64> {
         // profiler_stop().unwrap();
 
         self.ref_input
@@ -218,6 +218,12 @@ impl Ssimulacra2 {
         self.dis_input
             .copy_from_cpu(dis_bytes, self.main_dis.inner() as _)?;
 
+        self.compute()
+    }
+
+    /// Compute ssimulacra2 metric using images already in CUDA memory.
+    /// Reference and distorted images must be copied to the [ref_input] and [dis_input] fields.
+    pub fn compute(&mut self) -> Result<f64> {
         self.exec.as_ref().unwrap().launch(&self.main_ref).unwrap();
 
         self.main_ref.sync().unwrap();

@@ -47,7 +47,7 @@ fn main() {
         (total - free) / 1024 / 1024
     );
     let start = Instant::now();
-    let gpu_score = dbg!(ssimulacra2.compute(ref_bytes, dis_bytes)).unwrap();
+    let gpu_score = dbg!(ssimulacra2.compute_from_cpu(ref_bytes, dis_bytes)).unwrap();
     let elapsed = start.elapsed().as_nanos();
     println!(
         "GPU: Finished computing a single frame in {:.2} ms ({:.1} fps)",

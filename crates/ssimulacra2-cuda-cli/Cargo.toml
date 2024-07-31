@@ -1,0 +1,13 @@
+[package]
+name = "ssimulacra2-cuda-cli"
+version = "0.1.0"
+authors.workspace = true
+edition.workspace = true
+
+[dependencies]
+cuda-driver = { workspace = true }
+codec-cfg-record = { workspace = true }
+matroska-demuxer = { workspace = true }
+nv-video-codec = { workspace = true, features = ["cuda-npp"] }
+ssimulacra2-cuda = { workspace = true }
+spsc = { workspace = true }

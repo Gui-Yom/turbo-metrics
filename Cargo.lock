@@ -63,6 +63,12 @@ checksum = "b048fb63fd8b5923fc5aa7b340d8e156aec7ec02f0c78fa8a6ddc2613f6f71de"
 
 [[package]]
 name = "bitstream-io"
+version = "1.10.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e445576659fd04a57b44cbd00aa37aaa815ebefa0aa3cb677a6b5e63d883074f"
+
+[[package]]
+name = "bitstream-io"
 version = "2.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "3dcde5f311c85b8ca30c2e4198d4326bc342c76541590106f5fa4a50946ea499"
@@ -97,6 +103,15 @@ dependencies = [
  "glob",
  "libc",
  "libloading",
+]
+
+[[package]]
+name = "codec-cfg-record"
+version = "0.1.0"
+dependencies = [
+ "bitstream-io 2.5.0",
+ "h264-reader",
+ "matroska-demuxer",
 ]
 
 [[package]]
@@ -146,6 +161,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "four-cc"
+version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "3958af68a31b1d1384d3f39b6aa33eb14b6009065b5ca305ddd9712a4237124f"
+
+[[package]]
 name = "generator"
 version = "0.8.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -163,6 +184,25 @@ name = "glob"
 version = "0.3.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d2fabcfbdc87f4758337ca535fb41a6d701b65693ce38287d856d1674551ec9b"
+
+[[package]]
+name = "h264-reader"
+version = "0.7.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "bd118dcc322cc71cfc33254a19ebece92cfaaf6d4b4793fec3f7f44fbc4150df"
+dependencies = [
+ "bitstream-io 1.10.0",
+ "hex-slice",
+ "log",
+ "memchr",
+ "rfc6381-codec",
+]
+
+[[package]]
+name = "hex-slice"
+version = "0.1.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "5491a308e0214554f07a81d8944abe45f552871c12e3c3c6e7e5d354039a6c4c"
 
 [[package]]
 name = "home"
@@ -261,9 +301,9 @@ dependencies = [
 
 [[package]]
 name = "matrixmultiply"
-version = "0.3.8"
+version = "0.3.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7574c1cf36da4798ab73da5b215bbf444f50718207754cb522201d78d1cd0ff2"
+checksum = "9380b911e3e96d10c1f415da0876389aaf1b56759054eeb0de7df940c456ba1a"
 dependencies = [
  "autocfg",
  "rawpointer",
@@ -286,6 +326,21 @@ name = "minimal-lexical"
 version = "0.2.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "68354c5c6bd36d73ff3feceb05efa59b6acb7626617f4962be322a825e61f79a"
+
+[[package]]
+name = "mp4ra-rust"
+version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "be9daf03b43bf3842962947c62ba40f411e46a58774c60838038f04a67d17626"
+dependencies = [
+ "four-cc",
+]
+
+[[package]]
+name = "mpeg4-audio-const"
+version = "0.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "96a1fe2275b68991faded2c80aa4a33dba398b77d276038b8f50701a22e55918"
 
 [[package]]
 name = "mutate_once"
@@ -514,6 +569,17 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7a66a03ae7c801facd77a29370b4faec201768915ac14a721ba36f20bc9c209b"
 
 [[package]]
+name = "rfc6381-codec"
+version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "4395f46a67f0d57c57f6a5361f3a9a0c0183a19cab3998892ecdc003de6d8037"
+dependencies = [
+ "four-cc",
+ "mp4ra-rust",
+ "mpeg4-audio-const",
+]
+
+[[package]]
 name = "rustc-hash"
 version = "1.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -610,6 +676,18 @@ dependencies = [
  "indices",
  "nalgebra",
  "zune-image",
+]
+
+[[package]]
+name = "ssimulacra2-cuda-cli"
+version = "0.1.0"
+dependencies = [
+ "codec-cfg-record",
+ "cuda-driver",
+ "matroska-demuxer",
+ "nv-video-codec",
+ "spsc",
+ "ssimulacra2-cuda",
 ]
 
 [[package]]
@@ -712,7 +790,7 @@ checksum = "830b7e5d4d90034032940e4ace0d9a9a057e7a45cd94e6c007832e39edb82f6d"
 name = "video"
 version = "0.1.0"
 dependencies = [
- "bitstream-io",
+ "codec-cfg-record",
  "cuda-driver",
  "matroska-demuxer",
  "nv-video-codec",

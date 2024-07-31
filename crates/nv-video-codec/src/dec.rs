@@ -1,11 +1,11 @@
-use std::ffi::{c_int, c_short, c_ulong, c_void};
+use std::ffi::{c_short, c_ulong, c_void};
 use std::marker::PhantomData;
 use std::mem;
 use std::ptr::{null, null_mut, NonNull};
 
-use crate::sys;
 use cuda_driver::sys::CuResult;
 use cuda_driver::{CuCtx, CuStream};
+use nv_video_codec_sys::{CUVIDEOFORMATEX__bindgen_ty_1, CUVIDEOFORMATEX};
 use sys::{
     _CUVIDDECODECREATEINFO__bindgen_ty_1, _CUVIDDECODECREATEINFO__bindgen_ty_2,
     cudaVideoChromaFormat, cudaVideoCodec, cudaVideoDeinterlaceMode, cudaVideoSurfaceFormat,
@@ -17,6 +17,8 @@ use sys::{
     CUVIDPARSERDISPINFO, CUVIDPARSERPARAMS, CUVIDPICPARAMS, CUVIDPROCPARAMS, CUVIDSEIMESSAGEINFO,
     CUVIDSOURCEDATAPACKET,
 };
+
+use crate::sys;
 
 pub trait VideoParserCb {
     /// Called when a new sequence is being parsed (parameters change)
@@ -84,21 +86,42 @@ pub struct CuVideoParser<'a> {
 }
 
 impl<'a> CuVideoParser<'a> {
-    pub fn new<CB: VideoParserCb>(codec: cudaVideoCodec, cb: &'a CB) -> CuResult<Self> {
+    pub fn new<CB: VideoParserCb>(
+        codec: cudaVideoCodec,
+        cb: &'a CB,
+        clock_rate: Option<u32>,
+        extra_data: Option<&[u8]>,
+    ) -> CuResult<Self> {
         let mut ptr = null_mut();
+        let mut ext = if let Some(extra) = extra_data {
+            let mut raw = [0; 1024];
+            raw[0..extra.len()].copy_from_slice(extra);
+            Some(CUVIDEOFORMATEX {
+                format: CUVIDEOFORMAT {
+                    codec,
+                    seqhdr_data_length: extra_data.map(|s| s.len()).unwrap_or(0) as _,
+                    ..Default::default()
+                },
+                __bindgen_anon_1: CUVIDEOFORMATEX__bindgen_ty_1 {
+                    raw_seqhdr_data: raw,
+                },
+            })
+        } else {
+            None
+        };
         let mut params = CUVIDPARSERPARAMS {
             CodecType: codec,
             ulMaxNumDecodeSurfaces: 1,
             ulErrorThreshold: 0,
             ulMaxDisplayDelay: 4,
+            ulClockRate: clock_rate.unwrap_or(0),
+            pExtVideoInfo: ext.as_mut().map(|p| p as *mut _).unwrap_or(null_mut()),
             pUserData: (cb as *const CB as *mut CB).cast(),
             pfnSequenceCallback: Some(sequence_callback::<CB>),
             pfnDecodePicture: Some(decode_picture::<CB>),
             pfnDisplayPicture: Some(display_picture::<CB>),
             pfnGetOperatingPoint: Some(get_operating_point::<CB>),
             pfnGetSEIMsg: Some(get_sei_msg::<CB>),
-            pExtVideoInfo: null_mut(),
-            ulClockRate: 1000000,
             ..Default::default()
         };
         unsafe {
@@ -152,6 +175,9 @@ impl<'a> Drop for CuVideoParser<'a> {
 }
 
 pub struct CuVideoCtxLock(pub(crate) NonNull<sys::_CUcontextlock_st>);
+
+unsafe impl Send for CuVideoCtxLock {}
+unsafe impl Sync for CuVideoCtxLock {}
 
 impl CuVideoCtxLock {
     pub fn new(ctx: &CuCtx) -> CuResult<Self> {

@@ -65,3 +65,23 @@ impl<T: Img<u8, P<2>>> NV12toRGB for T {
         }
     }
 }
+
+pub trait YUVtoRGB {
+    fn yuv_to_rgb(&self, dst: impl ImgMut<u8, C<3>>, ctx: NppStreamContext) -> Result<()>;
+}
+
+impl<T: Img<u8, C<3>>> YUVtoRGB for T {
+    fn yuv_to_rgb(&self, mut dst: impl ImgMut<u8, C<3>>, ctx: NppStreamContext) -> Result<()> {
+        unsafe {
+            nppiYUVToRGB_8u_C3R_Ctx(
+                self.device_ptr(),
+                self.pitch(),
+                dst.device_ptr_mut(),
+                dst.pitch(),
+                self.size(),
+                ctx,
+            )
+            .result()
+        }
+    }
+}

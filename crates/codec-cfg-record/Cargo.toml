@@ -1,0 +1,12 @@
+[package]
+name = "codec-cfg-record"
+version = "0.1.0"
+authors.workspace = true
+edition.workspace = true
+
+[dependencies]
+bitstream-io = { workspace = true }
+h264-reader = { workspace = true }
+
+[dev-dependencies]
+matroska-demuxer = { workspace = true }
