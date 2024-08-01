@@ -47,6 +47,13 @@ Reference implementation : https://github.com/cloudinary/ssimulacra2
 
 Rust implementation : https://github.com/rust-av/ssimulacra2
 
+### ssimulacra2-cuda-cli
+
+CLI frontend for ssimulacra2-cuda that can compare full videos blazingly fast by decoding on the GPU.
+
+At the time of writing, I'm maxing out my RTX 3060 laptop compute while using 45% of NVDEC total capacity.
+With two h264 videos, I can process around 110 image pairs per second (which is more than 4x speedup over realtime).
+
 ## Prerequisites
 
 - A recent [CUDA SDK](https://developer.nvidia.com/cuda-toolkit) (tested with 12.5)

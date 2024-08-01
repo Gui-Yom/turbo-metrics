@@ -35,6 +35,7 @@ array-init = "2"
 bindgen = "0.69"
 bitstream-io = "2"
 #cudarc = { version = "0.10", default-features = false, features = ["std", "driver"] }#, "cuda-version-from-build-system", "dynamic-linking"] }
+incr_stats = "1"
 indices = "0.3"
 h264-reader = "0.7"
 matroska-demuxer = "0.5"

@@ -162,6 +162,7 @@ impl Ssimulacra2 {
 
         self.main_ref.begin_capture().unwrap();
 
+        // Bring main_dis into the graph capture scope
         self.main_dis.wait_for_stream(&self.main_ref).unwrap();
 
         // Convert to linear
@@ -205,6 +206,7 @@ impl Ssimulacra2 {
 
         let graph = self.main_ref.end_capture().unwrap();
         let exec = graph.instantiate().unwrap();
+        // FIXME not sure this sync is necessary
         self.main_ref.sync().unwrap();
         Ok(exec)
     }
@@ -224,8 +226,12 @@ impl Ssimulacra2 {
     /// Compute ssimulacra2 metric using images already in CUDA memory.
     /// Reference and distorted images must be copied to the [ref_input] and [dis_input] fields.
     pub fn compute(&mut self) -> Result<f64> {
+        // In the cuda graph, streams are only representative of parallel work.
+        self.main_ref.wait_for_stream(&self.main_dis).unwrap();
+
         self.exec.as_ref().unwrap().launch(&self.main_ref).unwrap();
 
+        /// Wait for CUDA to transfer scores back to the CPU before post-processing.
         self.main_ref.sync().unwrap();
 
         Ok(self.post_process_scores())

@@ -4,27 +4,18 @@ use std::thread;
 use std::time::{Duration, Instant};
 
 use matroska_demuxer::{Frame, MatroskaFile, TrackType};
+use zune_image::codecs::png::zune_core::colorspace::{ColorCharacteristics, ColorSpace};
 
 use codec_cfg_record::{av1, h264};
-use cuda_driver::CuDevice;
+use cuda_driver::{CuDevice, CuStream};
 use nv_video_codec::dec::{CuVideoCtxLock, CuVideoParser};
-use nv_video_codec::dec_helper::npp::get_stream_ctx;
 use nv_video_codec::dec_helper::npp::icc::NV12toRGB;
+use nv_video_codec::dec_helper::npp::{get_stream_ctx, Img, C};
 use nv_video_codec::dec_helper::DecoderHolder;
 use nv_video_codec::sys::cudaVideoCodec;
 use ssimulacra2_cuda::Ssimulacra2;
 
 fn main() {
-    let mut mkv_ref = matroska_demuxer::MatroskaFile::open(BufReader::new(
-        File::open("data/friends_cut.mkv").unwrap(),
-    ))
-    .unwrap();
-
-    let mut mkv_dis = matroska_demuxer::MatroskaFile::open(BufReader::new(
-        File::open("data/dummy_encode2.mkv").unwrap(),
-    ))
-    .unwrap();
-
     cuda_driver::init_cuda().expect("Could not initialize the CUDA API");
     let dev = CuDevice::get(0).unwrap();
     println!(
@@ -36,10 +27,11 @@ fn main() {
     let ctx = dev.retain_primary_ctx().unwrap();
     ctx.set_current().unwrap();
 
-    let lock = CuVideoCtxLock::new(&ctx).unwrap();
-    let lock2 = CuVideoCtxLock::new(&ctx).unwrap();
+    let mut scores = Vec::with_capacity(4096);
 
     {
+        let lock = CuVideoCtxLock::new(&ctx).unwrap();
+        let lock2 = CuVideoCtxLock::new(&ctx).unwrap();
         let mut cb_ref = DecoderHolder::new(lock);
         let mut cb_dis = DecoderHolder::new(lock2);
         thread::scope(|s| {
@@ -47,6 +39,10 @@ fn main() {
                 .name("demuxer-parser-ref".to_string())
                 .spawn_scoped(s, || {
                     ctx.set_current().unwrap();
+                    let mut mkv_ref = MatroskaFile::open(BufReader::new(
+                        File::open("data/friends_cut.mkv").unwrap(),
+                    ))
+                    .unwrap();
                     demux_h264(&mut mkv_ref, &cb_ref);
                 })
                 .unwrap();
@@ -55,6 +51,10 @@ fn main() {
                 .name("demuxer-parser-dis".to_string())
                 .spawn_scoped(s, || {
                     ctx.set_current().unwrap();
+                    let mut mkv_dis = MatroskaFile::open(BufReader::new(
+                        File::open("data/dummy_encode2.mkv").unwrap(),
+                    ))
+                    .unwrap();
                     demux_h264(&mut mkv_dis, &cb_dis);
                 })
                 .unwrap();
@@ -64,50 +64,78 @@ fn main() {
             let mut rx_dis = cb_dis.wait_for_rx();
             let format = cb_ref.format().unwrap();
             let mut ss = Ssimulacra2::new(format.display_width(), format.display_height()).unwrap();
-            println!("Initialized all");
+            println!("Decoders initialized, now processing ...");
             let start = Instant::now();
             while let Ok(Some(disp_ref)) = rx_ref.peek() {
                 counter += 1;
+
                 {
                     let src = cb_ref.map_npp_nv12(&disp_ref, &ss.main_ref).unwrap();
-                    src.nv12_to_rgb(
+                    src.nv12_to_rgb_bt709_limited(
                         &mut ss.ref_input,
                         get_stream_ctx()
                             .unwrap()
                             .with_stream(ss.main_ref.inner() as _),
                     )
                     .unwrap();
-                }
-                let disp_dis = rx_dis.peek().unwrap().unwrap();
-                {
+
+                    let disp_dis = rx_dis.peek().unwrap().unwrap();
+
                     let src = cb_dis.map_npp_nv12(&disp_dis, &ss.main_dis).unwrap();
-                    src.nv12_to_rgb(
+                    src.nv12_to_rgb_bt709_limited(
                         &mut ss.dis_input,
                         get_stream_ctx()
                             .unwrap()
                             .with_stream(ss.main_dis.inner() as _),
                     )
                     .unwrap();
-                }
-                rx_ref.recv().unwrap();
-                rx_dis.recv().unwrap();
-                if counter < 400 || counter > 405 {
-                    continue;
+
+                    // println!(
+                    //     "ref {}/dis {} : {}, {}",
+                    //     disp_ref.picture_index,
+                    //     disp_dis.picture_index,
+                    //     Duration::from_millis(disp_ref.timestamp as u64).as_secs_f32(),
+                    //     Duration::from_millis(disp_dis.timestamp as u64).as_secs_f32()
+                    // );
+
+                    // if counter < 406 {
+                    //     continue;
+                    // }
+                    // if counter > 400 {
+                    //     break;
+                    // }
+
+                    let score = ss.compute().unwrap();
+                    scores.push(score);
+
+                    // nvdec frames are unmapped at this point
                 }
 
-                dbg!(ss.compute().unwrap());
+                // Free up a spot in the queue
+                rx_ref.recv().unwrap();
+                rx_dis.recv().unwrap();
+
+                // if score < 0.0 {
+                //     save_img(&ss.ref_input, &format!("ref{counter}"), &ss.main_ref);
+                //     save_img(&ss.dis_input, &format!("dis{counter}"), &ss.main_dis);
+                // }
             }
             let total = start.elapsed().as_millis();
-            let total_frames = (counter + 1) * 2;
+            let total_frames = counter + 1;
             println!(
-                "Decoded {} frames in {total} ms, {} fps",
+                "Done ! Processed {} frame pairs in {total} ms ({} fps)",
                 total_frames,
                 total_frames as u128 * 1000 / total
             );
         });
     }
 
-    println!("done !");
+    println!("all threads are done !");
+
+    let mut stats = incr_stats::vec::descriptive(&scores).unwrap();
+    println!("ssimulacra2.1 stats");
+    println!("min: {}", stats.min().unwrap());
+    println!("mean: {}", stats.mean().unwrap());
 
     dev.release_primary_ctx().unwrap();
 }
@@ -129,7 +157,7 @@ fn demux_av1<R: Read + Seek>(mkv: &mut MatroskaFile<R>, cb: &DecoderHolder) {
     let mut frame = Frame::default();
     let mut packet = vec![];
     while let Ok(remaining) = mkv.next_frame(&mut frame) {
-        if !remaining {
+        if !remaining || !cb.is_open() {
             break;
         }
         let track = &mkv.tracks()[frame.track as usize - 1];
@@ -159,14 +187,45 @@ fn demux_h264<R: Read + Seek>(mkv: &mut MatroskaFile<R>, cb: &DecoderHolder) {
     let mut frame = Frame::default();
     let mut packet = Vec::new();
     while let Ok(remaining) = mkv.next_frame(&mut frame) {
-        if !remaining {
+        if !remaining || !cb.is_open() {
             break;
         }
         let track = &mkv.tracks()[frame.track as usize - 1];
         if track.track_type() == TrackType::Video {
+            // dbg!(frame.timestamp);
             h264::packet_to_annexb(&mut packet, &frame.data, nal_length_size);
             parser.feed_packet(&packet, frame.timestamp as i64).unwrap();
         }
     }
     parser.flush().unwrap();
+}
+
+fn save_img(img: impl Img<u8, C<3>>, name: &str, stream: &CuStream) {
+    // dev.synchronize().unwrap();
+    let bytes = img.copy_to_cpu(stream.inner() as _).unwrap();
+    stream.sync().unwrap();
+    let mut img = zune_image::image::Image::from_u8(
+        &bytes,
+        img.width() as usize,
+        img.height() as usize,
+        ColorSpace::RGB,
+    );
+    img.metadata_mut()
+        .set_color_trc(ColorCharacteristics::Linear);
+    img.save(format!("frames/{name}.png")).unwrap()
+}
+
+fn save_img_f32(img: impl Img<f32, C<3>>, name: &str, stream: &CuStream) {
+    // dev.synchronize().unwrap();
+    let bytes = img.copy_to_cpu(stream.inner() as _).unwrap();
+    stream.sync().unwrap();
+    let mut img = zune_image::image::Image::from_f32(
+        &bytes,
+        img.width() as usize,
+        img.height() as usize,
+        ColorSpace::RGB,
+    );
+    img.metadata_mut()
+        .set_color_trc(ColorCharacteristics::Linear);
+    img.save(format!("frames/{name}.png")).unwrap()
 }

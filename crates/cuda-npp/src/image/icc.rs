@@ -2,7 +2,7 @@
 
 use cuda_npp_sys::*;
 
-use crate::{Result, __priv};
+use crate::Result;
 
 use super::{Channels, Img, ImgMut, Sample, C, P};
 
@@ -48,12 +48,58 @@ impl_gammainvip!(u8, C<3>, _8u, C3);
 
 pub trait NV12toRGB {
     fn nv12_to_rgb(&self, dst: impl ImgMut<u8, C<3>>, ctx: NppStreamContext) -> Result<()>;
+    fn nv12_to_rgb_bt709_limited(
+        &self,
+        dst: impl ImgMut<u8, C<3>>,
+        ctx: NppStreamContext,
+    ) -> Result<()>;
+    fn nv12_to_rgb_bt709_full(
+        &self,
+        dst: impl ImgMut<u8, C<3>>,
+        ctx: NppStreamContext,
+    ) -> Result<()>;
 }
 
 impl<T: Img<u8, P<2>>> NV12toRGB for T {
     fn nv12_to_rgb(&self, mut dst: impl ImgMut<u8, C<3>>, ctx: NppStreamContext) -> Result<()> {
         unsafe {
             nppiNV12ToRGB_8u_P2C3R_Ctx(
+                self.device_ptr(),
+                self.pitch(),
+                dst.device_ptr_mut(),
+                dst.pitch(),
+                self.size(),
+                ctx,
+            )
+            .result()
+        }
+    }
+
+    fn nv12_to_rgb_bt709_limited(
+        &self,
+        mut dst: impl ImgMut<u8, C<3>>,
+        ctx: NppStreamContext,
+    ) -> Result<()> {
+        unsafe {
+            nppiNV12ToRGB_709CSC_8u_P2C3R_Ctx(
+                self.device_ptr(),
+                self.pitch(),
+                dst.device_ptr_mut(),
+                dst.pitch(),
+                self.size(),
+                ctx,
+            )
+            .result()
+        }
+    }
+
+    fn nv12_to_rgb_bt709_full(
+        &self,
+        mut dst: impl ImgMut<u8, C<3>>,
+        ctx: NppStreamContext,
+    ) -> Result<()> {
+        unsafe {
+            nppiNV12ToRGB_709HDTV_8u_P2C3R_Ctx(
                 self.device_ptr(),
                 self.pitch(),
                 dst.device_ptr_mut(),

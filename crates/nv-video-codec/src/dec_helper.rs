@@ -68,6 +68,10 @@ impl DecoderHolder {
         }
     }
 
+    pub fn is_open(&self) -> bool {
+        self.tx.as_ref().map(|tx| tx.is_open()).unwrap_or(true)
+    }
+
     #[cfg(feature = "cuda-npp")]
     pub fn map_npp_nv12<'a>(
         &'a self,
@@ -161,7 +165,7 @@ impl VideoParserCb for DecoderHolder {
 
         let surfaces = format.min_num_decode_surfaces.next_power_of_two().max(1);
 
-        let (tx, rx) = spsc::bounded_channel(surfaces as usize);
+        let (tx, rx) = spsc::bounded_channel(2);
 
         self.decoder = Some((
             CuVideoDecoder::new(dbg!(format), dbg!(surface_format), &self.lock).unwrap(),
@@ -176,6 +180,17 @@ impl VideoParserCb for DecoderHolder {
 
     fn decode_picture(&mut self, pic: &CUVIDPICPARAMS) -> i32 {
         if let Some((decoder, _)) = &self.decoder {
+            if !self.tx.as_ref().unwrap().is_open() {
+                println!("Receiver closed, no need to keep decoding");
+                return 0;
+            }
+            // println!(
+            //     "{}: decoding {:>2}, {} {}",
+            //     thread::current().name().unwrap_or(""),
+            //     pic.CurrPicIdx,
+            //     if pic.intra_pic_flag > 0 { "I" } else { " " },
+            //     if pic.ref_pic_flag > 0 { "ref" } else { "" }
+            // );
             decoder.decode(pic).unwrap();
             1
         } else {
@@ -185,10 +200,13 @@ impl VideoParserCb for DecoderHolder {
     }
 
     fn display_picture(&mut self, disp: Option<&CUVIDPARSERDISPINFO>) -> i32 {
-        // let codec = self.format().unwrap().codec;
         if let Some(tx) = &mut *self.tx {
             if let Ok(()) = tx.send(disp.cloned()) {
-                // println!("successfully queued {:?} picture : {:?}", codec, disp);
+                // println!(
+                //     "{:?}: queued picture : {:?}",
+                //     thread::current().name().unwrap_or(""),
+                //     disp
+                // );
                 1
             } else {
                 0

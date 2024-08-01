@@ -88,7 +88,7 @@ fn main() {
                 {
                     let src = cb.map_npp_nv12(&disp, &stream).unwrap();
                     let dst = dst.get_or_insert_with(|| src.malloc_same_size().unwrap());
-                    src.nv12_to_rgb(
+                    src.nv12_to_rgb_bt709_limited(
                         dst,
                         get_stream_ctx().unwrap().with_stream(stream.inner() as _),
                     )

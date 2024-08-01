@@ -1,4 +1,4 @@
-use std::ffi::{c_short, c_ulong, c_void};
+use std::ffi::{c_int, c_short, c_ulong, c_void};
 use std::marker::PhantomData;
 use std::mem;
 use std::ptr::{null, null_mut, NonNull};
@@ -135,9 +135,7 @@ impl<'a> CuVideoParser<'a> {
 
     pub fn feed_packet(&mut self, packet: &[u8], timestamp: i64) -> CuResult<()> {
         let mut flags = CUvideopacketflags(0);
-        if timestamp != 0 {
-            flags |= CUvideopacketflags::CUVID_PKT_TIMESTAMP;
-        }
+        flags |= CUvideopacketflags::CUVID_PKT_TIMESTAMP;
         if packet.len() == 0 {
             flags |= CUvideopacketflags::CUVID_PKT_ENDOFSTREAM;
         }
@@ -303,8 +301,9 @@ impl CuVideoDecoder {
         let mut pitch = 0;
         let mut proc = CUVIDPROCPARAMS {
             progressive_frame: 1,
-            second_field: 1,
+            second_field: info.repeat_first_field + 1,
             top_field_first: info.top_field_first,
+            unpaired_field: c_int::from(info.repeat_first_field < 0),
             output_stream: stream.inner() as _,
             ..Default::default()
         };
