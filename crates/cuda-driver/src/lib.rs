@@ -27,7 +27,7 @@ pub fn init_cuda() -> CuResult<()> {
     unsafe { cuInit(0).result() }
 }
 
-pub fn full_init() -> CuResult<()> {
+pub fn init_cuda_and_primary_ctx() -> CuResult<()> {
     init_cuda()?;
     let dev = CuDevice::get(0)?;
     dev.retain_primary_ctx()?.set_current()

@@ -109,7 +109,7 @@ impl_sqrip!(f32, C<1>, _32f, C1);
 
 #[cfg(test)]
 mod tests {
-    use cuda_driver::full_init;
+    use cuda_driver::init_cuda_and_primary_ctx;
 
     use crate::get_stream_ctx;
     use crate::image::ial::SqrIP;
@@ -122,7 +122,7 @@ mod tests {
 
     #[test]
     fn sqrip() -> Result<()> {
-        full_init().unwrap();
+        init_cuda_and_primary_ctx().unwrap();
         let ctx = get_stream_ctx()?;
         let mut img = Image::<f32, C<3>>::malloc(16, 16)?;
         img.sqr_ip(ctx)?;

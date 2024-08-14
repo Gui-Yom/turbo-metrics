@@ -11,7 +11,12 @@ cuda-driver = { workspace = true }
 cuda-npp = { workspace = true, optional = true, features = ["icc", "isu"] }
 nv-video-codec-sys = { workspace = true }
 spsc = { workspace = true }
+tracing = { workspace = true }
 zune-image.workspace = true
+
+[dev-dependencies]
+codec-bitstream = { workspace = true }
+tracing-subscriber = { workspace = true }
 
 [features]
 default = ["static"]

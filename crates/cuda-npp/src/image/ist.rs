@@ -85,7 +85,7 @@ impl<T: Img<f32, C<3>>> Sum<f32, C<3>> for T {
 
 #[cfg(test)]
 mod tests {
-    use cuda_driver::{full_init, sync_ctx};
+    use cuda_driver::{init_cuda_and_primary_ctx, sync_ctx};
 
     use crate::get_stream_ctx;
     use crate::image::idei::SetMany;
@@ -95,7 +95,7 @@ mod tests {
 
     #[test]
     fn sum() -> crate::Result<()> {
-        full_init().unwrap();
+        init_cuda_and_primary_ctx().unwrap();
         let img = Image::<f32, C<3>>::malloc(1024, 1024)?;
         let ctx = get_stream_ctx()?;
         let mut scratch = img.sum_alloc_scratch(ctx)?;
@@ -108,7 +108,7 @@ mod tests {
 
     #[test]
     fn sum_value() -> crate::Result<()> {
-        full_init().unwrap();
+        init_cuda_and_primary_ctx().unwrap();
         let mut img = Image::<f32, C<3>>::malloc(128, 128)?;
         let ctx = get_stream_ctx()?;
         img.set([1.0, 0.0, 0.0], ctx)?;

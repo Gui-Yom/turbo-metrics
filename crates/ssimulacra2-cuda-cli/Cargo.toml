@@ -5,8 +5,8 @@ authors.workspace = true
 edition.workspace = true
 
 [dependencies]
+codec-bitstream = { workspace = true }
 cuda-driver = { workspace = true }
-codec-cfg-record = { workspace = true }
 incr_stats = { workspace = true }
 matroska-demuxer = { workspace = true }
 nv-video-codec = { workspace = true, features = ["cuda-npp"] }

@@ -1,5 +1,6 @@
 [workspace]
 members = [
+    "crates/codec-bitstream",
     "crates/cuda-driver",
     "crates/cuda-driver-sys",
     "crates/cuda-npp",
@@ -11,7 +12,7 @@ members = [
     "crates/ssimulacra2-cuda",
     "crates/video-common",
     "crates/ssimulacra2-cuda-cli",
-    "crates/codec-cfg-record",
+    "crates/vmaf",
 ]
 resolver = "2"
 
@@ -21,11 +22,11 @@ homepage = "https://github.com/Gui-Yom/video-hw-rs"
 edition = "2021"
 
 [workspace.dependencies]
+codec-bitstream = { path = "crates/codec-bitstream", default-features = false }
 cuda-driver = { path = "crates/cuda-driver", default-features = false }
 cuda-driver-sys = { path = "crates/cuda-driver-sys", default-features = false }
 cuda-npp = { path = "crates/cuda-npp", default-features = false }
 cuda-npp-sys = { path = "crates/cuda-npp-sys", default-features = false }
-codec-cfg-record = { path = "crates/codec-cfg-record", default-features = false }
 nv-video-codec = { path = "crates/nv-video-codec", default-features = false }
 nv-video-codec-sys = { path = "crates/nv-video-codec-sys", default-features = false }
 nvptx-core = { path = "crates/nvptx-core", default-features = false }
@@ -43,6 +44,8 @@ nalgebra = "0.33"
 paste = "1"
 rerun = "0.17"
 spsc = { path = "../spsc" }
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 zune-image = { version = "0.4", default-features = false, features = ["png", "simd", "metadata"] }
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
@@ -54,8 +57,8 @@ authors.workspace = true
 edition.workspace = true
 
 [dependencies]
+codec-bitstream = { workspace = true }
 cuda-driver = { workspace = true }
-codec-cfg-record = { workspace = true }
 matroska-demuxer = { workspace = true }
 nv-video-codec = { workspace = true, features = ["cuda-npp"] }
 ssimulacra2-cuda = { workspace = true }

@@ -3,17 +3,16 @@ use std::io::{BufReader, Read, Seek};
 use std::thread;
 use std::time::{Duration, Instant};
 
-use matroska_demuxer::{Frame, MatroskaFile, TrackType};
-use zune_image::codecs::png::zune_core::colorspace::{ColorCharacteristics, ColorSpace};
-
-use codec_cfg_record::{av1, h264};
+use codec_bitstream::{av1, h264};
 use cuda_driver::{CuDevice, CuStream};
-use nv_video_codec::dec::{CuVideoCtxLock, CuVideoParser};
-use nv_video_codec::dec_helper::npp::icc::NV12toRGB;
-use nv_video_codec::dec_helper::npp::{get_stream_ctx, Img, C};
-use nv_video_codec::dec_helper::DecoderHolder;
+use matroska_demuxer::{Frame, MatroskaFile, TrackType};
+use nv_video_codec::dec::CuVideoParser;
+use nv_video_codec::dec_mt::npp::icc::NV12toRGB;
+use nv_video_codec::dec_mt::npp::{get_stream_ctx, Img, C};
+use nv_video_codec::dec_mt::DecoderHolder;
 use nv_video_codec::sys::cudaVideoCodec;
 use ssimulacra2_cuda::Ssimulacra2;
+use zune_image::codecs::png::zune_core::colorspace::{ColorCharacteristics, ColorSpace};
 
 fn main() {
     cuda_driver::init_cuda().expect("Could not initialize the CUDA API");
@@ -30,10 +29,8 @@ fn main() {
     let mut scores = Vec::with_capacity(4096);
 
     {
-        let lock = CuVideoCtxLock::new(&ctx).unwrap();
-        let lock2 = CuVideoCtxLock::new(&ctx).unwrap();
-        let mut cb_ref = DecoderHolder::new(lock);
-        let mut cb_dis = DecoderHolder::new(lock2);
+        let mut cb_ref = DecoderHolder::new(None);
+        let mut cb_dis = DecoderHolder::new(None);
         thread::scope(|s| {
             thread::Builder::new()
                 .name("demuxer-parser-ref".to_string())
@@ -42,7 +39,7 @@ fn main() {
                     let mut mkv_ref = MatroskaFile::open(BufReader::new(
                         File::open("data/friends_cut.mkv").unwrap(),
                     ))
-                    .unwrap();
+                        .unwrap();
                     demux_h264(&mut mkv_ref, &cb_ref);
                 })
                 .unwrap();
@@ -54,7 +51,7 @@ fn main() {
                     let mut mkv_dis = MatroskaFile::open(BufReader::new(
                         File::open("data/dummy_encode2.mkv").unwrap(),
                     ))
-                    .unwrap();
+                        .unwrap();
                     demux_h264(&mut mkv_dis, &cb_dis);
                 })
                 .unwrap();
@@ -77,7 +74,7 @@ fn main() {
                             .unwrap()
                             .with_stream(ss.main_ref.inner() as _),
                     )
-                    .unwrap();
+                        .unwrap();
 
                     let disp_dis = rx_dis.peek().unwrap().unwrap();
 
@@ -88,7 +85,7 @@ fn main() {
                             .unwrap()
                             .with_stream(ss.main_dis.inner() as _),
                     )
-                    .unwrap();
+                        .unwrap();
 
                     // println!(
                     //     "ref {}/dis {} : {}, {}",
@@ -133,7 +130,7 @@ fn main() {
     println!("all threads are done !");
 
     let mut stats = incr_stats::vec::descriptive(&scores).unwrap();
-    println!("ssimulacra2.1 stats");
+    println!("ssimulacra2 stats");
     println!("min: {}", stats.min().unwrap());
     println!("mean: {}", stats.mean().unwrap());
 
@@ -151,8 +148,8 @@ fn demux_av1<R: Read + Seek>(mkv: &mut MatroskaFile<R>, cb: &DecoderHolder) {
         // Some(&extradata_dis),
         None,
     )
-    .unwrap();
-    parser_dis.feed_packet(&extradata_dis, 0).unwrap();
+        .unwrap();
+    parser_dis.parse_data(&extradata_dis, 0).unwrap();
     thread::sleep(Duration::from_secs(1));
     let mut frame = Frame::default();
     let mut packet = vec![];
@@ -165,7 +162,7 @@ fn demux_av1<R: Read + Seek>(mkv: &mut MatroskaFile<R>, cb: &DecoderHolder) {
             packet.clear();
             packet.extend_from_slice(&frame.data);
             parser_dis
-                .feed_packet(&packet, frame.timestamp as i64)
+                .parse_data(&packet, frame.timestamp as i64)
                 .unwrap();
         }
     }
@@ -179,11 +176,11 @@ fn demux_h264<R: Read + Seek>(mkv: &mut MatroskaFile<R>, cb: &DecoderHolder) {
         Some(mkv.info().timestamp_scale().get() as _),
         None,
     )
-    .unwrap();
+        .unwrap();
     let (nal_length_size, sps_pps_bitstream) =
         h264::avcc_extradata_to_annexb(mkv.tracks()[0].codec_private().unwrap());
     dbg!(nal_length_size);
-    parser.feed_packet(&sps_pps_bitstream, 0).unwrap();
+    parser.parse_data(&sps_pps_bitstream, 0).unwrap();
     let mut frame = Frame::default();
     let mut packet = Vec::new();
     while let Ok(remaining) = mkv.next_frame(&mut frame) {
@@ -194,7 +191,7 @@ fn demux_h264<R: Read + Seek>(mkv: &mut MatroskaFile<R>, cb: &DecoderHolder) {
         if track.track_type() == TrackType::Video {
             // dbg!(frame.timestamp);
             h264::packet_to_annexb(&mut packet, &frame.data, nal_length_size);
-            parser.feed_packet(&packet, frame.timestamp as i64).unwrap();
+            parser.parse_data(&packet, frame.timestamp as i64).unwrap();
         }
     }
     parser.flush().unwrap();

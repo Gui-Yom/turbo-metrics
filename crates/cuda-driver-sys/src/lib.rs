@@ -6,6 +6,7 @@ use std::error::Error;
 use std::ffi::{c_char, CStr};
 use std::fmt::{Debug, Display, Formatter};
 use std::ptr::null;
+
 include!(concat!(env!("OUT_DIR"), "/bindings.rs"));
 
 #[repr(transparent)]
@@ -43,7 +44,12 @@ impl Display for CuError {
             if err_str.is_null() {
                 write!(f, "Invalid error code: {:?}", self.0)
             } else {
-                Debug::fmt(CStr::from_ptr(err_str), f)
+                write!(
+                    f,
+                    "cuda error: {:?} ({:?})",
+                    self.0,
+                    CStr::from_ptr(err_str)
+                )
             }
         }
     }

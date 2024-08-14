@@ -9,9 +9,9 @@ use zune_image::codecs::png::zune_core::colorspace::{ColorCharacteristics, Color
 use codec_cfg_record::h264;
 use cuda_driver::{CuDevice, CuStream};
 use nv_video_codec::dec::{CuVideoCtxLock, CuVideoParser};
-use nv_video_codec::dec_helper::npp::icc::NV12toRGB;
-use nv_video_codec::dec_helper::npp::{get_stream_ctx, Img, C};
-use nv_video_codec::dec_helper::DecoderHolder;
+use nv_video_codec::dec_mt::npp::icc::NV12toRGB;
+use nv_video_codec::dec_mt::npp::{get_stream_ctx, Img, C};
+use nv_video_codec::dec_mt::DecoderHolder;
 use nv_video_codec::sys::cudaVideoCodec;
 
 fn main() {
@@ -62,7 +62,7 @@ fn main() {
                         matroska.tracks()[0].codec_private().unwrap(),
                     );
                     dbg!(nal_length_size);
-                    parser.feed_packet(&sps_pps_bitstream, 0).unwrap();
+                    parser.parse_data(&sps_pps_bitstream, 0).unwrap();
                     let mut frame = Frame::default();
                     let mut packet = Vec::new();
                     while let Ok(remaining) = matroska.next_frame(&mut frame) {
@@ -72,7 +72,7 @@ fn main() {
                         let track = &matroska.tracks()[frame.track as usize - 1];
                         if track.track_type() == TrackType::Video {
                             h264::packet_to_annexb(&mut packet, &frame.data, nal_length_size);
-                            parser.feed_packet(&packet, frame.timestamp as i64).unwrap();
+                            parser.parse_data(&packet, frame.timestamp as i64).unwrap();
                         }
                     }
                     parser.flush().unwrap();

@@ -22,18 +22,21 @@ fn main() {
     let cuda_path = PathBuf::from(env::var("CUDA_PATH").expect(
         "environment variable CUDA_PATH must be set for nv-video-codec-sys to find the CUDA SDK",
     ));
-    let include_path = cuda_path.join("include");
-    let link_path = cuda_path.join("lib/x64");
+    let cuda_include_path = cuda_path.join("include");
+    let cuda_link_path = cuda_path.join("lib/x64");
 
     // println!("cargo:rustc-link-lib=cuda");
     link_lib("cuda");
     link_lib("nvcuvid");
-    println!("cargo:rustc-link-search={}", link_path.display());
-    println!("cargo:rustc-link-search={}", sdk_lib.display());
+    println!(
+        "cargo:rustc-link-search=native={}",
+        cuda_link_path.display()
+    );
+    println!("cargo:rustc-link-search=native={}", sdk_lib.display());
     let bindgen = bindgen::Builder::default()
         .clang_args([
             "-I",
-            include_path.to_str().unwrap(),
+            cuda_include_path.to_str().unwrap(),
             "-I",
             sdk_include.to_str().unwrap(),
         ])
@@ -50,6 +53,7 @@ fn main() {
         .allowlist_type("^CUvideo.*")
         .allowlist_type("^CUVIDEO.*")
         .allowlist_type("^cudaAudio.*")
+        .allowlist_type("^cudaVideo.*")
         .allowlist_type("^CUAUDIO.*")
         .allowlist_type("^CUVID.*")
         .blocklist_type("^CUresult")

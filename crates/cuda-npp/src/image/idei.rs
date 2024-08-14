@@ -288,11 +288,11 @@ mod tests {
     use crate::image::isu::Malloc;
     use crate::image::{Image, C};
     use crate::Result;
-    use cuda_driver::{full_init, sync_ctx};
+    use cuda_driver::{init_cuda_and_primary_ctx, sync_ctx};
 
     #[test]
     fn set_single() -> Result<()> {
-        full_init().unwrap();
+        init_cuda_and_primary_ctx().unwrap();
         let mut img = Image::<u8, C<1>>::malloc(1024, 1024)?;
         let ctx = get_stream_ctx()?;
         img.set(127, ctx)?;
@@ -302,7 +302,7 @@ mod tests {
 
     #[test]
     fn set() -> Result<()> {
-        full_init().unwrap();
+        init_cuda_and_primary_ctx().unwrap();
         let mut img = Image::<f32, C<3>>::malloc(1024, 1024)?;
         let ctx = get_stream_ctx()?;
         img.set([1.0, 1.0, 0.0], ctx)?;
@@ -312,7 +312,7 @@ mod tests {
 
     #[test]
     fn convert() -> Result<()> {
-        full_init().unwrap();
+        init_cuda_and_primary_ctx().unwrap();
         let img = Image::<u8, C<3>>::malloc(1024, 1024)?;
         let ctx = get_stream_ctx()?;
         let img2 = img.convert_new(ctx)?;
@@ -322,7 +322,7 @@ mod tests {
 
     #[test]
     fn into_f32() -> Result<()> {
-        full_init().unwrap();
+        init_cuda_and_primary_ctx().unwrap();
         let img = Image::<u8, C<3>>::malloc(1024, 1024)?;
         let ctx = get_stream_ctx()?;
         let img2 = img.scale_float_new(0.0..1.0, ctx)?;
@@ -332,7 +332,7 @@ mod tests {
 
     #[test]
     fn into_u8() -> Result<()> {
-        full_init().unwrap();
+        init_cuda_and_primary_ctx().unwrap();
         let img = Image::<f32, C<3>>::malloc(1024, 1024)?;
         let ctx = get_stream_ctx()?;
         let img2 = img.scale_float_new(0.0..1.0, ctx)?;
