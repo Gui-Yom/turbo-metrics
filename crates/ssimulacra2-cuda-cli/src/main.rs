@@ -39,7 +39,7 @@ fn main() {
                     let mut mkv_ref = MatroskaFile::open(BufReader::new(
                         File::open("data/friends_cut.mkv").unwrap(),
                     ))
-                        .unwrap();
+                    .unwrap();
                     demux_h264(&mut mkv_ref, &cb_ref);
                 })
                 .unwrap();
@@ -51,7 +51,7 @@ fn main() {
                     let mut mkv_dis = MatroskaFile::open(BufReader::new(
                         File::open("data/dummy_encode2.mkv").unwrap(),
                     ))
-                        .unwrap();
+                    .unwrap();
                     demux_h264(&mut mkv_dis, &cb_dis);
                 })
                 .unwrap();
@@ -74,7 +74,7 @@ fn main() {
                             .unwrap()
                             .with_stream(ss.main_ref.inner() as _),
                     )
-                        .unwrap();
+                    .unwrap();
 
                     let disp_dis = rx_dis.peek().unwrap().unwrap();
 
@@ -85,7 +85,7 @@ fn main() {
                             .unwrap()
                             .with_stream(ss.main_dis.inner() as _),
                     )
-                        .unwrap();
+                    .unwrap();
 
                     // println!(
                     //     "ref {}/dis {} : {}, {}",
@@ -148,7 +148,7 @@ fn demux_av1<R: Read + Seek>(mkv: &mut MatroskaFile<R>, cb: &DecoderHolder) {
         // Some(&extradata_dis),
         None,
     )
-        .unwrap();
+    .unwrap();
     parser_dis.parse_data(&extradata_dis, 0).unwrap();
     thread::sleep(Duration::from_secs(1));
     let mut frame = Frame::default();
@@ -176,7 +176,7 @@ fn demux_h264<R: Read + Seek>(mkv: &mut MatroskaFile<R>, cb: &DecoderHolder) {
         Some(mkv.info().timestamp_scale().get() as _),
         None,
     )
-        .unwrap();
+    .unwrap();
     let (nal_length_size, sps_pps_bitstream) =
         h264::avcc_extradata_to_annexb(mkv.tracks()[0].codec_private().unwrap());
     dbg!(nal_length_size);

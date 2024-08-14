@@ -1,0 +1,15 @@
+[package]
+name = "vmaf"
+version = "0.1.0"
+authors.workspace = true
+homepage.workspace = true
+edition.workspace = true
+
+[dependencies]
+
+[build-dependencies]
+bindgen = { workspace = true }
+
+[features]
+default = []
+builtin_models = []
