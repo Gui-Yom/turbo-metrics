@@ -2,8 +2,6 @@
 
 use cuda_npp_sys::*;
 
-use crate::__priv;
-
 use super::{Channels, Image, Img, ImgMut, Sample, C};
 
 pub trait FilterGaussBorder<S: Sample, C: Channels> {

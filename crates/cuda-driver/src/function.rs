@@ -49,7 +49,7 @@ impl CuFunction {
         Ok(i)
     }
 
-    pub fn launch(
+    pub unsafe fn launch(
         &self,
         cfg: &LaunchConfig,
         stream: &CuStream,

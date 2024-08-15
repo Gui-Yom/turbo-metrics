@@ -8,6 +8,7 @@ use core::mem::transmute;
 use core::panic::PanicInfo;
 use core::ptr::null;
 
+/// Replacements for some math functions that are only present in std using libdevice.
 pub mod math;
 
 pub mod prelude {
@@ -22,18 +23,18 @@ struct PanicFmt<'a>(&'a CStr, u32, u32);
 #[panic_handler]
 fn panic_handler(info: &PanicInfo) -> ! {
     unsafe {
-        nvptx::vprintf("CUDA code panicked :(\0".as_ptr(), null());
+        nvptx::vprintf(c"CUDA code panicked :(".as_ptr(), null());
         if let Some(loc) = info.location() {
             let mut buffer = [0; 64];
             let len = loc.file().len().min(63);
             buffer[..len].copy_from_slice(&loc.file().as_bytes()[..len]);
             let str = CStr::from_bytes_until_nul(&buffer).unwrap();
             nvptx::vprintf(
-                " (in %s at %d:%d)\0".as_ptr(),
+                c" (in %s at %d:%d)".as_ptr(),
                 transmute(&PanicFmt(str, loc.line(), loc.column())),
             );
         }
-        nvptx::vprintf("\n\0".as_ptr(), null());
+        nvptx::vprintf(c"\n".as_ptr(), null());
         nvptx::trap();
     }
 }
@@ -118,7 +119,3 @@ macro_rules! shfl_down_sync_t {
 }
 
 shfl_down_sync_t!(f32);
-
-fn tex2D() {
-    unsafe { asm!("") }
-}

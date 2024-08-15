@@ -1,5 +1,3 @@
-use std::error::Error;
-use std::fmt::{Debug, Display};
 use std::ptr::{null_mut, NonNull};
 
 pub use cuda_driver_sys as sys;
@@ -61,11 +59,6 @@ pub fn mem_info() -> CuResult<(usize, usize)> {
         cuMemGetInfo_v2(&mut free, &mut total).result()?;
     }
     Ok((free, total))
-}
-
-enum MaybeDrop<T> {
-    Owned(T),
-    Borrowed(T),
 }
 
 #[repr(transparent)]

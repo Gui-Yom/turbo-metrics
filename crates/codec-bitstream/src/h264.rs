@@ -62,6 +62,7 @@ impl NaluType {
 }
 
 /// Get NAL units with SPS and PPS from the avc decoder configuration record.
+#[allow(unused_variables)]
 pub fn avcc_extradata_to_annexb(codec_private: &[u8]) -> (usize, Vec<u8>) {
     let mut reader = BitReader::endian(Cursor::new(codec_private), BigEndian);
     let version: u8 = reader.read(8).unwrap();
@@ -113,7 +114,7 @@ pub fn packet_to_annexb(buffer: &mut Vec<u8>, mut packet: &[u8], nal_length_size
     buffer.clear();
     while packet.len() > nal_length_size {
         let mut len = 0usize;
-        /// Read a variable number of bytes in big endian format
+        // Read a variable number of bytes in big endian format
         for i in 0..nal_length_size {
             len = (len << 8) | packet[i] as usize;
         }

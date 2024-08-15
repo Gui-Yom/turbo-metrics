@@ -4,7 +4,7 @@ use std::ops::Range;
 
 use cuda_npp_sys::*;
 
-use crate::{__priv, assert_same_size, Result};
+use crate::{assert_same_size, Result};
 
 use super::{Channels, Image, Img, ImgMut, Sample, C, P};
 

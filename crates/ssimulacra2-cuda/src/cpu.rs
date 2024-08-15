@@ -2,8 +2,6 @@ use std::slice;
 
 use zune_image::codecs::png::zune_core::colorspace::{ColorCharacteristics, ColorSpace};
 
-use crate::Img;
-
 // How often to downscale and score the input images.
 // Each scaling step will downscale by a factor of two.
 const NUM_SCALES: usize = 6;

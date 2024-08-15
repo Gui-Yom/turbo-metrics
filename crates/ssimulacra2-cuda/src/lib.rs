@@ -231,7 +231,7 @@ impl Ssimulacra2 {
 
         self.exec.as_ref().unwrap().launch(&self.main_ref).unwrap();
 
-        /// Wait for CUDA to transfer scores back to the CPU before post-processing.
+        // Wait for CUDA to transfer scores back to the CPU before post-processing.
         self.main_ref.sync().unwrap();
 
         Ok(self.post_process_scores())
