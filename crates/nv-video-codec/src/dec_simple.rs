@@ -30,6 +30,10 @@ impl<'a> NvDecoderSimple<'a> {
         }
     }
 
+    pub fn format(&self) -> Option<&CUVIDEOFORMAT> {
+        self.decoder.get().map(|(d, f)| f)
+    }
+
     pub fn display_queue_len(&self) -> usize {
         self.frames.borrow().len()
     }
@@ -71,20 +75,20 @@ impl<'a> NvDecoderSimple<'a> {
         .take(len)
     }
 
-    pub fn map<'b>(
-        &'b self,
+    pub fn map<'map>(
+        &'map self,
         disp: &CUVIDPARSERDISPINFO,
         stream: &CuStream,
-    ) -> CuResult<FrameMapping<'b>> {
-        self.decoder.get().unwrap().map(disp, stream)
+    ) -> CuResult<FrameMapping<'map>> {
+        self.decoder.get().unwrap().0.map(disp, stream)
     }
 
     #[cfg(feature = "cuda-npp")]
-    pub fn map_npp_nv12<'a>(
-        &'a self,
+    pub fn map_npp_nv12<'map>(
+        &'map self,
         info: &CUVIDPARSERDISPINFO,
         stream: &CuStream,
-    ) -> CuResult<npp::NvDecNV12> {
+    ) -> CuResult<npp::NvDecNV12<'map>> {
         if let Some((decoder, format)) = self.decoder.get() {
             let mapping = decoder.map(info, stream)?;
             Ok(npp::NvDecNV12 {

@@ -1,17 +1,17 @@
 use std::fs::File;
-use std::io::{BufReader, Read, Seek};
-use std::thread;
-use std::time::{Duration, Instant};
+use std::io::BufReader;
+use std::time::Instant;
 
 use codec_bitstream::{av1, h264};
 use cuda_driver::{CuDevice, CuStream};
-use matroska_demuxer::{Frame, MatroskaFile, TrackType};
-use nv_video_codec::dec::CuVideoParser;
-use nv_video_codec::dec_mt::npp::icc::NV12toRGB;
-use nv_video_codec::dec_mt::npp::{get_stream_ctx, Img, C};
-use nv_video_codec::dec_mt::DecoderHolder;
-use nv_video_codec::sys::cudaVideoCodec;
+use matroska_demuxer::{Frame, MatroskaFile};
+use nv_video_codec::dec::npp::icc::NV12toRGB;
+use nv_video_codec::dec::npp::{get_stream_ctx, Img, C};
+use nv_video_codec::dec::{CuVideoParser, CuvidParserCallbacks};
+use nv_video_codec::dec_simple::NvDecoderSimple;
+use nv_video_codec::sys::{cudaVideoCodec, cudaVideoCodec_enum};
 use ssimulacra2_cuda::Ssimulacra2;
+use stats::full::Stats;
 use zune_image::codecs::png::zune_core::colorspace::{ColorCharacteristics, ColorSpace};
 
 fn main() {
@@ -29,45 +29,35 @@ fn main() {
     let mut scores = Vec::with_capacity(4096);
 
     {
-        let mut cb_ref = DecoderHolder::new(None);
-        let mut cb_dis = DecoderHolder::new(None);
-        thread::scope(|s| {
-            thread::Builder::new()
-                .name("demuxer-parser-ref".to_string())
-                .spawn_scoped(s, || {
-                    ctx.set_current().unwrap();
-                    let mut mkv_ref = MatroskaFile::open(BufReader::new(
-                        File::open("data/friends_cut.mkv").unwrap(),
-                    ))
-                    .unwrap();
-                    demux_h264(&mut mkv_ref, &cb_ref);
-                })
-                .unwrap();
+        let cb_ref = NvDecoderSimple::new(3, None);
+        let cb_dis = NvDecoderSimple::new(3, None);
 
-            thread::Builder::new()
-                .name("demuxer-parser-dis".to_string())
-                .spawn_scoped(s, || {
-                    ctx.set_current().unwrap();
-                    let mut mkv_dis = MatroskaFile::open(BufReader::new(
-                        File::open("data/dummy_encode2.mkv").unwrap(),
-                    ))
-                    .unwrap();
-                    demux_h264(&mut mkv_dis, &cb_dis);
-                })
-                .unwrap();
+        // let mut cb_ref = DecoderHolder::new(None);
+        // let mut cb_dis = DecoderHolder::new(None);
 
-            let mut counter: i32 = -1;
-            let mut rx_ref = cb_ref.wait_for_rx();
-            let mut rx_dis = cb_dis.wait_for_rx();
-            let format = cb_ref.format().unwrap();
-            let mut ss = Ssimulacra2::new(format.display_width(), format.display_height()).unwrap();
-            println!("Decoders initialized, now processing ...");
-            let start = Instant::now();
-            while let Ok(Some(disp_ref)) = rx_ref.peek() {
-                counter += 1;
+        let mut demuxer_ref = DemuxerParser::new("data/friends_cut.mkv", &cb_ref);
+        let mut demuxer_dis = DemuxerParser::new("data/dummy_encode2.mkv", &cb_dis);
 
-                {
-                    let src = cb_ref.map_npp_nv12(&disp_ref, &ss.main_ref).unwrap();
+        let mut counter = 0;
+
+        while cb_ref.format().is_none() {
+            demuxer_ref.demux();
+        }
+        let format = cb_ref.format().unwrap();
+        let mut ss = Ssimulacra2::new(format.display_width(), format.display_height()).unwrap();
+        println!("Initialized, now processing ...");
+        let start = Instant::now();
+
+        'main: loop {
+            while !cb_ref.has_frames() {
+                demuxer_ref.demux();
+            }
+            while !cb_dis.has_frames() {
+                demuxer_dis.demux();
+            }
+            for (fref, fdis) in cb_ref.frames_sync(&cb_dis) {
+                if let (Some(fref), Some(fdis)) = (fref, fdis) {
+                    let src = cb_ref.map_npp_nv12(&fref, &ss.main_ref).unwrap();
                     src.nv12_to_rgb_bt709_limited(
                         &mut ss.ref_input,
                         get_stream_ctx()
@@ -76,9 +66,7 @@ fn main() {
                     )
                     .unwrap();
 
-                    let disp_dis = rx_dis.peek().unwrap().unwrap();
-
-                    let src = cb_dis.map_npp_nv12(&disp_dis, &ss.main_dis).unwrap();
+                    let src = cb_dis.map_npp_nv12(&fdis, &ss.main_dis).unwrap();
                     src.nv12_to_rgb_bt709_limited(
                         &mut ss.dis_input,
                         get_stream_ctx()
@@ -87,114 +75,137 @@ fn main() {
                     )
                     .unwrap();
 
-                    // println!(
-                    //     "ref {}/dis {} : {}, {}",
-                    //     disp_ref.picture_index,
-                    //     disp_dis.picture_index,
-                    //     Duration::from_millis(disp_ref.timestamp as u64).as_secs_f32(),
-                    //     Duration::from_millis(disp_dis.timestamp as u64).as_secs_f32()
-                    // );
-
-                    // if counter < 406 {
-                    //     continue;
-                    // }
-                    // if counter > 400 {
-                    //     break;
-                    // }
-
                     let score = ss.compute().unwrap();
                     scores.push(score);
-
-                    // nvdec frames are unmapped at this point
+                    counter += 1;
+                } else {
+                    break 'main;
                 }
-
-                // Free up a spot in the queue
-                rx_ref.recv().unwrap();
-                rx_dis.recv().unwrap();
-
-                // if score < 0.0 {
-                //     save_img(&ss.ref_input, &format!("ref{counter}"), &ss.main_ref);
-                //     save_img(&ss.dis_input, &format!("dis{counter}"), &ss.main_dis);
-                // }
             }
-            let total = start.elapsed().as_millis();
-            let total_frames = counter + 1;
-            println!(
-                "Done ! Processed {} frame pairs in {total} ms ({} fps)",
-                total_frames,
-                total_frames as u128 * 1000 / total
-            );
-        });
+        }
+
+        let total = start.elapsed().as_millis();
+        let total_frames = counter;
+        println!(
+            "Done ! Processed {} frame pairs in {total} ms ({} fps)",
+            total_frames,
+            total_frames as u128 * 1000 / total
+        );
     }
 
-    println!("all threads are done !");
-
-    let mut stats = incr_stats::vec::descriptive(&scores).unwrap();
-    println!("ssimulacra2 stats");
-    println!("min: {}", stats.min().unwrap());
-    println!("mean: {}", stats.mean().unwrap());
+    let stats = Stats::compute(&scores);
+    println!("ssimulacra2 stats : {stats:#?}");
 
     dev.release_primary_ctx().unwrap();
 }
 
-fn demux_av1<R: Read + Seek>(mkv: &mut MatroskaFile<R>, cb: &DecoderHolder) {
-    let extradata_dis =
-        av1::extract_seq_hdr_from_mkv_codec_private(mkv.tracks()[0].codec_private().unwrap())
-            .to_vec();
-    let mut parser_dis = CuVideoParser::new(
-        cudaVideoCodec::cudaVideoCodec_AV1,
-        cb,
-        None,
-        // Some(&extradata_dis),
-        None,
-    )
-    .unwrap();
-    parser_dis.parse_data(&extradata_dis, 0).unwrap();
-    thread::sleep(Duration::from_secs(1));
-    let mut frame = Frame::default();
-    let mut packet = vec![];
-    while let Ok(remaining) = mkv.next_frame(&mut frame) {
-        if !remaining || !cb.is_open() {
-            break;
-        }
-        let track = &mkv.tracks()[frame.track as usize - 1];
-        if track.track_type() == TrackType::Video {
-            packet.clear();
-            packet.extend_from_slice(&frame.data);
-            parser_dis
-                .parse_data(&packet, frame.timestamp as i64)
-                .unwrap();
-        }
-    }
-    parser_dis.flush().unwrap();
+struct DemuxerParser<'dec> {
+    parser: CuVideoParser<'dec>,
+    mkv: MatroskaFile<BufReader<File>>,
+    nal_length_size: usize,
+    frame: Frame,
+    packet: Vec<u8>,
+    track_id: u64,
+    codec: cudaVideoCodec,
 }
 
-fn demux_h264<R: Read + Seek>(mkv: &mut MatroskaFile<R>, cb: &DecoderHolder) {
-    let mut parser = CuVideoParser::new(
-        cudaVideoCodec::cudaVideoCodec_H264,
-        cb,
-        Some(mkv.info().timestamp_scale().get() as _),
-        None,
-    )
-    .unwrap();
-    let (nal_length_size, sps_pps_bitstream) =
-        h264::avcc_extradata_to_annexb(mkv.tracks()[0].codec_private().unwrap());
-    dbg!(nal_length_size);
-    parser.parse_data(&sps_pps_bitstream, 0).unwrap();
-    let mut frame = Frame::default();
-    let mut packet = Vec::new();
-    while let Ok(remaining) = mkv.next_frame(&mut frame) {
-        if !remaining || !cb.is_open() {
-            break;
+impl<'dec> DemuxerParser<'dec> {
+    fn new(file: &str, dec: &'dec impl CuvidParserCallbacks) -> Self {
+        let mkv = MatroskaFile::open(BufReader::new(File::open(file).unwrap())).unwrap();
+
+        let (id, v_track) = mkv
+            .tracks()
+            .iter()
+            .enumerate()
+            .find(|(i, t)| t.video().is_some())
+            .expect("No video track in mkv file");
+        let codec =
+            mkv_codec_id_to_nvdec(v_track.codec_id()).expect("Unsupported video codec in mkv");
+
+        let mut parser = CuVideoParser::new(
+            codec,
+            dec,
+            Some(mkv.info().timestamp_scale().get() as _),
+            None,
+        )
+        .unwrap();
+
+        let mut nal_length_size = 0;
+
+        match codec {
+            cudaVideoCodec_enum::cudaVideoCodec_MPEG2 => {
+                dbg!(v_track.codec_private());
+            }
+            cudaVideoCodec_enum::cudaVideoCodec_H264 => {
+                let (nls, sps_pps_bitstream) =
+                    h264::avcc_extradata_to_annexb(v_track.codec_private().unwrap());
+                // dbg!(nal_length_size);
+                parser.parse_data(&sps_pps_bitstream, 0).unwrap();
+                nal_length_size = nls;
+            }
+            cudaVideoCodec_enum::cudaVideoCodec_AV1 => {
+                let extradata =
+                    av1::extract_seq_hdr_from_mkv_codec_private(v_track.codec_private().unwrap())
+                        .to_vec();
+                parser.parse_data(&extradata, 0).unwrap();
+            }
+            _ => todo!("unsupported codec"),
         }
-        let track = &mkv.tracks()[frame.track as usize - 1];
-        if track.track_type() == TrackType::Video {
-            // dbg!(frame.timestamp);
-            h264::packet_to_annexb(&mut packet, &frame.data, nal_length_size);
-            parser.parse_data(&packet, frame.timestamp as i64).unwrap();
+
+        Self {
+            parser,
+            mkv,
+            nal_length_size,
+            frame: Default::default(),
+            packet: vec![],
+            track_id: id as u64,
+            codec,
         }
     }
-    parser.flush().unwrap();
+
+    /// Demux a packet and schedule frame to be decoded and displayed.
+    fn demux(&mut self) -> bool {
+        loop {
+            if let Ok(true) = self.mkv.next_frame(&mut self.frame) {
+                if self.frame.track - 1 == self.track_id {
+                    match self.codec {
+                        cudaVideoCodec::cudaVideoCodec_H264 => {
+                            h264::packet_to_annexb(
+                                &mut self.packet,
+                                &self.frame.data,
+                                self.nal_length_size,
+                            );
+                            self.parser
+                                .parse_data(&self.packet, self.frame.timestamp as i64)
+                                .unwrap();
+                        }
+                        cudaVideoCodec::cudaVideoCodec_AV1 => {
+                            self.parser
+                                .parse_data(&self.frame.data, self.frame.timestamp as i64)
+                                .unwrap();
+                        }
+                        _ => todo!("Unsupported codec"),
+                    }
+                    return true;
+                } else {
+                    continue;
+                }
+            } else {
+                self.parser.flush().unwrap();
+                return false;
+            }
+        }
+    }
+}
+
+fn mkv_codec_id_to_nvdec(id: &str) -> Option<cudaVideoCodec> {
+    match id {
+        "V_MPEG4/ISO/AVC" => Some(cudaVideoCodec::cudaVideoCodec_H264),
+        "V_AV1" => Some(cudaVideoCodec::cudaVideoCodec_AV1),
+        "V_MPEG2" => Some(cudaVideoCodec::cudaVideoCodec_MPEG2),
+        // Unsupported
+        _ => None,
+    }
 }
 
 fn save_img(img: impl Img<u8, C<3>>, name: &str, stream: &CuStream) {

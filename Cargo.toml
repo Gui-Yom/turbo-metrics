@@ -12,7 +12,7 @@ members = [
     "crates/ssimulacra2-cuda",
     "crates/video-common",
     "crates/ssimulacra2-cuda-cli",
-    "crates/vmaf",
+    "crates/vmaf", "crates/stats",
 ]
 resolver = "2"
 
@@ -31,6 +31,7 @@ nv-video-codec = { path = "crates/nv-video-codec", default-features = false }
 nv-video-codec-sys = { path = "crates/nv-video-codec-sys", default-features = false }
 nvptx-core = { path = "crates/nvptx-core", default-features = false }
 ssimulacra2-cuda = { path = "crates/ssimulacra2-cuda", default-features = false }
+stats = { path = "crates/stats", default-features = false }
 
 array-init = "2"
 bindgen = "0.69"

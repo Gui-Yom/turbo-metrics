@@ -77,11 +77,11 @@ impl<'a> DecoderHolder<'a> {
     }
 
     #[cfg(feature = "cuda-npp")]
-    pub fn map_npp_nv12<'a>(
-        &'a self,
+    pub fn map_npp_nv12<'map>(
+        &'map self,
         info: &CUVIDPARSERDISPINFO,
         stream: &CuStream,
-    ) -> CuResult<npp::NvDecNV12> {
+    ) -> CuResult<npp::NvDecNV12<'map>> {
         if let Some((decoder, format)) = self.decoder.get() {
             let mapping = decoder.map(info, stream)?;
             Ok(npp::NvDecNV12 {
@@ -99,11 +99,11 @@ impl<'a> DecoderHolder<'a> {
     }
 
     #[cfg(feature = "cuda-npp")]
-    pub fn map_npp_yuv444<'a>(
-        &'a self,
+    pub fn map_npp_yuv444<'map>(
+        &'map self,
         info: &CUVIDPARSERDISPINFO,
         stream: &CuStream,
-    ) -> CuResult<npp::NvDecYUV444> {
+    ) -> CuResult<npp::NvDecYUV444<'map>> {
         if let Some((decoder, format)) = self.decoder.get() {
             let mapping = decoder.map(info, stream)?;
             Ok(npp::NvDecYUV444 {
@@ -126,7 +126,7 @@ impl CuvidParserCallbacks for DecoderHolder<'_> {
             format.chroma_format,
             format.bit_depth_luma_minus8 as u32 + 8,
         )
-            .unwrap();
+        .unwrap();
         if dbg!(caps).bIsSupported == 0 {
             println!("Unsupported codec/chroma/bitdepth");
             return Err(());
@@ -145,7 +145,7 @@ impl CuvidParserCallbacks for DecoderHolder<'_> {
                 surfaces as u32,
                 self.lock,
             )
-                .unwrap(),
+            .unwrap(),
             format.clone(),
         ));
         *self.tx.borrow_mut() = Some(tx);

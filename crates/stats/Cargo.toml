@@ -1,0 +1,8 @@
+[package]
+name = "stats"
+version = "0.1.0"
+authors.workspace = true
+homepage.workspace = true
+edition.workspace = true
+
+[dependencies]

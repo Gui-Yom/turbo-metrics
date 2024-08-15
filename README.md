@@ -63,7 +63,8 @@ With two h264 videos, I can process around 110 image pairs per second (which is 
 
 ## Planned
 
-- Scene detection for AV1 using CUDA
+- Move cuda bindings and cuda-npp into its own repository. It's easier to develop in-tree for now.
+- Scene detection for AV1 using CUDA (adapting rav1e scene detection on the gpu)
 - Intel hardware decoding
 - Vulkan video decoding
 - ssimulacra2 on WebGPU or vulkan (not locked to CUDA)
