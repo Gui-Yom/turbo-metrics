@@ -134,15 +134,18 @@ mod tests {
         )?;
         let r: *const u8 = null();
         let w: *mut u8 = null_mut();
-        module.function_by_name("srgb_to_linear")?.launch(
-            &LaunchConfig {
-                grid_dim: (1, 1, 1),
-                block_dim: (32, 1, 1),
-                shared_mem_bytes: 0,
-            },
-            &CuStream::DEFAULT,
-            kernel_params!(r, 1, w, 1,),
-        )?;
+        unsafe {
+            module.function_by_name("srgb_to_linear")?.launch(
+                &LaunchConfig {
+                    grid_dim: (1, 1, 1),
+                    block_dim: (32, 1, 1),
+                    shared_mem_bytes: 0,
+                },
+                &CuStream::DEFAULT,
+                kernel_params!(r, 1, w, 1,),
+            )?;
+        }
+
         Ok(())
     }
 }
