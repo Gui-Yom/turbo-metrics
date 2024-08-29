@@ -10,3 +10,6 @@ repository.workspace = true
 cudarse-driver = { workspace = true }
 cudarse-npp = { workspace = true, features = ["isu", "ial", "ist"] }
 zune-image.workspace = true
+
+[build-dependencies]
+nvptx-builder = { workspace = true }

@@ -1,14 +1,11 @@
-pub fn add(left: usize, right: usize) -> usize {
-    left + right
-}
+const PTX: &str = include_str!(concat!(env!("OUT_DIR"), "/vmaf_cuda_kernel.ptx"));
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+    use crate::PTX;
 
     #[test]
-    fn it_works() {
-        let result = add(2, 2);
-        assert_eq!(result, 4);
+    fn ptx_is_included() {
+        dbg!(PTX);
     }
 }

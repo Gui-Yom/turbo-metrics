@@ -14,6 +14,9 @@ cudarse-driver = { workspace = true }
 cudarse-npp = { workspace = true, features = ["isu", "ial", "idei", "if", "ist"] }
 indices = { workspace = true }
 
+[build-dependencies]
+nvptx-builder = { workspace = true }
+
 [dev-dependencies]
 zune-image.workspace = true
 

@@ -7,6 +7,7 @@ members = [
     "crates/cudarse/cudarse-video",
     "crates/cudarse/cudarse-video-sys",
     "crates/codec-bitstream",
+    "crates/nvptx-builder",
     "crates/nvptx-core",
     "crates/ssimulacra2-cuda-kernel",
     "crates/ssimulacra2-cuda",
@@ -32,6 +33,7 @@ cudarse-npp = { path = "crates/cudarse/cudarse-npp", default-features = false }
 cudarse-npp-sys = { path = "crates/cudarse/cudarse-npp-sys", default-features = false }
 cudarse-video = { path = "crates/cudarse/cudarse-video", default-features = false }
 cudarse-video-sys = { path = "crates/cudarse/cudarse-video-sys", default-features = false }
+nvptx-builder = { path = "crates/nvptx-builder", default-features = false }
 nvptx-core = { path = "crates/nvptx-core", default-features = false }
 ssimulacra2-cuda = { path = "crates/ssimulacra2-cuda", default-features = false }
 stats = { path = "crates/stats", default-features = false }

@@ -15,9 +15,12 @@ pub struct Kernel {
 
 impl Kernel {
     pub fn load() -> Self {
-        let path = "target/nvptx64-nvidia-cuda/release-nvptx/ssimulacra2_cuda_kernel.ptx";
-        let module = CuModule::load_from_file(path).unwrap();
-
+        //let path = "target/nvptx64-nvidia-cuda/release-nvptx/ssimulacra2_cuda_kernel.ptx";
+        let module = CuModule::load_ptx(include_str!(concat!(
+            env!("OUT_DIR"),
+            "/ssimulacra2_cuda_kernel.ptx"
+        )))
+        .unwrap();
         Self {
             srgb_to_linear: module.function_by_name("srgb_to_linear").unwrap(),
             downscale_by_2: module.function_by_name("downscale_by_2").unwrap(),

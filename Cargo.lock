@@ -432,6 +432,10 @@ dependencies = [
 ]
 
 [[package]]
+name = "nvptx-builder"
+version = "0.1.0"
+
+[[package]]
 name = "nvptx-core"
 version = "0.1.0"
 
@@ -630,6 +634,7 @@ dependencies = [
  "cudarse-driver",
  "cudarse-npp",
  "indices",
+ "nvptx-builder",
  "zune-image",
 ]
 
@@ -772,6 +777,7 @@ version = "0.1.0"
 dependencies = [
  "cudarse-driver",
  "cudarse-npp",
+ "nvptx-builder",
  "zune-image",
 ]
 

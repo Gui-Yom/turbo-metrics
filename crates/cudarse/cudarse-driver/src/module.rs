@@ -1,4 +1,5 @@
 use crate::{sys, CuFunction};
+use cudarse_driver_sys::cuModuleLoadData;
 use std::ffi::CString;
 use std::path::Path;
 use std::ptr::null_mut;
@@ -16,6 +17,15 @@ impl CuModule {
         let fname = CString::new(path.as_ref().as_os_str().as_encoded_bytes()).unwrap();
         unsafe {
             cuModuleLoad(&mut cu_module, fname.as_ptr()).result()?;
+        }
+        Ok(Self(cu_module))
+    }
+
+    pub fn load_ptx(ptx: &str) -> CuResult<Self> {
+        let mut cu_module = null_mut();
+        let null_terminated = CString::new(ptx.as_bytes()).unwrap();
+        unsafe {
+            cuModuleLoadData(&mut cu_module, null_terminated.as_ptr().cast()).result()?;
         }
         Ok(Self(cu_module))
     }

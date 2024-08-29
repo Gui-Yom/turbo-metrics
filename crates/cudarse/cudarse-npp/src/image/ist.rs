@@ -54,7 +54,7 @@ impl<T: Img<f32, C<3>>> Sum<f32, C<3>> for T {
                 out_dev.ptr.cast(),
                 ctx,
             )
-                .result()?;
+            .result()?;
         }
 
         unsafe {
@@ -65,7 +65,7 @@ impl<T: Img<f32, C<3>>> Sum<f32, C<3>> for T {
                 cudaMemcpyKind::cudaMemcpyDeviceToHost,
                 ctx.hStream,
             )
-                .result()?;
+            .result()?;
         }
         // This alloc will be freed asynchronously
         out_dev.manual_drop(ctx.hStream)?;
