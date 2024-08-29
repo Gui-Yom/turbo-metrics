@@ -1,5 +1,5 @@
 [package]
-name = "vmaf"
+name = "cudarse-driver-sys"
 version = "0.1.0"
 edition.workspace = true
 authors.workspace = true
@@ -9,8 +9,9 @@ repository.workspace = true
 [dependencies]
 
 [build-dependencies]
-bindgen = { workspace = true }
+bindgen.workspace = true
 
 [features]
-default = []
-builtin_models = []
+default = ["static"]
+# Static linking against cuda libraries
+static = []

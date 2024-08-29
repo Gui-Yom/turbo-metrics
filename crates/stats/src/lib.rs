@@ -1,20 +1,20 @@
 pub mod full {
     #[derive(Debug)]
     pub struct Stats {
-        min: f64,
-        max: f64,
-        mean: f64,
+        pub min: f64,
+        pub max: f64,
+        pub mean: f64,
         /// Population variance
-        var: f64,
+        pub var: f64,
         /// Sample variance
-        sample_var: f64,
-        stddev: f64,
-        sample_stddev: f64,
-        p1: f64,
-        p5: f64,
-        p50: f64,
-        p95: f64,
-        p99: f64,
+        pub sample_var: f64,
+        pub stddev: f64,
+        pub sample_stddev: f64,
+        pub p1: f64,
+        pub p5: f64,
+        pub p50: f64,
+        pub p95: f64,
+        pub p99: f64,
     }
 
     impl Stats {

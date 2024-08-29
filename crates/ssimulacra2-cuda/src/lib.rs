@@ -1,14 +1,13 @@
 use indices::{indices, indices_ordered};
-use zune_image::codecs::png::zune_core::colorspace::{ColorCharacteristics, ColorSpace};
 
-use cuda_driver::{CuGraphExec, CuStream};
-use cuda_npp::image::ial::{Mul, Sqr, SqrIP};
-use cuda_npp::image::idei::Transpose;
-use cuda_npp::image::ist::Sum;
-use cuda_npp::image::isu::Malloc;
-use cuda_npp::image::{Image, Img, ImgMut, C};
-use cuda_npp::sys::{cudaStream_t, NppStreamContext, NppiRect, Result};
-use cuda_npp::{get_stream_ctx, ScratchBuffer};
+use cudarse_driver::{CuGraphExec, CuStream};
+use cudarse_npp::image::ial::{Mul, Sqr, SqrIP};
+use cudarse_npp::image::idei::Transpose;
+use cudarse_npp::image::ist::Sum;
+use cudarse_npp::image::isu::Malloc;
+use cudarse_npp::image::{Image, Img, ImgMut, C};
+use cudarse_npp::sys::{NppStreamContext, NppiRect, Result};
+use cudarse_npp::{get_stream_ctx, ScratchBuffer};
 
 use crate::kernel::Kernel;
 
@@ -61,7 +60,7 @@ impl Ssimulacra2 {
         let mut npp = get_stream_ctx()?;
         npp.hStream = main_ref.inner() as _;
         // Set in the global context too
-        cuda_npp::set_stream(npp.hStream)?;
+        cudarse_npp::set_stream(npp.hStream)?;
 
         // Input images
         let ref_input = Image::<u8, C<3>>::malloc(width, height)?;
@@ -588,6 +587,7 @@ impl Ssimulacra2 {
     }
 }
 
+/*
 fn save_img(img: impl Img<f32, C<3>>, name: &str, stream: cudaStream_t) {
     // dev.synchronize().unwrap();
     let bytes = img.copy_to_cpu(stream).unwrap();
@@ -600,4 +600,4 @@ fn save_img(img: impl Img<f32, C<3>>, name: &str, stream: cudaStream_t) {
     img.metadata_mut()
         .set_color_trc(ColorCharacteristics::Linear);
     img.save(format!("./{name}.png")).unwrap()
-}
+}*/

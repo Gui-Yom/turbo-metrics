@@ -1,15 +1,17 @@
 [package]
 name = "ssimulacra2-cuda-cli"
 version = "0.1.0"
-authors.workspace = true
 edition.workspace = true
+authors.workspace = true
+homepage.workspace = true
+repository.workspace = true
 
 [dependencies]
 codec-bitstream = { workspace = true }
-cuda-driver = { workspace = true }
+cudarse-driver = { workspace = true }
+cudarse-video = { workspace = true, features = ["npp"] }
 stats = { workspace = true }
 matroska-demuxer = { workspace = true }
-nv-video-codec = { workspace = true, features = ["cuda-npp"] }
 ssimulacra2-cuda = { workspace = true }
 spsc = { workspace = true }
 zune-image = { workspace = true }

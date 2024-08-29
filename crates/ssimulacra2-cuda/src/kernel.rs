@@ -1,8 +1,6 @@
-use cuda_driver::{kernel_params, CuFunction, CuModule, CuStream, LaunchConfig};
-use cuda_npp::assert_same_size;
-use cuda_npp::image::{Img, ImgMut, C, P};
-
-const PTX_MODULE_NAME: &str = "ssimulacra2";
+use cudarse_driver::{kernel_params, CuFunction, CuModule, CuStream, LaunchConfig};
+use cudarse_npp::assert_same_size;
+use cudarse_npp::image::{Img, ImgMut, C, P};
 
 pub struct Kernel {
     module: CuModule,

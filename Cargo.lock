@@ -34,16 +34,14 @@ checksum = "0c4b4d0bd25bd0b74681c0ad21497610ce1b7c91b1022cd21c80c6fbdd9476b0"
 
 [[package]]
 name = "bindgen"
-version = "0.69.4"
+version = "0.70.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a00dc851838a2120612785d195287475a3ac45514741da670b735818822129a0"
+checksum = "f49d8fed880d473ea71efb9bf597651e77201bdd4893efe54c9e5d65ae04ce6f"
 dependencies = [
  "bitflags",
  "cexpr",
  "clang-sys",
  "itertools",
- "lazy_static",
- "lazycell",
  "log",
  "prettyplease",
  "proc-macro2",
@@ -52,7 +50,6 @@ dependencies = [
  "rustc-hash",
  "shlex",
  "syn",
- "which",
 ]
 
 [[package]]
@@ -115,33 +112,55 @@ dependencies = [
 ]
 
 [[package]]
-name = "cuda-driver"
+name = "cudarse-driver"
 version = "0.1.0"
 dependencies = [
- "cuda-driver-sys",
+ "cudarse-driver-sys",
 ]
 
 [[package]]
-name = "cuda-driver-sys"
+name = "cudarse-driver-sys"
 version = "0.1.0"
 dependencies = [
  "bindgen",
 ]
 
 [[package]]
-name = "cuda-npp"
+name = "cudarse-npp"
 version = "0.1.0"
 dependencies = [
- "cuda-driver",
- "cuda-npp-sys",
+ "cudarse-driver",
+ "cudarse-npp-sys",
  "paste",
 ]
 
 [[package]]
-name = "cuda-npp-sys"
+name = "cudarse-npp-sys"
 version = "0.1.0"
 dependencies = [
  "bindgen",
+]
+
+[[package]]
+name = "cudarse-video"
+version = "0.1.0"
+dependencies = [
+ "codec-bitstream",
+ "cudarse-driver",
+ "cudarse-npp",
+ "cudarse-video-sys",
+ "spsc",
+ "tracing",
+ "tracing-subscriber",
+ "zune-image",
+]
+
+[[package]]
+name = "cudarse-video-sys"
+version = "0.1.0"
+dependencies = [
+ "bindgen",
+ "cudarse-driver-sys",
 ]
 
 [[package]]
@@ -149,16 +168,6 @@ name = "either"
 version = "1.13.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "60b1af1c220855b6ceac025d3f6ecdd2b7c4894bfe9cd9bda4fbb4bc7c0d4cf0"
-
-[[package]]
-name = "errno"
-version = "0.3.9"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "534c5cf6194dfab3db3242765c03bbe257cf92f22b38f6bc0c58d59108a820ba"
-dependencies = [
- "libc",
- "windows-sys",
-]
 
 [[package]]
 name = "four-cc"
@@ -205,15 +214,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "5491a308e0214554f07a81d8944abe45f552871c12e3c3c6e7e5d354039a6c4c"
 
 [[package]]
-name = "home"
-version = "0.5.9"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e3d1354bf6b7235cb4a0576c2619fd4ed18183f689b12b006a0ee7329eeff9a5"
-dependencies = [
- "windows-sys",
-]
-
-[[package]]
 name = "indices"
 version = "0.3.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -244,12 +244,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "bbd2bcb4c963f2ddae06a2efc7e9f3591312473c50c6685e1f298068316e66fe"
 
 [[package]]
-name = "lazycell"
-version = "1.3.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "830d08ce1d1d941e6b30645f1a0eb5643013d835ce3779a5fc208261dbe10f55"
-
-[[package]]
 name = "libc"
 version = "0.2.155"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -264,12 +258,6 @@ dependencies = [
  "cfg-if",
  "windows-targets",
 ]
-
-[[package]]
-name = "linux-raw-sys"
-version = "0.4.14"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "78b3ae25bc7c8c38cec158d1f2757ee79e9b3740fbc7ccf0e59e4b08d793fa89"
 
 [[package]]
 name = "log"
@@ -444,28 +432,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "nv-video-codec"
-version = "0.1.0"
-dependencies = [
- "codec-bitstream",
- "cuda-driver",
- "cuda-npp",
- "nv-video-codec-sys",
- "spsc",
- "tracing",
- "tracing-subscriber",
- "zune-image",
-]
-
-[[package]]
-name = "nv-video-codec-sys"
-version = "0.1.0"
-dependencies = [
- "bindgen",
- "cuda-driver-sys",
-]
-
-[[package]]
 name = "nvptx-core"
 version = "0.1.0"
 
@@ -589,19 +555,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "08d43f7aa6b08d49f382cde6a7982047c3426db949b1424bc4b7ec9ae12c6ce2"
 
 [[package]]
-name = "rustix"
-version = "0.38.34"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "70dc5ec042f7a43c4a73241207cecc9873a06d45debb38b329f8541d85c2730f"
-dependencies = [
- "bitflags",
- "errno",
- "libc",
- "linux-raw-sys",
- "windows-sys",
-]
-
-[[package]]
 name = "rustversion"
 version = "1.0.17"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -674,8 +627,8 @@ name = "ssimulacra2-cuda"
 version = "0.1.0"
 dependencies = [
  "array-init",
- "cuda-driver",
- "cuda-npp",
+ "cudarse-driver",
+ "cudarse-npp",
  "indices",
  "zune-image",
 ]
@@ -685,9 +638,9 @@ name = "ssimulacra2-cuda-cli"
 version = "0.1.0"
 dependencies = [
  "codec-bitstream",
- "cuda-driver",
+ "cudarse-driver",
+ "cudarse-video",
  "matroska-demuxer",
- "nv-video-codec",
  "spsc",
  "ssimulacra2-cuda",
  "stats",
@@ -807,23 +760,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "830b7e5d4d90034032940e4ace0d9a9a057e7a45cd94e6c007832e39edb82f6d"
 
 [[package]]
-name = "video"
-version = "0.1.0"
-dependencies = [
- "codec-bitstream",
- "cuda-driver",
- "matroska-demuxer",
- "nv-video-codec",
- "spsc",
- "ssimulacra2-cuda",
- "zune-image",
-]
-
-[[package]]
-name = "video-common"
-version = "0.1.0"
-
-[[package]]
 name = "vmaf"
 version = "0.1.0"
 dependencies = [
@@ -834,8 +770,8 @@ dependencies = [
 name = "vmaf-cuda"
 version = "0.1.0"
 dependencies = [
- "cuda-driver",
- "cuda-npp",
+ "cudarse-driver",
+ "cudarse-npp",
  "zune-image",
 ]
 
@@ -844,18 +780,6 @@ name = "vmaf-cuda-kernel"
 version = "0.1.0"
 dependencies = [
  "nvptx-core",
-]
-
-[[package]]
-name = "which"
-version = "4.4.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "87ba24419a2078cd2b0f2ede2691b6c66d8e47836da3b6db8265ebad47afbfc7"
-dependencies = [
- "either",
- "home",
- "once_cell",
- "rustix",
 ]
 
 [[package]]
@@ -951,15 +875,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "4cd9b125c486025df0eabcb585e62173c6c9eddcec5d117d3b6e8c30e2ee4d10"
 dependencies = [
  "windows-result",
- "windows-targets",
-]
-
-[[package]]
-name = "windows-sys"
-version = "0.52.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "282be5f36a8ce781fad8c8ae18fa3f9beff57ec1b52cb3de0789201425d9a33d"
-dependencies = [
  "windows-targets",
 ]
 

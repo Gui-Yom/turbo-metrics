@@ -1,0 +1,35 @@
+[package]
+name = "cudarse-npp"
+version = "0.1.0"
+edition.workspace = true
+authors.workspace = true
+homepage.workspace = true
+repository.workspace = true
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+cudarse-npp-sys = { workspace = true }
+paste.workspace = true
+
+[dev-dependencies]
+cudarse-driver = { workspace = true }
+
+[features]
+default = ["static"]
+# Static linking against cuda libraries
+static = ["cudarse-npp-sys/static"]
+# Image Arithmetic and Logical operations
+ial = ["cudarse-npp-sys/ial"]
+# Image Color Conversions
+icc = ["cudarse-npp-sys/icc"]
+# Image Data Exchange and Initialization
+idei = ["cudarse-npp-sys/idei"]
+# Image Filtering
+if = ["cudarse-npp-sys/if"]
+# Image Gometric transforms (resize, transforms)
+ig = ["cudarse-npp-sys/ig"]
+# Image Statistics
+ist = ["cudarse-npp-sys/ist"]
+# Image Support functions (malloc & free)
+isu = ["cudarse-npp-sys/isu"]

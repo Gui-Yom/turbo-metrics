@@ -1,8 +1,10 @@
 [package]
 name = "codec-bitstream"
 version = "0.1.0"
-authors.workspace = true
 edition.workspace = true
+authors.workspace = true
+homepage.workspace = true
+repository.workspace = true
 
 [dependencies]
 bitstream-io = { workspace = true }

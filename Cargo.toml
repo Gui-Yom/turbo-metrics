@@ -1,17 +1,16 @@
 [workspace]
 members = [
+    "crates/cudarse/cudarse-driver",
+    "crates/cudarse/cudarse-driver-sys",
+    "crates/cudarse/cudarse-npp",
+    "crates/cudarse/cudarse-npp-sys",
+    "crates/cudarse/cudarse-video",
+    "crates/cudarse/cudarse-video-sys",
     "crates/codec-bitstream",
-    "crates/cuda-driver",
-    "crates/cuda-driver-sys",
-    "crates/cuda-npp",
-    "crates/cuda-npp-sys",
-    "crates/nv-video-codec",
-    "crates/nv-video-codec-sys",
     "crates/nvptx-core",
     "crates/ssimulacra2-cuda-kernel",
     "crates/ssimulacra2-cuda",
     "crates/stats",
-    "crates/video-common",
     "crates/ssimulacra2-cuda-cli",
     "crates/vmaf",
     "crates/vmaf-cuda",
@@ -21,23 +20,24 @@ resolver = "2"
 
 [workspace.package]
 authors = ["Guillaume Anthouard"]
-homepage = "https://github.com/Gui-Yom/video-hw-rs"
+homepage = "https://github.com/Gui-Yom/turbo-metrics"
+repository = "https://github.com/Gui-Yom/turbo-metrics"
 edition = "2021"
 
 [workspace.dependencies]
 codec-bitstream = { path = "crates/codec-bitstream", default-features = false }
-cuda-driver = { path = "crates/cuda-driver", default-features = false }
-cuda-driver-sys = { path = "crates/cuda-driver-sys", default-features = false }
-cuda-npp = { path = "crates/cuda-npp", default-features = false }
-cuda-npp-sys = { path = "crates/cuda-npp-sys", default-features = false }
-nv-video-codec = { path = "crates/nv-video-codec", default-features = false }
-nv-video-codec-sys = { path = "crates/nv-video-codec-sys", default-features = false }
+cudarse-driver = { path = "crates/cudarse/cudarse-driver", default-features = false }
+cudarse-driver-sys = { path = "crates/cudarse/cudarse-driver-sys", default-features = false }
+cudarse-npp = { path = "crates/cudarse/cudarse-npp", default-features = false }
+cudarse-npp-sys = { path = "crates/cudarse/cudarse-npp-sys", default-features = false }
+cudarse-video = { path = "crates/cudarse/cudarse-video", default-features = false }
+cudarse-video-sys = { path = "crates/cudarse/cudarse-video-sys", default-features = false }
 nvptx-core = { path = "crates/nvptx-core", default-features = false }
 ssimulacra2-cuda = { path = "crates/ssimulacra2-cuda", default-features = false }
 stats = { path = "crates/stats", default-features = false }
 
 array-init = "2"
-bindgen = "0.69"
+bindgen = "0.70"
 bitstream-io = "2"
 #cudarc = { version = "0.10", default-features = false, features = ["std", "driver"] }#, "cuda-version-from-build-system", "dynamic-linking"] }
 incr_stats = "1"
@@ -46,35 +46,20 @@ h264-reader = "0.7"
 matroska-demuxer = "0.5"
 nalgebra = "0.33"
 paste = "1"
-rerun = "0.17"
+rerun = "0.18"
 spsc = { path = "../spsc" }
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 zune-image = { version = "0.4", default-features = false, features = ["png", "simd", "metadata"] }
 
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
-
-[package]
-name = "video"
-version = "0.1.0"
-authors.workspace = true
-edition.workspace = true
-
-[dependencies]
-codec-bitstream = { workspace = true }
-cuda-driver = { workspace = true }
-matroska-demuxer = { workspace = true }
-nv-video-codec = { workspace = true, features = ["cuda-npp"] }
-ssimulacra2-cuda = { workspace = true }
-spsc = { workspace = true }
-zune-image = { workspace = true }
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.htm
 
 # Profile specifically for building nvptx code
 [profile.release-nvptx]
 inherits = "release"
 opt-level = 3
 lto = "fat"
-debug = "full"
+debug = false
 codegen-units = 1
 overflow-checks = false
 

@@ -1,5 +1,5 @@
 [package]
-name = "ssimulacra2-cuda-kernel"
+name = "cudarse-driver"
 version = "0.1.0"
 edition.workspace = true
 authors.workspace = true
@@ -8,11 +8,10 @@ repository.workspace = true
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
-[lib]
-crate-type = ["rlib", "cdylib"]
-
 [dependencies]
-nvptx-core = { workspace = true }
+cudarse-driver-sys = { workspace = true }
 
-[build-dependencies]
-nalgebra = { workspace = true }
+[features]
+default = ["static"]
+# Static linking against cuda libraries
+static = ["cudarse-driver-sys/static"]

@@ -1,0 +1,28 @@
+[package]
+name = "cudarse-video"
+version = "0.1.0"
+edition.workspace = true
+authors.workspace = true
+homepage.workspace = true
+repository.workspace = true
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+cudarse-driver = { workspace = true }
+cudarse-npp = { workspace = true, optional = true, features = ["icc", "isu"] }
+cudarse-video-sys = { workspace = true }
+spsc = { workspace = true }
+tracing = { workspace = true }
+zune-image = { workspace = true }
+
+[dev-dependencies]
+codec-bitstream = { workspace = true }
+tracing-subscriber = { workspace = true }
+
+[features]
+default = ["static"]
+# Static linking against cuda libraries
+static = ["cudarse-driver/static", "cudarse-video-sys/static", "cudarse-npp?/static"]
+# Convert decoded images into NPP images
+npp = ["dep:cudarse-npp"]

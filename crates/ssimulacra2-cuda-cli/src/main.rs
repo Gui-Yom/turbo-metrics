@@ -3,24 +3,24 @@ use std::io::BufReader;
 use std::time::Instant;
 
 use codec_bitstream::{av1, h264};
-use cuda_driver::{CuDevice, CuStream};
+use cudarse_driver::{CuDevice, CuStream};
+use cudarse_video::dec::npp::icc::NV12toRGB;
+use cudarse_video::dec::npp::{get_stream_ctx, Img, C};
+use cudarse_video::dec::{CuVideoParser, CuvidParserCallbacks};
+use cudarse_video::dec_simple::NvDecoderSimple;
+use cudarse_video::sys::{cudaVideoCodec, cudaVideoCodec_enum};
 use matroska_demuxer::{Frame, MatroskaFile};
-use nv_video_codec::dec::npp::icc::NV12toRGB;
-use nv_video_codec::dec::npp::{get_stream_ctx, Img, C};
-use nv_video_codec::dec::{CuVideoParser, CuvidParserCallbacks};
-use nv_video_codec::dec_simple::NvDecoderSimple;
-use nv_video_codec::sys::{cudaVideoCodec, cudaVideoCodec_enum};
 use ssimulacra2_cuda::Ssimulacra2;
 use stats::full::Stats;
 use zune_image::codecs::png::zune_core::colorspace::{ColorCharacteristics, ColorSpace};
 
 fn main() {
-    cuda_driver::init_cuda().expect("Could not initialize the CUDA API");
+    cudarse_driver::init_cuda().expect("Could not initialize the CUDA API");
     let dev = CuDevice::get(0).unwrap();
     println!(
         "Using device {} with CUDA version {}",
         dev.name().unwrap(),
-        cuda_driver::cuda_driver_version().unwrap()
+        cudarse_driver::cuda_driver_version().unwrap()
     );
     // Bind to main thread
     let ctx = dev.retain_primary_ctx().unwrap();
@@ -117,7 +117,7 @@ impl<'dec> DemuxerParser<'dec> {
             .tracks()
             .iter()
             .enumerate()
-            .find(|(i, t)| t.video().is_some())
+            .find(|(_, t)| t.video().is_some())
             .expect("No video track in mkv file");
         let codec =
             mkv_codec_id_to_nvdec(v_track.codec_id()).expect("Unsupported video codec in mkv");
