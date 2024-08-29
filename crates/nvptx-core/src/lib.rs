@@ -23,18 +23,18 @@ struct PanicFmt<'a>(&'a CStr, u32, u32);
 #[panic_handler]
 fn panic_handler(info: &PanicInfo) -> ! {
     unsafe {
-        nvptx::vprintf(c"CUDA code panicked :(".as_ptr(), null());
+        nvptx::vprintf(c"CUDA code panicked :(".as_ptr().cast(), null());
         if let Some(loc) = info.location() {
             let mut buffer = [0; 64];
             let len = loc.file().len().min(63);
             buffer[..len].copy_from_slice(&loc.file().as_bytes()[..len]);
             let str = CStr::from_bytes_until_nul(&buffer).unwrap();
             nvptx::vprintf(
-                c" (in %s at %d:%d)".as_ptr(),
+                c" (in %s at %d:%d)".as_ptr().cast(),
                 transmute(&PanicFmt(str, loc.line(), loc.column())),
             );
         }
-        nvptx::vprintf(c"\n".as_ptr(), null());
+        nvptx::vprintf(c"\n".as_ptr().cast(), null());
         nvptx::trap();
     }
 }
@@ -100,22 +100,62 @@ pub fn coords_3d() -> (usize, usize, usize) {
     }
 }
 
-macro_rules! shfl_down_sync_t {
-    ($ty:ty) => {
-        #[inline(always)]
-        pub unsafe fn shfl_down_sync(mask: u32, value: $ty, offset: u32, width: u32) -> $ty {
-            let out;
-            asm!(
-            "shfl.sync.down.b32 {out}, {v}, {offset}, {width}, {mask};",
-            out = out(reg32) out,
-            v = in(reg32) value,
-            offset = in(reg32) offset,
-            width = in(reg32) width,
-            mask = in(reg32) mask
-            );
-            out
-        }
-    }
+#[inline(always)]
+pub unsafe fn shfl_down_sync_f32(mask: u32, value: f32, offset: u32, width: u32) -> f32 {
+    let out;
+    asm!(
+    "shfl.sync.down.b32 {out}, {v}, {offset}, {width}, {mask};",
+    out = out(reg32) out,
+    v = in(reg32) value,
+    offset = in(reg32) offset,
+    width = in(reg32) width,
+    mask = in(reg32) mask
+    );
+    out
 }
 
-shfl_down_sync_t!(f32);
+#[inline(always)]
+pub unsafe fn shfl_down_sync_u32(mask: u32, value: u32, offset: u32, width: u32) -> u32 {
+    let out;
+    asm!(
+    "shfl.sync.down.b32 {out}, {v}, {offset}, {width}, {mask};",
+    out = out(reg32) out,
+    v = in(reg32) value,
+    offset = in(reg32) offset,
+    width = in(reg32) width,
+    mask = in(reg32) mask
+    );
+    out
+}
+
+/// Reads the 32-bit unsigned old located at the address in global or shared memory, computes (old + val), and stores
+/// the result back to memory at the same address. These three operations are performed in one atomic transaction.
+/// The function returns old.
+#[inline(always)]
+pub unsafe fn atomic_add_global_u32(ptr: *mut u32, value: u32) -> u32 {
+    let out;
+    asm!(
+    "atom.global.add.u32 {out}, {p}, {v};",
+    out = out(reg32) out,
+    p = in(reg64) ptr,
+    v = in(reg32) value
+    );
+    out
+}
+
+/// Reads the 64-bit unsigned old located at the address in global or shared memory, computes (old + val), and stores
+/// the result back to memory at the same address. These three operations are performed in one atomic transaction.
+/// The function returns old.
+#[inline(always)]
+pub unsafe fn atomic_add_global_u64(ptr: *mut u64, value: u64) -> u64 {
+    let out;
+    asm!(
+    "cvta.to.global.u64 {tmp}, {p};",
+    "atom.global.add.u64 {out}, [{tmp}], {v};",
+    tmp = out(reg64) _,
+    out = out(reg64) out,
+    p = in(reg64) ptr,
+    v = in(reg64) value
+    );
+    out
+}

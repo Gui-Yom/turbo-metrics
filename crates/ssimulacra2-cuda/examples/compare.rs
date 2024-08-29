@@ -2,9 +2,11 @@ use std::time::Instant;
 
 use zune_image::codecs::png::zune_core::options::DecoderOptions;
 
+use cpu::CpuImg;
 use cuda_driver::CuDevice;
-use ssimulacra2_cuda::cpu::CpuImg;
-use ssimulacra2_cuda::{cpu, Ssimulacra2};
+use ssimulacra2_cuda::Ssimulacra2;
+
+mod cpu;
 
 fn main() {
     cuda_driver::init_cuda().expect("Could not initialize the CUDA API");

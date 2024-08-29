@@ -16,7 +16,9 @@ fn include(path: &Path, header: &str) -> String {
 }
 
 fn main() {
-    let sdk_path = PathBuf::from("C:\\apps\\Video_Codec_SDK");
+    let sdk_path = PathBuf::from(env::var("NV_VIDEO_CODEC_SDK").expect(
+        "environment variable NV_VIDEO_CODEC_SDK must be set for nv-video-codec-sys to find the video codec sdk path.",
+    ));
     let sdk_include = sdk_path.join("Interface");
     let sdk_lib = sdk_path.join("Lib/x64");
     let cuda_path = PathBuf::from(env::var("CUDA_PATH").expect(

@@ -54,8 +54,8 @@ pub unsafe extern "ptx-kernel" fn downscale_plane_by_2(
     if x < src_w && y < src_h {
         let mut v = *src.byte_add(y * src_pitch).add(x);
 
-        v += shfl_down_sync(0xffffffff, v, 16, 32);
-        v += shfl_down_sync(0xffffffff, v, 1, 32);
+        v += shfl_down_sync_f32(0xffffffff, v, 16, 32);
+        v += shfl_down_sync_f32(0xffffffff, v, 1, 32);
 
         let id = lane();
         // Top left thread in the patch will write its value

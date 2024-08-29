@@ -8,12 +8,14 @@ fn include(path: &Path, header: &str) -> String {
 }
 
 fn main() {
-    let vmaf_path = PathBuf::from("C:\\Code\\C\\vmaf\\libvmaf\\build\\install");
+    let root = env!("CARGO_MANIFEST_DIR");
+    let vmaf_path = PathBuf::from(root).join("libvmaf");
     let vmaf_include_path = vmaf_path.join("include");
     let vmaf_link_path = vmaf_path.join("lib");
-    let cuda_path = PathBuf::from(env::var("CUDA_PATH").expect(
-        "environment variable CUDA_PATH must be set for nv-video-codec-sys to find the CUDA SDK",
-    ));
+    let cuda_path = PathBuf::from(
+        env::var("CUDA_PATH")
+            .expect("environment variable CUDA_PATH must be set for vmaf to find the CUDA SDK"),
+    );
     let cuda_include_path = cuda_path.join("include");
     let cuda_link_path = cuda_path.join("lib/x64");
 

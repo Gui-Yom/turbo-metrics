@@ -1,17 +1,12 @@
 [package]
-name = "ssimulacra2-cuda-kernel"
+name = "vmaf-cuda-kernel"
 version = "0.1.0"
 authors.workspace = true
 homepage.workspace = true
 edition.workspace = true
-
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [lib]
 crate-type = ["rlib", "cdylib"]
 
 [dependencies]
 nvptx-core = { workspace = true }
-
-[build-dependencies]
-nalgebra = { workspace = true }

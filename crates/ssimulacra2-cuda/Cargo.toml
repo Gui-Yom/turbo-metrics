@@ -11,10 +11,9 @@ array-init = { workspace = true }
 cuda-driver = { workspace = true }
 cuda-npp = { workspace = true, features = ["isu", "ial", "idei", "if", "ist"] }
 indices = { workspace = true }
-zune-image.workspace = true
 
-[build-dependencies]
-nalgebra = { workspace = true }
+[dev-dependencies]
+zune-image.workspace = true
 
 [features]
 default = ["static"]

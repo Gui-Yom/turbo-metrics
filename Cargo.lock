@@ -677,7 +677,6 @@ dependencies = [
  "cuda-driver",
  "cuda-npp",
  "indices",
- "nalgebra",
  "zune-image",
 ]
 
@@ -829,6 +828,22 @@ name = "vmaf"
 version = "0.1.0"
 dependencies = [
  "bindgen",
+]
+
+[[package]]
+name = "vmaf-cuda"
+version = "0.1.0"
+dependencies = [
+ "cuda-driver",
+ "cuda-npp",
+ "zune-image",
+]
+
+[[package]]
+name = "vmaf-cuda-kernel"
+version = "0.1.0"
+dependencies = [
+ "nvptx-core",
 ]
 
 [[package]]

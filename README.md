@@ -19,6 +19,10 @@ from the CPU (PNG or unsupported codec).
 
 ## Libraries
 
+### codec-bitstream
+
+Utilities to transform codec bitstream for feeding into GPU decoders.
+
 ### cuda-driver
 
 Raw and safeish bindings to the CUDA Driver API. The safeish bindings are designed to not get in your way, at the
@@ -49,13 +53,20 @@ Rust implementation : https://github.com/rust-av/ssimulacra2
 
 ### ssimulacra2-cuda-cli
 
-CLI frontend for ssimulacra2-cuda that can compare full videos blazingly fast by decoding on the GPU.
+CLI frontend for ssimulacra2-cuda that can compare videos blazingly fast by decoding on the GPU and computing on the
+GPU.
 
 At the time of writing, I'm maxing out my RTX 3060 laptop compute while using 45% of NVDEC total capacity.
-With two h264 videos, I can process around 110 image pairs per second (which is more than 4x speedup over realtime).
+With two h264 videos, I can process around 110 image pairs per second (which is more than 4x speedup over realtime and
+orders of magnitude over existing tools).
+
+### vmaf
+
+Bindings to libvmaf.
 
 ## Prerequisites
 
+- Only tested on Windows 10 x64
 - A recent [CUDA SDK](https://developer.nvidia.com/cuda-toolkit) (tested with 12.5)
 - Everything should build with Rust stable, except for the cuda kernel which requires a recent (at least 2024-04-24)
   nightly Rust toolchain

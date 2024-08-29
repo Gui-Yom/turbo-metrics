@@ -12,7 +12,6 @@ use cuda_npp::{get_stream_ctx, ScratchBuffer};
 
 use crate::kernel::Kernel;
 
-pub mod cpu;
 mod kernel;
 
 /// Number of scales to compute

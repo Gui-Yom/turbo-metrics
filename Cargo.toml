@@ -10,9 +10,12 @@ members = [
     "crates/nvptx-core",
     "crates/ssimulacra2-cuda-kernel",
     "crates/ssimulacra2-cuda",
+    "crates/stats",
     "crates/video-common",
     "crates/ssimulacra2-cuda-cli",
-    "crates/vmaf", "crates/stats",
+    "crates/vmaf",
+    "crates/vmaf-cuda",
+    "crates/vmaf-cuda-kernel",
 ]
 resolver = "2"
 
