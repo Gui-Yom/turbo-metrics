@@ -5,22 +5,33 @@ use std::{env, fs};
 /// Build a crate in the workspace as ptx and copy the resulting ptx to this build script `OUT_DIR`
 ///
 /// You would then include the ptx code at compile time with :
-/// ```
+/// ```rust,ignore
 /// include_str!(concat!(env!("OUT_DIR"),"/{package}.ptx"))
 /// ```
 pub fn build_ptx_crate(package: &str, profile: &str) {
     // We need to filter environment variables, or it breaks cargo when called from a build script
-    let envs = env::vars()
-        .filter(|(k, v)| !k.starts_with("CARGO_") || k == "CARGO_MAKEFLAGS" || k == "CARGO_HOME");
-    // Convert current stable toolchain to nightly toolchain.
+    let envs = env::vars().filter(|(k, _)| {
+        !k.starts_with("CARGO_")
+            && k != "CARGO"
+            && k != "RUSTC"
+            && k != "RUSTDOC"
+            && k != "RUSTUP_TOOLCHAIN"
+            && k != "OPT_LEVEL"
+            && k != "OUT_DIR"
+            || k == "CARGO_MAKEFLAGS"
+            || k == "CARGO_HOME"
+    }); //.collect::<Vec<_>>();
+        // Convert current stable toolchain to nightly toolchain.
     let toolchain = env::var("RUSTUP_TOOLCHAIN").unwrap();
-    let toolchain = toolchain.split_once('-').unwrap().0;
+    let toolchain = toolchain.split_once('-').unwrap().1;
+    //dbg!(&toolchain);
     let mut cmd = Command::new("cargo")
         .env_clear()
         .envs(envs)
         .env("RUSTUP_TOOLCHAIN", format!("nightly-{toolchain}"))
         .args([
             "+nightly",
+            //"-vv",
             "build",
             "--package",
             package,
