@@ -1,4 +1,5 @@
-use std::path::PathBuf;
+use cargo_metadata::MetadataCommand;
+use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::{env, fs};
 
@@ -9,6 +10,20 @@ use std::{env, fs};
 /// include_str!(concat!(env!("OUT_DIR"),"/{package}.ptx"))
 /// ```
 pub fn build_ptx_crate(package: &str, profile: &str) {
+    let meta = MetadataCommand::new().no_deps().exec().unwrap();
+    let p = meta.packages.iter().find(|p| p.name == package).unwrap();
+    println!("cargo::rerun-if-changed={}", p.manifest_path);
+    for target in &p.targets {
+        if target.is_custom_build() {
+            println!("cargo::rerun-if-changed={}", target.src_path);
+        } else {
+            println!(
+                "cargo::rerun-if-changed={}",
+                target.src_path.parent().unwrap()
+            );
+        }
+    }
+
     // We need to filter environment variables, or it breaks cargo when called from a build script
     let envs = env::vars().filter(|(k, _)| {
         !k.starts_with("CARGO_")
@@ -44,22 +59,12 @@ pub fn build_ptx_crate(package: &str, profile: &str) {
         .spawn()
         .unwrap();
     assert!(cmd.wait().unwrap().success());
-    copy_file(package, profile);
+    copy_file(meta.target_directory.as_std_path(), package, profile);
 }
 
-fn copy_file(package: &str, profile: &str) {
+fn copy_file(target_dir: &Path, package: &str, profile: &str) {
     let package = package.replace('-', "_");
     let dir = PathBuf::from(env::var("OUT_DIR").unwrap());
-    // Dubious way of getting the workspace target dir.
-    let target_dir = dir
-        .parent()
-        .unwrap()
-        .parent()
-        .unwrap()
-        .parent()
-        .unwrap()
-        .parent()
-        .unwrap();
     // target/{TARGET}/{PROFILE}/{CRATE}.ptx
     let mut src_path = target_dir.join("nvptx64-nvidia-cuda");
     src_path.push(profile);

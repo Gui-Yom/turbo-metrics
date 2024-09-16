@@ -7,3 +7,4 @@ repository.workspace = true
 edition.workspace = true
 
 [dependencies]
+cargo_metadata = "0.18"
