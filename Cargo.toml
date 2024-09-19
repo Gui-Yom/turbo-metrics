@@ -20,6 +20,7 @@ members = [
     "crates/cuda-colorspace",
     "crates/cuda-colorspace-kernel",
 ]
+# Default members exlude nvptx crates
 default-members = [
     "crates/cudarse/cudarse-driver",
     "crates/cudarse/cudarse-driver-sys",
@@ -40,7 +41,7 @@ default-members = [
 resolver = "2"
 
 [workspace.package]
-authors = ["Guillaume Anthouard"]
+authors = ["Guillaume Anthouard <guillaume.anthouard@hotmail.fr>"]
 homepage = "https://github.com/Gui-Yom/turbo-metrics"
 repository = "https://github.com/Gui-Yom/turbo-metrics"
 edition = "2021"

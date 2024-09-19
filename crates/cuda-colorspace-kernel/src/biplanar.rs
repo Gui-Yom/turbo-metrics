@@ -55,9 +55,9 @@ unsafe fn biplanaryuv420_to_linearrgb_generic<const BITDEPTH: usize, LumaCR, Chr
             let g = luma + g_coeff;
 
             let dst = dst.add(3 * x);
-            *dst = r;
-            *dst.add(1) = g;
-            *dst.add(2) = b;
+            *dst = Tr::eotf(r);
+            *dst.add(1) = Tr::eotf(g);
+            *dst.add(2) = Tr::eotf(b);
         }
     }
 }

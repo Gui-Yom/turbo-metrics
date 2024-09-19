@@ -226,9 +226,15 @@ mod tests {
         dbg!(&dst);
 
         kernel.biplanaryuv420_to_linearrgb_8_L_BT709(&src, &mut dst, &main)?;
-        main.sync()?;
 
         let data = dst.copy_to_cpu(cudarse_npp::get_stream()).unwrap();
+        main.sync()?;
+        dbg!(&data[0..3]);
+
+        let mut dst2 = dst.malloc_same_size().unwrap();
+        kernel.rgb_f32_to_8bit(&dst, &mut dst2, &main)?;
+
+        let data = dst2.copy_to_cpu(cudarse_npp::get_stream()).unwrap();
         main.sync()?;
         dbg!(&data[0..3]);
 

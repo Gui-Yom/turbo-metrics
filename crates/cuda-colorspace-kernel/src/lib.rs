@@ -162,6 +162,13 @@ trait TransferCharacteristics {
     fn eotf(value: f32) -> f32;
 }
 
+struct Passtrough;
+impl TransferCharacteristics for Passtrough {
+    fn eotf(value: f32) -> f32 {
+        value
+    }
+}
+
 trait ColorPrimaries {
     const CONSTANTS: Vec2;
     fn coefficients<LumaCR: ColorRange, ChromaCR: ColorRange, const N: usize>(
@@ -178,7 +185,7 @@ impl TransferCharacteristics for BT709 {
         /// threshold = bt709_oetf(BETA)
         const THRESHOLD: f32 = 0.08124285829863521110029445797874;
         if value >= THRESHOLD {
-            ((value + (ALPHA - 1.0)) / ALPHA).powf(1.0 / 0.45)
+            ((value + (ALPHA - 1.0)) / ALPHA).powf_fast(1.0 / 0.45)
         } else {
             value / 4.5
         }
