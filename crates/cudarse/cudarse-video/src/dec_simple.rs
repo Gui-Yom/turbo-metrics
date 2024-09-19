@@ -1,10 +1,12 @@
 use crate::dec::{
-    npp, query_caps, select_output_format, CuVideoCtxLock, CuVideoDecoder, CuvidParserCallbacks,
+    query_caps, select_output_format, CuVideoCtxLock, CuVideoDecoder, CuvidParserCallbacks,
     FrameMapping,
 };
 use cudarse_driver::sys::CuResult;
 use cudarse_driver::CuStream;
-use cudarse_video_sys::{CUVIDEOFORMAT, CUVIDPARSERDISPINFO, CUVIDPICPARAMS, CUVIDSEIMESSAGEINFO};
+use cudarse_video_sys::{
+    cudaVideoSurfaceFormat, CUVIDEOFORMAT, CUVIDPARSERDISPINFO, CUVIDPICPARAMS, CUVIDSEIMESSAGEINFO,
+};
 use std::cell::{OnceCell, RefCell, RefMut};
 use std::collections::VecDeque;
 use std::iter::repeat_with;
@@ -16,7 +18,7 @@ use tracing::{debug, error};
 pub struct NvDecoderSimple<'a> {
     extra_decode_surfaces: u32,
     lock: Option<&'a CuVideoCtxLock>,
-    decoder: OnceCell<(CuVideoDecoder<'a>, CUVIDEOFORMAT)>,
+    decoder: OnceCell<(CuVideoDecoder<'a>, CUVIDEOFORMAT, cudaVideoSurfaceFormat)>,
     frames: RefCell<VecDeque<Option<CUVIDPARSERDISPINFO>>>,
 }
 
@@ -31,7 +33,7 @@ impl<'a> NvDecoderSimple<'a> {
     }
 
     pub fn format(&self) -> Option<&CUVIDEOFORMAT> {
-        self.decoder.get().map(|(_, f)| f)
+        self.decoder.get().map(|(_, f, _)| f)
     }
 
     pub fn display_queue_len(&self) -> usize {
@@ -88,20 +90,48 @@ impl<'a> NvDecoderSimple<'a> {
         &'map self,
         info: &CUVIDPARSERDISPINFO,
         stream: &CuStream,
-    ) -> CuResult<npp::NvDecNV12<'map>> {
-        if let Some((decoder, format)) = self.decoder.get() {
-            let mapping = decoder.map(info, stream)?;
-            Ok(npp::NvDecNV12 {
-                width: format.display_width(),
-                height: format.display_height(),
-                planes: [
-                    mapping.ptr as *mut u8,
-                    (mapping.ptr + mapping.pitch as u64 * format.coded_height as u64) as *mut u8,
-                ],
-                frame: mapping,
-            })
+    ) -> CuResult<crate::dec::npp::NvDecNV12<'map>> {
+        if let crate::dec::npp::NvDecFrame::NV12(frame) = self.map_npp(info, stream)? {
+            Ok(frame)
         } else {
-            panic!("map_npp_nv12 called when instance was not initialized")
+            panic!("actual surface format is not NV12")
+        }
+    }
+
+    #[cfg(feature = "npp")]
+    pub fn map_npp<'map>(
+        &'map self,
+        info: &CUVIDPARSERDISPINFO,
+        stream: &CuStream,
+    ) -> CuResult<crate::dec::npp::NvDecFrame<'map>> {
+        if let Some((decoder, format, surface_format)) = self.decoder.get() {
+            let mapping = decoder.map(info, stream)?;
+            match surface_format {
+                cudaVideoSurfaceFormat::cudaVideoSurfaceFormat_NV12 => {
+                    Ok(crate::dec::npp::NvDecFrame::NV12(
+                        crate::dec::npp::NvDecNV12::from_mapping(mapping, format),
+                    ))
+                }
+                cudaVideoSurfaceFormat::cudaVideoSurfaceFormat_P016 => {
+                    match format.bit_depth_luma_minus8 {
+                        2 => Ok(crate::dec::npp::NvDecFrame::P010(
+                            crate::dec::npp::NvDecP010::from_mapping(mapping, format),
+                        )),
+                        4 => {
+                            todo!("Unsupported bitdepth 12 with P016 surface format in map_npp")
+                        }
+                        other => {
+                            todo!(
+                                "Unsupported bitdepth {} with P016 surface format in map_npp",
+                                other + 8
+                            )
+                        }
+                    }
+                }
+                other => todo!("Unsupported surface format '{other:?}' in map_npp"),
+            }
+        } else {
+            panic!("map_npp called but instance is not initialized")
         }
     }
 }
@@ -131,14 +161,16 @@ impl CuvidParserCallbacks for NvDecoderSimple<'_> {
             // Initialize new
             let decoder = CuVideoDecoder::new(format, surface_format, surfaces, self.lock)
                 .map_err(|e| error!("{e}"))?;
-            self.decoder.set((decoder, format.clone())).unwrap();
+            self.decoder
+                .set((decoder, format.clone(), surface_format))
+                .unwrap();
         }
 
         Ok(surfaces as _)
     }
 
     fn decode_picture(&self, pic: &CUVIDPICPARAMS) -> Result<(), ()> {
-        if let Some((decoder, _)) = self.decoder.get() {
+        if let Some((decoder, _, _)) = self.decoder.get() {
             if self
                 .frames
                 .borrow()

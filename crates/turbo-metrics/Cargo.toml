@@ -1,0 +1,23 @@
+[package]
+name = "turbo-metrics"
+version = "0.1.0"
+authors.workspace = true
+homepage.workspace = true
+repository.workspace = true
+edition.workspace = true
+
+[dependencies]
+clap = { workspace = true }
+codec-bitstream = { workspace = true }
+cuda-colorspace = { workspace = true }
+cudarse-driver = { workspace = true }
+cudarse-npp = { workspace = true, features = ["isu", "ist"] }
+cudarse-video = { workspace = true, features = ["npp"] }
+matroska-demuxer = { workspace = true }
+ssimulacra2-cuda = { workspace = true }
+stats = { workspace = true }
+zune-image = { workspace = true }
+
+[features]
+default = []
+static = ["cudarse-driver/static", "cudarse-npp/static", "cudarse-video/static", "ssimulacra2-cuda/static"]

@@ -20,4 +20,29 @@ impl CUVIDEOFORMAT {
     pub fn display_height(&self) -> u32 {
         (self.display_area.bottom - self.display_area.top) as u32
     }
+
+    #[cfg(feature = "npp")]
+    pub fn size(&self) -> cudarse_npp_sys::NppiSize {
+        cudarse_npp_sys::NppiSize {
+            width: self.display_width() as _,
+            height: self.display_height() as _,
+        }
+    }
+
+    #[cfg(feature = "npp")]
+    pub fn rect(&self) -> cudarse_npp_sys::NppiRect {
+        cudarse_npp_sys::NppiRect {
+            x: 0,
+            y: 0,
+            width: self.display_width() as _,
+            height: self.display_height() as _,
+        }
+    }
+}
+
+impl CUVIDEOFORMAT__bindgen_ty_4 {
+    /// true if video use full range color 0-255, false if using limited color range 16-235.
+    pub fn full_range(&self) -> bool {
+        self._bitfield_1.get_bit(4)
+    }
 }

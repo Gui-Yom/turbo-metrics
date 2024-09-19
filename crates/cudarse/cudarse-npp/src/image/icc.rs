@@ -112,6 +112,37 @@ impl<T: Img<u8, P<2>>> NV12toRGB for T {
     }
 }
 
+pub trait NV12ToRGBColorTwist {
+    fn nv12_to_rgb(
+        &self,
+        dst: impl ImgMut<u8, C<3>>,
+        twist: &[[f32; 4]; 3],
+        ctx: NppStreamContext,
+    ) -> Result<()>;
+}
+
+impl<T: Img<u8, P<2>>> NV12ToRGBColorTwist for T {
+    fn nv12_to_rgb(
+        &self,
+        mut dst: impl ImgMut<u8, C<3>>,
+        twist: &[[f32; 4]; 3],
+        ctx: NppStreamContext,
+    ) -> Result<()> {
+        unsafe {
+            nppiNV12ToRGB_8u_ColorTwist32f_P2C3R_Ctx(
+                self.device_ptr(),
+                [self.pitch(), self.pitch()].as_mut_ptr(),
+                dst.device_ptr_mut(),
+                dst.pitch(),
+                self.size(),
+                twist.as_ptr(),
+                ctx,
+            )
+            .result()
+        }
+    }
+}
+
 pub trait YUVtoRGB {
     fn yuv_to_rgb(&self, dst: impl ImgMut<u8, C<3>>, ctx: NppStreamContext) -> Result<()>;
 }

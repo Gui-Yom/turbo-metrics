@@ -4,6 +4,7 @@ use std::mem;
 use std::ptr::null_mut;
 
 pub use cudarse_npp_sys as sys;
+use cudarse_npp_sys::{cudaMemcpyAsync, cudaMemcpyKind};
 use sys::{
     cudaFreeAsync, cudaMallocAsync, cudaStream_t, nppGetGpuName, nppGetGpuNumSMs, nppGetLibVersion,
     nppGetMaxThreadsPerBlock, nppGetMaxThreadsPerSM, nppGetStream, nppGetStreamContext,
@@ -22,6 +23,7 @@ mod __priv {
     impl<T: Sealed> Sealed for &mut T {}
 
     impl Sealed for u8 {}
+    impl Sealed for i8 {}
 
     impl Sealed for u16 {}
 
@@ -74,8 +76,9 @@ pub fn set_stream(stream: cudaStream_t) -> Result<()> {
     unsafe { nppSetStream(stream) }.result()
 }
 
-/// An opaque scratch buffer on device needed by some npp routines
-#[derive(Debug, Clone)]
+/// An opaque scratch buffer on device needed by some npp routines.
+/// Uses stream ordered cuda malloc and free.
+#[derive(Debug)]
 pub struct ScratchBuffer {
     // Device ptr !
     pub ptr: *mut c_void,
@@ -83,10 +86,15 @@ pub struct ScratchBuffer {
 }
 
 impl ScratchBuffer {
-    /// Uses stream ordered cuda malloc and free
-    pub fn alloc(len: usize, stream: cudaStream_t) -> Result<Self> {
+    /// Allocates enough memory to hold at least `len` bytes.
+    pub fn alloc_len(len: usize, stream: cudaStream_t) -> Result<Self> {
         let mut ptr = null_mut();
         unsafe { cudaMallocAsync(&mut ptr, len, stream).result_with(Self { ptr, len }) }
+    }
+
+    /// Allocates enough memory to hold at least `T`.
+    pub fn alloc<T: Sized>(stream: cudaStream_t) -> Result<Self> {
+        Self::alloc_len(size_of::<T>(), stream)
     }
 
     /// Size of the allocation on device
@@ -103,6 +111,36 @@ impl ScratchBuffer {
         // Do not free a second time (with the drop impl)
         mem::forget(self);
         Ok(())
+    }
+
+    /// Asynchronously copy data from the device buffer to a place in host memory.
+    pub fn copy_to_cpu<T: Sized>(&self, out: &mut T, stream: cudaStream_t) -> Result<()> {
+        assert_eq!(size_of::<T>(), self.len);
+        unsafe {
+            cudaMemcpyAsync(
+                out as *mut T as *mut c_void,
+                self.ptr.cast_const(),
+                self.len,
+                cudaMemcpyKind::cudaMemcpyDeviceToHost,
+                stream,
+            )
+            .result()
+        }
+    }
+
+    /// Asynchronously copy data from the device buffer to a buffer in host memory.
+    pub fn copy_to_cpu_buf(&self, out: &mut [u8], stream: cudaStream_t) -> Result<()> {
+        assert_eq!(out.len(), self.len);
+        unsafe {
+            cudaMemcpyAsync(
+                out.as_mut_ptr().cast(),
+                self.ptr.cast_const(),
+                self.len,
+                cudaMemcpyKind::cudaMemcpyDeviceToHost,
+                stream,
+            )
+            .result()
+        }
     }
 }
 

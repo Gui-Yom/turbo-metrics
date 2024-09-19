@@ -1,0 +1,13 @@
+[package]
+name = "cuda-colorspace-kernel"
+version = "0.1.0"
+authors.workspace = true
+homepage.workspace = true
+repository.workspace = true
+edition.workspace = true
+
+[lib]
+crate-type = ["rlib", "cdylib"]
+
+[dependencies]
+nvptx-core = { workspace = true }

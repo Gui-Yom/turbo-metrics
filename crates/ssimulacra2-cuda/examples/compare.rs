@@ -3,21 +3,12 @@ use std::time::Instant;
 use zune_image::codecs::png::zune_core::options::DecoderOptions;
 
 use cpu::CpuImg;
-use cuda_driver::CuDevice;
 use ssimulacra2_cuda::Ssimulacra2;
 
 mod cpu;
 
 fn main() {
-    cuda_driver::init_cuda().expect("Could not initialize the CUDA API");
-    let dev = CuDevice::get(0).unwrap();
-    println!(
-        "Using device {} with CUDA version {}",
-        dev.name().unwrap(),
-        cuda_driver::cuda_driver_version().unwrap()
-    );
-    // Bind to main thread
-    dev.retain_primary_ctx().unwrap().set_current().unwrap();
+    cudarse_driver::init_cuda_and_primary_ctx().expect("Could not initialize CUDA API");
 
     let ref_img = zune_image::image::Image::open_with_options(
         "crates/ssimulacra2-cuda/source.png",
@@ -43,13 +34,13 @@ fn main() {
         "Approximate computed memory usage : {} MB",
         ssimulacra2.mem_usage() / 1024 / 1024
     );
-    let (free, total) = cuda_driver::mem_info().unwrap();
+    let (free, total) = cudarse_driver::mem_info().unwrap();
     println!(
         "Reported memory usage : {} MB",
         (total - free) / 1024 / 1024
     );
     let start = Instant::now();
-    let gpu_score = dbg!(ssimulacra2.compute_from_cpu(ref_bytes, dis_bytes)).unwrap();
+    let gpu_score = dbg!(ssimulacra2.compute_from_cpu_srgb(ref_bytes, dis_bytes)).unwrap();
     let elapsed = start.elapsed().as_nanos();
     println!(
         "GPU: Finished computing a single frame in {:.2} ms ({:.1} fps)",

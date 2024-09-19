@@ -2,7 +2,7 @@
 
 use crate::sys::*;
 
-use crate::{assert_same_size, Result};
+use crate::{debug_assert_same_size, Result};
 
 use super::{Channels, Image, Img, ImgMut, Sample, C};
 
@@ -32,8 +32,8 @@ macro_rules! impl_mul {
     ($sample_ty:ty, $channel_ty:ty, $sample_id:ident, $channel_id:ident) => {
         impl<T: Img<$sample_ty, $channel_ty>> Mul<$sample_ty, $channel_ty> for T {
             fn mul(&self, other: impl Img<$sample_ty, $channel_ty>, mut dst: impl ImgMut<$sample_ty, $channel_ty>, ctx: NppStreamContext) -> Result<()> {
-                assert_same_size!(self, other);
-                assert_same_size!(self, dst);
+                debug_assert_same_size!(self, other);
+                debug_assert_same_size!(self, dst);
                 unsafe {
                     paste::paste!([<nppi Mul $sample_id _ $channel_id R_Ctx>])(
                         self.device_ptr(),

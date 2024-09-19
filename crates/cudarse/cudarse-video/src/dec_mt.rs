@@ -2,14 +2,13 @@ use std::cell::{OnceCell, RefCell};
 use std::ops::{Deref, DerefMut};
 use std::sync::{Condvar, Mutex};
 
+use crate::dec::{
+    query_caps, select_output_format, CuVideoCtxLock, CuVideoDecoder, CuvidParserCallbacks,
+};
 use crate::sys::{CUVIDEOFORMAT, CUVIDPARSERDISPINFO, CUVIDPICPARAMS};
 use cudarse_driver::sys::CuResult;
 use cudarse_driver::CuStream;
 use spsc::{Receiver, Sender};
-
-use crate::dec::{
-    npp, query_caps, select_output_format, CuVideoCtxLock, CuVideoDecoder, CuvidParserCallbacks,
-};
 
 pub type Msg = Option<CUVIDPARSERDISPINFO>;
 
@@ -80,39 +79,12 @@ impl<'a> DecoderHolder<'a> {
         &'map self,
         info: &CUVIDPARSERDISPINFO,
         stream: &CuStream,
-    ) -> CuResult<npp::NvDecNV12<'map>> {
+    ) -> CuResult<crate::dec::npp::NvDecNV12<'map>> {
         if let Some((decoder, format)) = self.decoder.get() {
             let mapping = decoder.map(info, stream)?;
-            Ok(npp::NvDecNV12 {
-                width: format.display_width(),
-                height: format.display_height(),
-                planes: [
-                    mapping.ptr as *mut u8,
-                    (mapping.ptr + mapping.pitch as u64 * format.coded_height as u64) as *mut u8,
-                ],
-                frame: mapping,
-            })
+            Ok(crate::dec::npp::NvDecNV12::from_mapping(mapping, format))
         } else {
             panic!("map_npp_nv12 called when instance was not initialized")
-        }
-    }
-
-    #[cfg(feature = "npp")]
-    pub fn map_npp_yuv444<'map>(
-        &'map self,
-        info: &CUVIDPARSERDISPINFO,
-        stream: &CuStream,
-    ) -> CuResult<npp::NvDecYUV444<'map>> {
-        if let Some((decoder, format)) = self.decoder.get() {
-            let mapping = decoder.map(info, stream)?;
-            Ok(npp::NvDecYUV444 {
-                width: format.display_width(),
-                height: format.display_height(),
-                data: mapping.ptr as *mut u8,
-                frame: mapping,
-            })
-        } else {
-            panic!("map_npp called when instance was not initialized")
         }
     }
 }

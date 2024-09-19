@@ -1,0 +1,17 @@
+[package]
+name = "cuda-colorspace"
+version = "0.1.0"
+authors.workspace = true
+homepage.workspace = true
+repository.workspace = true
+edition.workspace = true
+
+[dependencies]
+cudarse-driver = { workspace = true }
+cudarse-npp = { workspace = true }
+
+[dev-dependencies]
+cudarse-npp = { workspace = true, features = ["isu", "idei"] }
+
+[build-dependencies]
+nvptx-builder = { workspace = true }

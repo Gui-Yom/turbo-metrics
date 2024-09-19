@@ -75,7 +75,7 @@ fn main() {
                     )
                     .unwrap();
 
-                    let score = ss.compute().unwrap();
+                    let score = ss.compute_sync_srgb().unwrap();
                     scores.push(score);
                     counter += 1;
                 } else {

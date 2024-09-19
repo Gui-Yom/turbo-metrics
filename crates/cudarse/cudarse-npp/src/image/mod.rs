@@ -25,6 +25,7 @@ pub mod isu;
 pub trait Sample: __priv::Sealed + Default + Copy + 'static {}
 
 impl Sample for u8 {}
+impl Sample for i8 {}
 
 impl Sample for u16 {}
 
@@ -140,10 +141,10 @@ pub struct Image<S: Sample, C: Channels> {
 impl<S: Sample, C: Channels> Image<S, C> {
     /// This method extract the raw device pointers from the [Image].
     /// The image destructor won't run, it's up to the caller to free the memory.
-    fn into_inner(self) -> C::Storage<S> {
+    pub fn into_inner(self) -> C::Storage<S> {
         let inner = self.data.clone();
         mem::forget(self);
-        return inner;
+        inner
     }
 }
 
@@ -206,9 +207,19 @@ impl<'a, S: Sample, C: Channels> __priv::Sealed for ImgViewMut<'a, S, C> {}
 // }
 
 #[macro_export]
-macro_rules! assert_same_size {
+macro_rules! debug_assert_same_size {
     ($img1:expr, $img2:expr) => {
         debug_assert_eq!(
+            ($img1.width(), $img1.height()),
+            ($img2.width(), $img2.height())
+        )
+    };
+}
+
+#[macro_export]
+macro_rules! assert_same_size {
+    ($img1:expr, $img2:expr) => {
+        assert_eq!(
             ($img1.width(), $img1.height()),
             ($img2.width(), $img2.height())
         )
@@ -282,7 +293,7 @@ impl<S: Sample, C: Channels> Image<S, C> {
 }
 
 pub trait Img<S: Sample, C: Channels> {
-    const SAMPLE_SIZE: usize = mem::size_of::<S>();
+    const SAMPLE_SIZE: usize = size_of::<S>();
     /// Pixel size in bytes
     const PIXEL_SIZE: usize = C::NUM_SAMPLES * Self::SAMPLE_SIZE;
 

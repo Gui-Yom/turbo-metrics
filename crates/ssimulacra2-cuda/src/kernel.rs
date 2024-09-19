@@ -1,5 +1,5 @@
 use cudarse_driver::{kernel_params, CuFunction, CuModule, CuStream, LaunchConfig};
-use cudarse_npp::assert_same_size;
+use cudarse_npp::debug_assert_same_size;
 use cudarse_npp::image::{Img, ImgMut, C, P};
 
 pub struct Kernel {
@@ -39,7 +39,7 @@ impl Kernel {
         src: impl Img<u8, C<3>>,
         mut dst: impl ImgMut<f32, C<3>>,
     ) {
-        assert_same_size!(src, dst);
+        debug_assert_same_size!(src, dst);
         unsafe {
             self.srgb_to_linear
                 .launch(
@@ -164,7 +164,7 @@ impl Kernel {
         src: impl Img<f32, C<3>>,
         mut dst: impl ImgMut<f32, C<3>>,
     ) {
-        assert_same_size!(src, dst);
+        debug_assert_same_size!(src, dst);
         unsafe {
             self.linear_to_xyb
                 .launch(
@@ -189,7 +189,7 @@ impl Kernel {
         src: impl Img<f32, P<3>>,
         mut dst: impl ImgMut<f32, P<3>>,
     ) {
-        assert_same_size!(src, dst);
+        debug_assert_same_size!(src, dst);
         let [src_r, src_g, src_b] = src.storage();
         let [dst_x, dst_y, dst_b] = src.storage();
         unsafe {
@@ -230,11 +230,11 @@ impl Kernel {
         src4: impl Img<f32, C<3>>,
         mut dst4: impl ImgMut<f32, C<3>>,
     ) {
-        assert_same_size!(src0, dst0);
-        assert_same_size!(src1, dst1);
-        assert_same_size!(src2, dst2);
-        assert_same_size!(src3, dst3);
-        assert_same_size!(src4, dst4);
+        debug_assert_same_size!(src0, dst0);
+        debug_assert_same_size!(src1, dst1);
+        debug_assert_same_size!(src2, dst2);
+        debug_assert_same_size!(src3, dst3);
+        debug_assert_same_size!(src4, dst4);
 
         // A warp 32 wide is nice because cache line is 128 bytes (32 * 4).
         // The y coordinate selects the image pair to operate on.
@@ -290,15 +290,15 @@ impl Kernel {
         mut artifact: impl ImgMut<f32, C<3>>,
         mut detail_loss: impl ImgMut<f32, C<3>>,
     ) {
-        assert_same_size!(source, distorted);
-        assert_same_size!(distorted, mu1);
-        assert_same_size!(mu1, mu2);
-        assert_same_size!(mu2, sigma11);
-        assert_same_size!(sigma11, sigma22);
-        assert_same_size!(sigma22, sigma12);
-        assert_same_size!(sigma12, ssim);
-        assert_same_size!(ssim, artifact);
-        assert_same_size!(artifact, detail_loss);
+        debug_assert_same_size!(source, distorted);
+        debug_assert_same_size!(distorted, mu1);
+        debug_assert_same_size!(mu1, mu2);
+        debug_assert_same_size!(mu2, sigma11);
+        debug_assert_same_size!(sigma11, sigma22);
+        debug_assert_same_size!(sigma22, sigma12);
+        debug_assert_same_size!(sigma12, ssim);
+        debug_assert_same_size!(ssim, artifact);
+        debug_assert_same_size!(artifact, detail_loss);
         unsafe {
             self.compute_error_maps
                 .launch(

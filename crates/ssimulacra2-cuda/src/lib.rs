@@ -1,6 +1,6 @@
 use indices::{indices, indices_ordered};
 
-use cudarse_driver::{CuGraphExec, CuStream};
+use cudarse_driver::{CuFunction, CuGraphExec, CuStream};
 use cudarse_npp::image::ial::{Mul, Sqr, SqrIP};
 use cudarse_npp::image::idei::Transpose;
 use cudarse_npp::image::ist::Sum;
@@ -15,6 +15,8 @@ mod kernel;
 
 /// Number of scales to compute
 const SCALES: usize = 6;
+
+type ImgFloat = Image<f32, C<3>>;
 
 /// An instance is valid for a specific width and height.
 ///
@@ -35,11 +37,11 @@ pub struct Ssimulacra2 {
     pub ref_input: Image<u8, C<3>>,
     pub dis_input: Image<u8, C<3>>,
 
-    ref_linear: [Image<f32, C<3>>; SCALES],
-    dis_linear: [Image<f32, C<3>>; SCALES],
+    ref_linear: [ImgFloat; SCALES],
+    dis_linear: [ImgFloat; SCALES],
 
-    img: [[Image<f32, C<3>>; 10]; SCALES],
-    imgt: [[Image<f32, C<3>>; 10]; SCALES],
+    img: [[ImgFloat; 10]; SCALES],
+    imgt: [[ImgFloat; 10]; SCALES],
 
     sum_scratch: [[ScratchBuffer; 6]; SCALES],
 
@@ -63,8 +65,8 @@ impl Ssimulacra2 {
         cudarse_npp::set_stream(npp.hStream)?;
 
         // Input images
-        let ref_input = Image::<u8, C<3>>::malloc(width, height)?;
-        let dis_input = Image::<u8, C<3>>::malloc(width, height)?;
+        let ref_input = Image::malloc(width, height)?;
+        let dis_input = Image::malloc(width, height)?;
 
         let mut sizes = [ref_input.rect(); SCALES];
         for scale in 1..SCALES {
@@ -163,12 +165,6 @@ impl Ssimulacra2 {
         // Bring main_dis into the graph capture scope
         self.main_dis.wait_for_stream(&self.main_ref).unwrap();
 
-        // Convert to linear
-        self.kernel
-            .srgb_to_linear(&self.main_ref, &self.ref_input, &mut self.ref_linear[0]);
-        self.kernel
-            .srgb_to_linear(&self.main_dis, &self.dis_input, &mut self.dis_linear[0]);
-
         // save_img(&self.dev, &self.ref_linear, &format!("ref_linear"));
 
         // linear -> xyb -> ...
@@ -209,8 +205,12 @@ impl Ssimulacra2 {
         Ok(exec)
     }
 
+    pub fn linear_input(&mut self) -> (&mut impl Img<f32, C<3>>, &mut impl Img<f32, C<3>>) {
+        (&mut self.ref_linear[0], &mut self.dis_linear[0])
+    }
+
     /// Compute ssimulacra2 metric using image bytes in CPU memory.
-    pub fn compute_from_cpu(&mut self, ref_bytes: &[u8], dis_bytes: &[u8]) -> Result<f64> {
+    pub fn compute_from_cpu_srgb(&mut self, ref_bytes: &[u8], dis_bytes: &[u8]) -> Result<f64> {
         // profiler_stop().unwrap();
 
         self.ref_input
@@ -218,21 +218,60 @@ impl Ssimulacra2 {
         self.dis_input
             .copy_from_cpu(dis_bytes, self.main_dis.inner() as _)?;
 
-        self.compute()
+        // Convert to linear
+        self.kernel
+            .srgb_to_linear(&self.main_ref, &self.ref_input, &mut self.ref_linear[0]);
+        self.kernel
+            .srgb_to_linear(&self.main_dis, &self.dis_input, &mut self.dis_linear[0]);
+
+        self.compute_sync()
     }
 
     /// Compute ssimulacra2 metric using images already in CUDA memory.
     /// Reference and distorted images must be copied to the [ref_input] and [dis_input] fields.
-    pub fn compute(&mut self) -> Result<f64> {
-        // In the cuda graph, streams are only representative of parallel work.
-        self.main_ref.wait_for_stream(&self.main_dis).unwrap();
-
-        self.exec.as_ref().unwrap().launch(&self.main_ref).unwrap();
+    /// This will block until CUDA is done to post process scores as that last part is done on the CPU.
+    pub fn compute_sync(&mut self) -> Result<f64> {
+        self.compute()?;
 
         // Wait for CUDA to transfer scores back to the CPU before post-processing.
         self.main_ref.sync().unwrap();
 
-        Ok(self.post_process_scores())
+        Ok(self.get_score())
+    }
+
+    /// Compute ssimulacra2 metric using images already in CUDA memory.
+    /// Reference and distorted images must be copied to the [ref_input] and [dis_input] fields.
+    /// This will block until CUDA is done to post process scores as that last part is done on the CPU.
+    pub fn compute_sync_srgb(&mut self) -> Result<f64> {
+        // Convert to linear
+        self.kernel
+            .srgb_to_linear(&self.main_ref, &self.ref_input, &mut self.ref_linear[0]);
+        self.kernel
+            .srgb_to_linear(&self.main_dis, &self.dis_input, &mut self.dis_linear[0]);
+
+        self.compute()?;
+
+        // Wait for CUDA to transfer scores back to the CPU before post-processing.
+        self.main_ref.sync().unwrap();
+
+        Ok(self.get_score())
+    }
+
+    /// Compute ssimulacra2 metric using images already in CUDA memory.
+    /// Reference and distorted images must be copied to the linear input images.
+    /// This one does not block. To retrieve the score, you must sync with the `main_ref` stream and call [Self::get_score] afterward.
+    pub fn compute(&mut self) -> Result<()> {
+        // In the cuda graph, streams are only representative of parallel work.
+        // We need to sync both streams before launching the graph.
+        self.main_ref.wait_for_stream(&self.main_dis).unwrap();
+
+        self.exec.as_ref().unwrap().launch(&self.main_ref).unwrap();
+        Ok(())
+    }
+
+    /// Post process and retrieve the score for the last computation.
+    pub fn get_score(&mut self) -> f64 {
+        self.post_process_scores()
     }
 
     fn process_scale(&mut self, scale: usize) -> Result<()> {

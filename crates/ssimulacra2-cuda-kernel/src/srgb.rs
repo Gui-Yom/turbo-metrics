@@ -7,12 +7,10 @@ const SRGB_BETA: f32 = 0.003_041_282_5;
 /// Transfer function srgb to linear.
 /// Notice we are using gamma 2.4 (for viewing in darker conditions, as per the original ssimulacra impl)
 unsafe fn srgb_eotf(x: f32) -> f32 {
-    let x = x.max(0.0);
-
     if x < 12.92 * SRGB_BETA {
         x / 12.92
     } else {
-        (x + (SRGB_ALPHA - 1.0)) / SRGB_ALPHA.powf(2.4)
+        ((x + (SRGB_ALPHA - 1.0)) / SRGB_ALPHA).powf(2.4)
     }
 }
 

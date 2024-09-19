@@ -8,6 +8,7 @@ repository.workspace = true
 
 [dependencies]
 cudarse-driver-sys = { workspace = true }
+cudarse-npp-sys = { workspace = true, optional = true }
 
 [build-dependencies]
 bindgen.workspace = true
@@ -15,4 +16,5 @@ bindgen.workspace = true
 [features]
 default = ["static"]
 # Static linking against cuda libraries
-static = ["cudarse-driver-sys/static"]
+static = ["cudarse-driver-sys/static", "cudarse-npp-sys?/static"]
+npp = ["dep:cudarse-npp-sys"]

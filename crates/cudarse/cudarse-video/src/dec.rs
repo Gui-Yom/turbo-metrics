@@ -3,21 +3,20 @@ use std::marker::PhantomData;
 use std::mem;
 use std::ptr::{null, null_mut, NonNull};
 
-use cudarse_driver::sys::CuResult;
-use cudarse_driver::{CuCtx, CuStream};
-use sys::{
+use crate::sys::{
     _CUVIDDECODECREATEINFO__bindgen_ty_1, _CUVIDDECODECREATEINFO__bindgen_ty_2,
     cudaVideoChromaFormat, cudaVideoCodec, cudaVideoCreateFlags, cudaVideoDeinterlaceMode,
     cudaVideoSurfaceFormat, cuvidCreateDecoder, cuvidCreateVideoParser, cuvidCtxLock,
     cuvidCtxLockCreate, cuvidCtxLockDestroy, cuvidCtxUnlock, cuvidDecodePicture, cuvidDecodeStatus,
     cuvidDestroyDecoder, cuvidDestroyVideoParser, cuvidGetDecodeStatus, cuvidGetDecoderCaps,
     cuvidMapVideoFrame64, cuvidParseVideoData, cuvidUnmapVideoFrame64,
-    CUVIDEOFORMATEX__bindgen_ty_1, CUvideopacketflags, CUVIDDECODECAPS, CUVIDDECODECREATEINFO,
-    CUVIDEOFORMAT, CUVIDEOFORMATEX, CUVIDOPERATINGPOINTINFO, CUVIDPARSERDISPINFO,
-    CUVIDPARSERPARAMS, CUVIDPICPARAMS, CUVIDPROCPARAMS, CUVIDSEIMESSAGEINFO, CUVIDSOURCEDATAPACKET,
+    CUVIDEOFORMATEX__bindgen_ty_1, CUvideopacketflags, _CUcontextlock_st, CUVIDDECODECAPS,
+    CUVIDDECODECREATEINFO, CUVIDEOFORMAT, CUVIDEOFORMATEX, CUVIDOPERATINGPOINTINFO,
+    CUVIDPARSERDISPINFO, CUVIDPARSERPARAMS, CUVIDPICPARAMS, CUVIDPROCPARAMS, CUVIDSEIMESSAGEINFO,
+    CUVIDSOURCEDATAPACKET,
 };
-
-use crate::sys;
+use cudarse_driver::sys::CuResult;
+use cudarse_driver::{CuCtx, CuStream};
 
 pub trait CuvidParserCallbacks {
     /// Called when a new sequence is being parsed (parameters change)
@@ -185,7 +184,7 @@ impl<'a> Drop for CuVideoParser<'a> {
 }
 
 /// The video context lock is required when decoding with CUDA instead of the video engines.
-pub struct CuVideoCtxLock(pub(crate) NonNull<sys::_CUcontextlock_st>);
+pub struct CuVideoCtxLock(pub(crate) NonNull<_CUcontextlock_st>);
 
 unsafe impl Send for CuVideoCtxLock {}
 unsafe impl Sync for CuVideoCtxLock {}
@@ -231,6 +230,7 @@ pub fn query_caps(
     Ok(caps)
 }
 
+/// Choose a supported surface format based on bit depth and chroma format.
 pub fn select_output_format(
     format: &CUVIDEOFORMAT,
     caps: &CUVIDDECODECAPS,
@@ -436,20 +436,34 @@ impl Drop for FrameMapping<'_> {
 
 #[cfg(feature = "npp")]
 pub mod npp {
+    use crate::dec::FrameMapping;
     pub use cudarse_npp::get_stream_ctx;
     pub use cudarse_npp::image::*;
-
-    use crate::dec::FrameMapping;
+    use cudarse_video_sys::CUVIDEOFORMAT;
 
     #[derive(Debug)]
-    pub struct NvDecNV12<'a> {
-        pub(crate) frame: FrameMapping<'a>,
+    pub struct NvDecNV12<'dec> {
+        pub(crate) frame: FrameMapping<'dec>,
         pub(crate) width: u32,
         pub(crate) height: u32,
         pub(crate) planes: [*mut u8; 2],
     }
 
-    impl<'a> Img<u8, P<2>> for NvDecNV12<'a> {
+    impl<'dec> NvDecNV12<'dec> {
+        pub fn from_mapping(mapping: FrameMapping<'dec>, format: &CUVIDEOFORMAT) -> Self {
+            Self {
+                width: format.display_width(),
+                height: format.display_height(),
+                planes: [
+                    mapping.ptr as *mut u8,
+                    (mapping.ptr + mapping.pitch as u64 * format.coded_height as u64) as *mut u8,
+                ],
+                frame: mapping,
+            }
+        }
+    }
+
+    impl<'dec> Img<u8, P<2>> for NvDecNV12<'dec> {
         fn width(&self) -> u32 {
             self.width
         }
@@ -476,14 +490,28 @@ pub mod npp {
     }
 
     #[derive(Debug)]
-    pub struct NvDecYUV444<'a> {
-        pub(crate) frame: FrameMapping<'a>,
+    pub struct NvDecP010<'dec> {
+        pub(crate) frame: FrameMapping<'dec>,
         pub(crate) width: u32,
         pub(crate) height: u32,
-        pub(crate) data: *mut u8,
+        pub(crate) planes: [*mut u16; 2],
     }
 
-    impl<'a> Img<u8, C<3>> for NvDecYUV444<'a> {
+    impl<'dec> NvDecP010<'dec> {
+        pub fn from_mapping(mapping: FrameMapping<'dec>, format: &CUVIDEOFORMAT) -> Self {
+            Self {
+                width: format.display_width(),
+                height: format.display_height(),
+                planes: [
+                    mapping.ptr as *mut u16,
+                    (mapping.ptr + mapping.pitch as u64 * format.coded_height as u64) as *mut u16,
+                ],
+                frame: mapping,
+            }
+        }
+    }
+
+    impl<'dec> Img<u16, P<2>> for NvDecP010<'dec> {
         fn width(&self) -> u32 {
             self.width
         }
@@ -496,16 +524,30 @@ pub mod npp {
             self.frame.pitch as i32
         }
 
-        fn storage(&self) -> <C<3> as Channels>::Storage<u8> {
-            self.data
+        fn storage(&self) -> <P<2> as Channels>::Storage<u16> {
+            self.planes
         }
 
-        fn device_ptr(&self) -> <C<3> as Channels>::Ref<u8> {
-            C::<3>::make_ref(&self.data)
+        fn device_ptr(&self) -> <P<2> as Channels>::Ref<u16> {
+            P::<2>::make_ref(&self.planes)
         }
 
-        fn alloc_ptrs(&self) -> impl ExactSizeIterator<Item = *const u8> {
-            C::<3>::iter_ptrs(&self.data)
+        fn alloc_ptrs(&self) -> impl ExactSizeIterator<Item = *const u16> {
+            P::<2>::iter_ptrs(&self.planes)
         }
+    }
+
+    #[derive(Debug)]
+    pub enum NvDecFrame<'dec> {
+        /// yuv420 : 8 bits Y plane + 8 bits interleaved UV plane
+        NV12(NvDecNV12<'dec>),
+        /// yuv420 :  16 bits Y plane + 16 bits interleaved UV plane
+        /// https://learn.microsoft.com/en-us/windows/win32/medfound/10-bit-and-16-bit-yuv-video-formats#p016-and-p010
+        /// Values are on 10 bits
+        P010(NvDecP010<'dec>),
+        /// yuv420 :  16 bits Y plane + 16 bits interleaved UV plane
+        /// https://learn.microsoft.com/en-us/windows/win32/medfound/10-bit-and-16-bit-yuv-video-formats#p016-and-p010
+        /// Values are on 12 bits
+        P012,
     }
 }

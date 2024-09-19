@@ -1,6 +1,6 @@
+use cudarse_driver_sys::cuStreamIsCapturing;
 use std::ffi::c_void;
-use std::ptr::null_mut;
-
+use std::ptr::{null_mut, NonNull};
 use sys::{
     cuStreamBeginCapture_v2, cuStreamCreate, cuStreamDestroy_v2, cuStreamEndCapture, cuStreamQuery,
     cuStreamSynchronize, cuStreamWaitEvent, CUstreamCaptureMode_enum, CUstream_flags, CuError,
@@ -73,14 +73,18 @@ impl CuStream {
         }
     }
 
+    pub fn is_capturing(&self) -> CuResult<bool> {
+        let mut status = sys::CUstreamCaptureStatus::CU_STREAM_CAPTURE_STATUS_NONE;
+        unsafe {
+            cuStreamIsCapturing(self.0, &mut status).result()?;
+        }
+        Ok(status == sys::CUstreamCaptureStatus_enum::CU_STREAM_CAPTURE_STATUS_ACTIVE)
+    }
+
     pub fn end_capture(&self) -> CuResult<CuGraph> {
         let mut graph = null_mut();
         unsafe { cuStreamEndCapture(self.0, &mut graph).result()? };
-        if graph.is_null() {
-            panic!("Invalid graph")
-        } else {
-            Ok(CuGraph(graph))
-        }
+        Ok(CuGraph(NonNull::new(graph).expect("Invalid graph")))
     }
 }
 

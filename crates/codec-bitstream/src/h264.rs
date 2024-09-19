@@ -57,7 +57,61 @@ impl NaluType {
     pub fn from_nalu_header(header: u8) -> Self {
         let value = header & 0b00011111;
         assert!(value <= NaluType::EOStream as u8);
-        unsafe { mem::transmute::<u8, NaluType>(value) }
+        unsafe { mem::transmute::<u8, _>(value) }
+    }
+}
+
+/// As defined in "Table E-3 – Colour primaries interpretation using colour_primaries syntax element" of the H.264 specification.
+#[derive(Debug)]
+#[repr(u8)]
+pub enum ColourPrimaries {
+    Reserved = 0,
+    BT709 = 1,
+    Unspecified = 2,
+    Reserved2 = 3,
+    // TODO complete colour primaries
+}
+
+impl ColourPrimaries {
+    pub fn from_byte(byte: u8) -> Self {
+        assert!(byte <= ColourPrimaries::Reserved2 as u8);
+        unsafe { mem::transmute::<u8, _>(byte) }
+    }
+}
+
+/// As defined in "Table E-4 – Transfer characteristics interpretation using transfer_characteristics syntax element" of the H.264 specification.
+#[derive(Debug)]
+#[repr(u8)]
+pub enum TransferCharacteristic {
+    Reserved = 0,
+    BT709 = 1,
+    Unspecified = 2,
+    Reserved2 = 3,
+    // TODO complete transfer characteristic
+}
+
+impl TransferCharacteristic {
+    pub fn from_byte(byte: u8) -> Self {
+        assert!(byte <= TransferCharacteristic::Reserved2 as u8);
+        unsafe { mem::transmute::<u8, _>(byte) }
+    }
+}
+
+/// As defined in "Table E-5 – Matrix coefficients interpretation using matrix_coefficients syntax element" of the H.264 specification.
+#[derive(Debug)]
+#[repr(u8)]
+pub enum MatrixCoefficients {
+    Identity = 0,
+    BT709 = 1,
+    Unspecified = 2,
+    Reserved = 3,
+    // TODO complete matrix coefficients
+}
+
+impl MatrixCoefficients {
+    pub fn from_byte(byte: u8) -> Self {
+        assert!(byte <= MatrixCoefficients::Reserved as u8);
+        unsafe { mem::transmute::<u8, _>(byte) }
     }
 }
 

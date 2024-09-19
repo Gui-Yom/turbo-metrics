@@ -1,6 +1,7 @@
 use crate::{sys, CuFunction};
 use cudarse_driver_sys::cuModuleLoadData;
 use std::ffi::CString;
+use std::mem;
 use std::path::Path;
 use std::ptr::null_mut;
 use sys::{
@@ -39,20 +40,20 @@ impl CuModule {
     }
 
     pub fn functions(&self) -> CuResult<Vec<CuFunction>> {
-        let mut buf = vec![CuFunction(null_mut()); self.function_count()? as usize];
+        let mut buf = vec![null_mut(); self.function_count()? as usize];
         unsafe {
-            cuModuleEnumerateFunctions(buf.as_mut_ptr().cast(), buf.len() as _, self.0).result()?;
+            cuModuleEnumerateFunctions(buf.as_mut_ptr(), buf.len() as _, self.0).result()?;
         }
-        Ok(buf)
+        Ok(unsafe { mem::transmute(buf) })
     }
 
     pub fn function_by_name(&self, name: &str) -> CuResult<CuFunction> {
-        let mut func = CuFunction(null_mut());
+        let mut func = null_mut();
         let name = CString::new(name).unwrap();
         unsafe {
-            cuModuleGetFunction(&mut func.0, self.0, name.as_ptr()).result()?;
+            cuModuleGetFunction(&mut func, self.0, name.as_ptr()).result()?;
         }
-        Ok(func)
+        Ok(CuFunction::from_raw(func))
     }
 }
 

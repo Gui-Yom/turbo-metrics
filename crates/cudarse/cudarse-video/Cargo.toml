@@ -25,4 +25,4 @@ default = ["static"]
 # Static linking against cuda libraries
 static = ["cudarse-driver/static", "cudarse-video-sys/static", "cudarse-npp?/static"]
 # Convert decoded images into NPP images
-npp = ["dep:cudarse-npp"]
+npp = ["dep:cudarse-npp", "cudarse-video-sys/npp"]

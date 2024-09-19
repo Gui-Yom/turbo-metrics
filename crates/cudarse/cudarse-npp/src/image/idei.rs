@@ -3,7 +3,7 @@
 use std::ops::Range;
 
 use crate::sys::*;
-use crate::{assert_same_size, Result};
+use crate::{debug_assert_same_size, Result};
 
 use super::{Channels, Image, Img, ImgMut, Sample, C, P};
 
@@ -23,8 +23,7 @@ macro_rules! impl_set_single {
                         self.size(),
                         ctx,
                     )
-                }.result()?;
-                Ok(())
+                }.result()
             }
         }
     };
@@ -51,8 +50,7 @@ macro_rules! impl_set {
                         self.size(),
                         ctx,
                     )
-                }.result()?;
-                Ok(())
+                }.result()
             }
         }
     };
@@ -65,6 +63,51 @@ impl_set!(u8, C<4>, 4, _8u, C4);
 impl_set!(f32, C<2>, 2, _32f, C2);
 impl_set!(f32, C<3>, 3, _32f, C3);
 impl_set!(f32, C<4>, 4, _32f, C4);
+
+pub trait Copy<S: Sample, C: Channels> {
+    fn copy(&self, dst: impl ImgMut<S, C>, ctx: NppStreamContext) -> Result<()>;
+}
+
+macro_rules! impl_copy {
+    ($sample_ty:ty, $channel_ty:ty, $sample_id:ident, $channel_id:ident) => {
+        impl<T: Img<$sample_ty, $channel_ty>> Copy<$sample_ty, $channel_ty> for T {
+            fn copy(&self, mut dst: impl ImgMut<$sample_ty, $channel_ty>, ctx: NppStreamContext) -> Result<()> {
+                debug_assert_same_size!(self, dst);
+                unsafe {
+                    paste::paste!([<nppi Copy $sample_id _ $channel_id R_Ctx>])(
+                        self.device_ptr(),
+                        self.pitch(),
+                        dst.device_ptr_mut(),
+                        dst.pitch(),
+                        self.size(),
+                        ctx,
+                    )
+                }.result()
+            }
+        }
+    };
+}
+
+impl_copy!(i8, C<1>, _8s, C1);
+impl_copy!(i8, C<2>, _8s, C2);
+impl_copy!(i8, C<3>, _8s, C3);
+impl_copy!(i8, C<4>, _8s, C4);
+
+impl_copy!(u8, C<1>, _8u, C1);
+impl_copy!(u8, C<3>, _8u, C3);
+impl_copy!(u8, C<4>, _8u, C4);
+
+impl_copy!(i16, C<1>, _16s, C1);
+impl_copy!(i16, C<3>, _16s, C3);
+impl_copy!(i16, C<4>, _16s, C4);
+
+impl_copy!(u16, C<1>, _16u, C1);
+impl_copy!(u16, C<3>, _16u, C3);
+impl_copy!(u16, C<4>, _16u, C4);
+
+impl_copy!(f32, C<1>, _32f, C1);
+impl_copy!(f32, C<3>, _32f, C3);
+impl_copy!(f32, C<4>, _32f, C4);
 
 pub trait ConvertChannel<S: Sample, C: Channels> {
     type Target: Channels;
@@ -82,8 +125,7 @@ pub trait ConvertChannel<S: Sample, C: Channels> {
         Image<S, Self::Target>: crate::image::isu::Malloc,
     {
         let mut dst = self.malloc_same_size()?;
-        self.convert_channel(&mut dst, ctx)?;
-        Ok(dst)
+        self.convert_channel(&mut dst, ctx).map(|_| dst)
     }
 }
 
@@ -93,7 +135,7 @@ macro_rules! impl_convert_channel {
             type Target = $tchannel_ty;
 
             fn convert_channel(&self, mut dst: impl ImgMut<$sample_ty, $tchannel_ty>, ctx: NppStreamContext) -> Result<()> {
-                assert_same_size!(self, dst);
+                debug_assert_same_size!(self, dst);
                 unsafe {
                     paste::paste!([<nppi Copy $sample_id _ $channel_id R_Ctx>])(
                         self.device_ptr(),
@@ -103,8 +145,7 @@ macro_rules! impl_convert_channel {
                         self.size(),
                         ctx,
                     )
-                }.result()?;
-                Ok(())
+                }.result()
             }
         }
     };
@@ -140,7 +181,7 @@ macro_rules! impl_convert {
             type Target = $tsample_ty;
 
             fn convert(&self, mut dst: impl ImgMut<Self::Target, $channel_ty>, ctx: NppStreamContext) -> Result<()> {
-                assert_same_size!(self, dst);
+                debug_assert_same_size!(self, dst);
                 unsafe {
                     paste::paste!([<nppi Convert $sample_id _ $channel_id R_Ctx>])(
                         self.device_ptr(),
@@ -192,7 +233,7 @@ macro_rules! impl_scale {
             type Target = $tsample_ty;
 
             fn scale_float(&self, mut dst: impl ImgMut<Self::Target, $channel_ty>, bounds: Range<f32>, ctx: NppStreamContext) -> Result<()> {
-                assert_same_size!(self, dst);
+                debug_assert_same_size!(self, dst);
                 unsafe {
                     paste::paste!([<nppi Scale $sample_id _ $channel_id R_Ctx>])(
                         self.device_ptr(),

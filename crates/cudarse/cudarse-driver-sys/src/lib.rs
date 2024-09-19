@@ -40,7 +40,7 @@ impl Display for CuError {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         let mut err_str: *const c_char = null();
         unsafe {
-            cuGetErrorString(self.0, &mut err_str as _);
+            let _ = cuGetErrorString(self.0, &mut err_str as _);
             if err_str.is_null() {
                 write!(f, "Invalid error code: {:?}", self.0)
             } else {

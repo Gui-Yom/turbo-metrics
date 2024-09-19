@@ -11,11 +11,31 @@ members = [
     "crates/nvptx-core",
     "crates/ssimulacra2-cuda-kernel",
     "crates/ssimulacra2-cuda",
-    "crates/stats",
     "crates/ssimulacra2-cuda-cli",
+    "crates/stats",
+    "crates/turbo-metrics",
     "crates/vmaf",
     "crates/vmaf-cuda",
     "crates/vmaf-cuda-kernel",
+    "crates/cuda-colorspace",
+    "crates/cuda-colorspace-kernel",
+]
+default-members = [
+    "crates/cudarse/cudarse-driver",
+    "crates/cudarse/cudarse-driver-sys",
+    "crates/cudarse/cudarse-npp",
+    "crates/cudarse/cudarse-npp-sys",
+    "crates/cudarse/cudarse-video",
+    "crates/cudarse/cudarse-video-sys",
+    "crates/codec-bitstream",
+    "crates/nvptx-builder",
+    "crates/ssimulacra2-cuda",
+    "crates/ssimulacra2-cuda-cli",
+    "crates/stats",
+    "crates/turbo-metrics",
+    "crates/vmaf",
+    "crates/vmaf-cuda",
+    "crates/cuda-colorspace",
 ]
 resolver = "2"
 
@@ -27,6 +47,7 @@ edition = "2021"
 
 [workspace.dependencies]
 codec-bitstream = { path = "crates/codec-bitstream", default-features = false }
+cuda-colorspace = { path = "crates/cuda-colorspace", default-features = false }
 cudarse-driver = { path = "crates/cudarse/cudarse-driver", default-features = false }
 cudarse-driver-sys = { path = "crates/cudarse/cudarse-driver-sys", default-features = false }
 cudarse-npp = { path = "crates/cudarse/cudarse-npp", default-features = false }
@@ -37,16 +58,16 @@ nvptx-builder = { path = "crates/nvptx-builder", default-features = false }
 nvptx-core = { path = "crates/nvptx-core", default-features = false }
 ssimulacra2-cuda = { path = "crates/ssimulacra2-cuda", default-features = false }
 stats = { path = "crates/stats", default-features = false }
+turbo-metrics = { path = "crates/turbo-metrics", default-features = false }
 
 array-init = "2"
 bindgen = "0.70"
 bitstream-io = "2"
-#cudarc = { version = "0.10", default-features = false, features = ["std", "driver"] }#, "cuda-version-from-build-system", "dynamic-linking"] }
-incr_stats = "1"
+clap = "4"
 indices = "0.3"
 h264-reader = "0.7"
 matroska-demuxer = "0.5"
-nalgebra = "0.33"
+nalgebra = { version = "0.33", default-features = false, features = ["std"] }
 paste = "1"
 rerun = "0.18"
 spsc = { path = "../spsc" }
