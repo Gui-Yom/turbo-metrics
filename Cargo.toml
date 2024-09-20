@@ -64,7 +64,7 @@ turbo-metrics = { path = "crates/turbo-metrics", default-features = false }
 array-init = "2"
 bindgen = "0.70"
 bitstream-io = "2"
-clap = "4"
+clap = { version = "4", default-features = false, features = ["color", "derive", "error-context", "help", "std", "usage", "wrap_help"] }
 indices = "0.3"
 h264-reader = "0.7"
 matroska-demuxer = "0.5"
