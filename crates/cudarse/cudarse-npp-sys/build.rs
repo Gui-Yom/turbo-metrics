@@ -25,7 +25,11 @@ fn main() {
     let link_path = cuda_path.join("lib/x64");
 
     println!("cargo:rustc-link-lib=cuda");
-    link_lib("cudart");
+    link_lib(if cfg!(feature = "static") {
+        "cudart_static"
+    } else {
+        "cudart"
+    });
     println!("cargo:rustc-link-search={}", link_path.display());
     let mut bindgen = bindgen::Builder::default()
         .clang_args(["-I", include_path.to_str().unwrap()])
