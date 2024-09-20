@@ -5,6 +5,7 @@ use std::time::Instant;
 
 use codec_bitstream::h264::{ColourPrimaries, MatrixCoefficients, TransferCharacteristic};
 use codec_bitstream::{av1, h264};
+use cudarse_npp::get_stream_ctx;
 use cudarse_npp::image::isu::Malloc;
 use cudarse_npp::image::{Image, ImgMut, C};
 use cudarse_video::dec::npp::NvDecFrame;
@@ -61,9 +62,12 @@ fn main() {
         main_stream.sync().unwrap();
         alt_stream.sync().unwrap();
         cudarse_npp::set_stream(main_stream.inner() as _).unwrap();
+        let npp = get_stream_ctx().unwrap();
 
         let mut linear_rgb_ref = Image::malloc(size.width as _, size.height as _).unwrap();
         let mut linear_rgb_dis = linear_rgb_ref.malloc_same_size().unwrap();
+        let mut ref_8bit = linear_rgb_ref.malloc_same_size().unwrap();
+        let mut dis_8bit = linear_rgb_ref.malloc_same_size().unwrap();
 
         println!("Initialized, now processing ...");
         let start = Instant::now();
@@ -99,6 +103,13 @@ fn main() {
                         &mut linear_rgb_dis,
                         &alt_stream,
                     );
+
+                    colorspace
+                        .rgb_f32_to_8bit(&linear_rgb_ref, &mut ref_8bit, &main_stream)
+                        .unwrap();
+                    colorspace
+                        .rgb_f32_to_8bit(&linear_rgb_dis, &mut dis_8bit, &alt_stream)
+                        .unwrap();
 
                     main_stream.wait_for_stream(&alt_stream).unwrap();
                     main_stream.sync().unwrap();

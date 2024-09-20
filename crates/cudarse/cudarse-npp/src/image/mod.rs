@@ -1,8 +1,9 @@
+use crate::sys::{
+    cudaFreeAsync, cudaMemcpy2DAsync, cudaMemcpyKind, cudaStream_t, NppiRect, NppiSize, Result,
+};
 use std::fmt::Debug;
 use std::marker::PhantomData;
 use std::mem;
-
-use crate::sys::{cudaMemcpy2DAsync, cudaMemcpyKind, cudaStream_t, NppiRect, NppiSize};
 
 use crate::__priv;
 
@@ -126,7 +127,13 @@ impl_channels_planar!(2);
 impl_channels_planar!(3);
 impl_channels_planar!(4);
 
-/// Owned image
+/// Owned NPP image.
+///
+/// # Safety
+/// Beware ! The image allocation and free uses stream ordered CUDA API calls.
+/// The default [Drop] impl will schedule the drop on the globally set NPP stream (with [crate::set_stream]).
+/// You need to ensure this global stream is not destroyed before dropping the images.
+/// Alternatively, you can manually drop the images with [Image::drop], explicitly specifying a stream.
 #[derive(Debug)]
 pub struct Image<S: Sample, C: Channels> {
     width: u32,
@@ -289,6 +296,25 @@ impl<S: Sample, C: Channels> Image<S, C> {
     /// Estimate in bytes the approximate memory usage of this image allocation on device.
     pub fn device_mem_usage(&self) -> usize {
         self.pitch as usize * self.height as usize
+    }
+
+    fn inner_drop(&self, stream: cudaStream_t) -> Result<()> {
+        unsafe {
+            for ptr in C::iter_ptrs(&self.data) {
+                // println!("Dropping plane {:p}", ptr);
+                cudaFreeAsync(ptr.cast_mut().cast(), stream).result()?;
+                // nppiFree(ptr as _);
+            }
+        }
+        Ok(())
+    }
+
+    /// Explicitly drop this image on the specified stream.
+    pub fn drop(self, stream: cudaStream_t) -> Result<()> {
+        self.inner_drop(stream)?;
+        // Do not run the Drop impl
+        mem::forget(self);
+        Ok(())
     }
 }
 

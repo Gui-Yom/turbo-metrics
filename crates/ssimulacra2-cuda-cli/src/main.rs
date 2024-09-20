@@ -5,7 +5,8 @@ use std::time::Instant;
 use codec_bitstream::{av1, h264};
 use cudarse_driver::{CuDevice, CuStream};
 use cudarse_video::dec::npp::icc::NV12toRGB;
-use cudarse_video::dec::npp::{get_stream_ctx, Img, C};
+use cudarse_video::dec::npp::isu::Malloc;
+use cudarse_video::dec::npp::{get_stream_ctx, set_stream, Image, Img, C};
 use cudarse_video::dec::{CuVideoParser, CuvidParserCallbacks};
 use cudarse_video::dec_simple::NvDecoderSimple;
 use cudarse_video::sys::{cudaVideoCodec, cudaVideoCodec_enum};
@@ -25,6 +26,9 @@ fn main() {
     // Bind to main thread
     let ctx = dev.retain_primary_ctx().unwrap();
     ctx.set_current().unwrap();
+    let stream = CuStream::new().unwrap();
+    let alt_stream = CuStream::new().unwrap();
+    set_stream(stream.inner() as _).unwrap();
 
     let mut scores = Vec::with_capacity(4096);
 
@@ -44,7 +48,13 @@ fn main() {
             demuxer_ref.demux();
         }
         let format = cb_ref.format().unwrap();
-        let mut ss = Ssimulacra2::new(format.display_width(), format.display_height()).unwrap();
+
+        let mut ref_src = Image::malloc(format.display_width(), format.display_height()).unwrap();
+        let mut dis_src = ref_src.malloc_same_size().unwrap();
+        let mut ref_linear = ref_src.malloc_same_size().unwrap();
+        let mut dis_linear = ref_src.malloc_same_size().unwrap();
+
+        let mut ss = Ssimulacra2::new(&ref_linear, &dis_linear, &stream).unwrap();
         println!("Initialized, now processing ...");
         let start = Instant::now();
 
@@ -57,25 +67,33 @@ fn main() {
             }
             for (fref, fdis) in cb_ref.frames_sync(&cb_dis) {
                 if let (Some(fref), Some(fdis)) = (fref, fdis) {
-                    let src = cb_ref.map_npp_nv12(&fref, &ss.main_ref).unwrap();
+                    let src = cb_ref.map_npp_nv12(&fref, &stream).unwrap();
                     src.nv12_to_rgb_bt709_limited(
-                        &mut ss.ref_input,
-                        get_stream_ctx()
-                            .unwrap()
-                            .with_stream(ss.main_ref.inner() as _),
+                        &mut ref_src,
+                        get_stream_ctx().unwrap().with_stream(stream.inner() as _),
                     )
                     .unwrap();
 
-                    let src = cb_dis.map_npp_nv12(&fdis, &ss.main_dis).unwrap();
+                    let src = cb_dis.map_npp_nv12(&fdis, &alt_stream).unwrap();
                     src.nv12_to_rgb_bt709_limited(
-                        &mut ss.dis_input,
+                        &mut dis_src,
                         get_stream_ctx()
                             .unwrap()
-                            .with_stream(ss.main_dis.inner() as _),
+                            .with_stream(alt_stream.inner() as _),
                     )
                     .unwrap();
 
-                    let score = ss.compute_sync_srgb().unwrap();
+                    stream.wait_for_stream(&alt_stream).unwrap();
+
+                    let score = ss
+                        .compute_srgb_sync(
+                            &ref_src,
+                            &dis_src,
+                            &mut ref_linear,
+                            &mut dis_linear,
+                            &stream,
+                        )
+                        .unwrap();
                     scores.push(score);
                     counter += 1;
                 } else {

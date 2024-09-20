@@ -437,8 +437,10 @@ impl Drop for FrameMapping<'_> {
 #[cfg(feature = "npp")]
 pub mod npp {
     use crate::dec::FrameMapping;
+    pub use cudarse_npp::get_stream;
     pub use cudarse_npp::get_stream_ctx;
     pub use cudarse_npp::image::*;
+    pub use cudarse_npp::set_stream;
     use cudarse_video_sys::CUVIDEOFORMAT;
 
     #[derive(Debug)]

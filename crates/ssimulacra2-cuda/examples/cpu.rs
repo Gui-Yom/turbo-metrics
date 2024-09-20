@@ -383,7 +383,7 @@ pub fn compute_frame_ssimulacra2(source: &CpuImg, distorted: &CpuImg) -> f64 {
 
         image_multiply(&img1, &img1, &mut mul);
         let sigma1_sq = blur.blur(&mul);
-        CpuImg::from_planes(&sigma1_sq, width, height).save(&format!("sigma11_{scale}"));
+        // CpuImg::from_planes(&sigma1_sq, width, height).save(&format!("sigma11_{scale}"));
 
         image_multiply(&img2, &img2, &mut mul);
         let sigma2_sq = blur.blur(&mul);

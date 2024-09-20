@@ -3,6 +3,10 @@ use std::time::Instant;
 use zune_image::codecs::png::zune_core::options::DecoderOptions;
 
 use cpu::CpuImg;
+use cudarse_driver::CuStream;
+use cudarse_npp::image::isu::Malloc;
+use cudarse_npp::image::{Image, Img};
+use cudarse_npp::set_stream;
 use ssimulacra2_cuda::Ssimulacra2;
 
 mod cpu;
@@ -22,14 +26,21 @@ fn main() {
     .unwrap();
 
     // Upload to gpu
+    assert_eq!(ref_img.dimensions(), dis_img.dimensions());
     let (width, height) = ref_img.dimensions();
-    let ref_bytes = &ref_img.flatten_to_u8()[0];
 
-    let (dwidth, dheight) = dis_img.dimensions();
-    assert_eq!((width, height), (dwidth, dheight));
+    let ref_bytes = &ref_img.flatten_to_u8()[0];
     let dis_bytes = &dis_img.flatten_to_u8()[0];
 
-    let mut ssimulacra2 = Ssimulacra2::new(width as u32, height as u32).unwrap();
+    let stream = CuStream::new().unwrap();
+    set_stream(stream.inner() as _).unwrap();
+
+    let mut tmp_ref = Image::malloc(width as _, height as _).unwrap();
+    let mut tmp_dis = tmp_ref.malloc_same_size().unwrap();
+    let mut ref_linear = tmp_ref.malloc_same_size().unwrap();
+    let mut dis_linear = tmp_ref.malloc_same_size().unwrap();
+
+    let mut ssimulacra2 = Ssimulacra2::new(&ref_linear, &dis_linear, &stream).unwrap();
     println!(
         "Approximate computed memory usage : {} MB",
         ssimulacra2.mem_usage() / 1024 / 1024
@@ -40,7 +51,16 @@ fn main() {
         (total - free) / 1024 / 1024
     );
     let start = Instant::now();
-    let gpu_score = dbg!(ssimulacra2.compute_from_cpu_srgb(ref_bytes, dis_bytes)).unwrap();
+    let gpu_score = dbg!(ssimulacra2.compute_from_cpu_srgb_sync(
+        ref_bytes,
+        dis_bytes,
+        &mut tmp_ref,
+        &mut tmp_dis,
+        &mut ref_linear,
+        &mut dis_linear,
+        &stream
+    ))
+    .unwrap();
     let elapsed = start.elapsed().as_nanos();
     println!(
         "GPU: Finished computing a single frame in {:.2} ms ({:.1} fps)",

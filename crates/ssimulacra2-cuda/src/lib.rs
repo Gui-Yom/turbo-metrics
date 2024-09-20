@@ -1,13 +1,13 @@
 use indices::{indices, indices_ordered};
 
-use cudarse_driver::{CuFunction, CuGraphExec, CuStream};
+use cudarse_driver::{CuGraphExec, CuStream};
 use cudarse_npp::image::ial::{Mul, Sqr, SqrIP};
 use cudarse_npp::image::idei::Transpose;
 use cudarse_npp::image::ist::Sum;
 use cudarse_npp::image::isu::Malloc;
 use cudarse_npp::image::{Image, Img, ImgMut, C};
 use cudarse_npp::sys::{NppStreamContext, NppiRect, Result};
-use cudarse_npp::{get_stream_ctx, ScratchBuffer};
+use cudarse_npp::{assert_same_size, get_stream_ctx, ScratchBuffer};
 
 use crate::kernel::Kernel;
 
@@ -15,8 +15,6 @@ mod kernel;
 
 /// Number of scales to compute
 const SCALES: usize = 6;
-
-type ImgFloat = Image<f32, C<3>>;
 
 /// An instance is valid for a specific width and height.
 ///
@@ -34,41 +32,34 @@ pub struct Ssimulacra2 {
     sizes: [NppiRect; SCALES],
     sizes_t: [NppiRect; SCALES],
 
-    pub ref_input: Image<u8, C<3>>,
-    pub dis_input: Image<u8, C<3>>,
+    ref_linear: [Image<f32, C<3>>; SCALES - 1],
+    dis_linear: [Image<f32, C<3>>; SCALES - 1],
 
-    ref_linear: [ImgFloat; SCALES],
-    dis_linear: [ImgFloat; SCALES],
-
-    img: [[ImgFloat; 10]; SCALES],
-    imgt: [[ImgFloat; 10]; SCALES],
+    img: [[Image<f32, C<3>>; 10]; SCALES],
+    imgt: [[Image<f32, C<3>>; 10]; SCALES],
 
     sum_scratch: [[ScratchBuffer; 6]; SCALES],
 
-    pub main_ref: CuStream,
-    pub main_dis: CuStream,
     streams: [[CuStream; 6]; SCALES],
     scores: Box<[f64; 3 * 6 * SCALES]>,
 }
 
 impl Ssimulacra2 {
-    pub fn new(width: u32, height: u32) -> Result<Self> {
-        // Do not use the default stream
-        let main_ref = CuStream::new().unwrap();
-        let main_dis = CuStream::new().unwrap();
+    pub fn new(
+        src_ref_linear: impl Img<f32, C<3>>,
+        src_dis_linear: impl Img<f32, C<3>>,
+        stream: &CuStream,
+    ) -> Result<Self> {
+        assert_same_size!(src_ref_linear, src_dis_linear);
+        let rect = src_ref_linear.rect();
+
         let streams =
             array_init::try_array_init(|_| array_init::try_array_init(|_| CuStream::new()))
                 .unwrap();
         let mut npp = get_stream_ctx()?;
-        npp.hStream = main_ref.inner() as _;
-        // Set in the global context too
-        cudarse_npp::set_stream(npp.hStream)?;
+        npp.hStream = stream.inner() as _;
 
-        // Input images
-        let ref_input = Image::malloc(width, height)?;
-        let dis_input = Image::malloc(width, height)?;
-
-        let mut sizes = [ref_input.rect(); SCALES];
+        let mut sizes = [rect; SCALES];
         for scale in 1..SCALES {
             sizes[scale].width = (sizes[scale - 1].width + 1) / 2;
             sizes[scale].height = (sizes[scale - 1].height + 1) / 2;
@@ -88,15 +79,12 @@ impl Ssimulacra2 {
             })
         })?;
 
-        let ref_linear = array_init::try_array_init(|i| img[i][0].malloc_same_size())?;
-        let dis_linear = array_init::try_array_init(|i| img[i][0].malloc_same_size())?;
+        let ref_linear = array_init::try_array_init(|i| img[i + 1][0].malloc_same_size())?;
+        let dis_linear = array_init::try_array_init(|i| img[i + 1][0].malloc_same_size())?;
 
         let sum_scratch = array_init::try_array_init(|i| {
             array_init::try_array_init(|_| imgt[i][0].sum_alloc_scratch(npp))
         })?;
-
-        // Wait for allocations to complete
-        main_ref.sync().unwrap();
 
         let mut s = Self {
             kernel: Kernel::load(),
@@ -104,33 +92,26 @@ impl Ssimulacra2 {
             exec: None,
             sizes,
             sizes_t,
-            ref_input,
-            dis_input,
             ref_linear,
             dis_linear,
             img,
             imgt,
             sum_scratch,
-            main_ref,
-            main_dis,
             streams,
             scores: Box::new([0.0; 3 * 6 * SCALES]),
         };
 
-        s.exec = Some(s.record().unwrap());
+        s.exec = Some(s.record(src_ref_linear, src_dis_linear, stream)?);
 
         Ok(s)
     }
 
     /// Estimate the minimum memory usage
     pub fn mem_usage(&self) -> usize {
-        self.ref_input.device_mem_usage()
-            + self.dis_input.device_mem_usage()
-            + self
-                .ref_linear
-                .iter()
-                .map(|i| i.device_mem_usage())
-                .sum::<usize>()
+        self.ref_linear
+            .iter()
+            .map(|i| i.device_mem_usage())
+            .sum::<usize>()
             + self
                 .dis_linear
                 .iter()
@@ -156,14 +137,20 @@ impl Ssimulacra2 {
                 .sum::<usize>()
     }
 
-    fn record(&mut self) -> Result<CuGraphExec> {
+    fn record(
+        &mut self,
+        src_ref_linear: impl Img<f32, C<3>>,
+        src_dis_linear: impl Img<f32, C<3>>,
+        stream: &CuStream,
+    ) -> Result<CuGraphExec> {
         // TODO we should work with planar images, as it would allow us to coalesce read and writes
         //  coalescing can already be achieved for kernels which doesn't require access to neighbouring pixels or samples
 
-        self.main_ref.begin_capture().unwrap();
+        let alt_stream = CuStream::new().unwrap();
+        stream.begin_capture().unwrap();
 
         // Bring main_dis into the graph capture scope
-        self.main_dis.wait_for_stream(&self.main_ref).unwrap();
+        alt_stream.wait_for_stream(stream).unwrap();
 
         // save_img(&self.dev, &self.ref_linear, &format!("ref_linear"));
 
@@ -172,16 +159,54 @@ impl Ssimulacra2 {
         //         |-> /2 -> xyb -> ...
 
         for scale in 0..SCALES {
-            if scale > 0 {
+            if scale == 1 {
+                self.kernel.downscale_by_2(
+                    stream,
+                    &src_ref_linear,
+                    &mut self.ref_linear[scale - 1],
+                );
+                self.kernel.downscale_by_2(
+                    &alt_stream,
+                    &src_dis_linear,
+                    &mut self.dis_linear[scale - 1],
+                );
+            } else if scale > 1 {
                 // TODO this can be done with warp level primitives by having warps sized 16x2
                 //  block size 16x16 would be perfect
                 //  warps would contain 8 2x2 patches which can be summed using shfl_down_sync and friends
                 //  This would require a planar format ...
 
-                let (prev, curr) = indices!(&mut self.ref_linear, scale - 1, scale);
-                self.kernel.downscale_by_2(&self.main_ref, prev, curr);
-                let (prev, curr) = indices!(&mut self.dis_linear, scale - 1, scale);
-                self.kernel.downscale_by_2(&self.main_dis, prev, curr);
+                let (prev, curr) = indices!(&mut self.ref_linear, scale - 2, scale - 1);
+                self.kernel.downscale_by_2(stream, prev, curr);
+                let (prev, curr) = indices!(&mut self.dis_linear, scale - 2, scale - 1);
+                self.kernel.downscale_by_2(&alt_stream, prev, curr);
+            }
+
+            self.streams[scale][0].wait_for_stream(stream).unwrap();
+            self.streams[scale][1].wait_for_stream(&alt_stream).unwrap();
+
+            if scale == 0 {
+                self.kernel.linear_to_xyb(
+                    &self.streams[scale][0],
+                    &src_ref_linear,
+                    &mut self.img[scale][8],
+                );
+                self.kernel.linear_to_xyb(
+                    &self.streams[scale][1],
+                    &src_dis_linear,
+                    &mut self.img[scale][9],
+                );
+            } else {
+                self.kernel.linear_to_xyb(
+                    &self.streams[scale][0],
+                    &self.ref_linear[scale - 1],
+                    &mut self.img[scale][8],
+                );
+                self.kernel.linear_to_xyb(
+                    &self.streams[scale][1],
+                    &self.dis_linear[scale - 1],
+                    &mut self.img[scale][9],
+                );
             }
 
             self.process_scale(scale)?;
@@ -189,70 +214,65 @@ impl Ssimulacra2 {
             // profiler_stop().unwrap();
         }
 
-        self.main_ref.wait_for_stream(&self.main_dis).unwrap();
+        stream.wait_for_stream(&alt_stream).unwrap();
         for scale in 0..SCALES {
-            for i in 0..6 {
-                self.main_ref
-                    .wait_for_stream(&self.streams[scale][i])
-                    .unwrap();
+            for i in 0..self.streams[scale].len() {
+                stream.wait_for_stream(&self.streams[scale][i]).unwrap();
             }
         }
 
-        let graph = self.main_ref.end_capture().unwrap();
+        let graph = stream.end_capture().unwrap();
+        // graph.dot("ssimulacra2-cuda-graph.gviz").unwrap();
         let exec = graph.instantiate().unwrap();
-        // FIXME not sure this sync is necessary
-        self.main_ref.sync().unwrap();
+        // self.main_ref.sync().unwrap();
         Ok(exec)
     }
 
-    pub fn linear_input(&mut self) -> (&mut impl Img<f32, C<3>>, &mut impl Img<f32, C<3>>) {
-        (&mut self.ref_linear[0], &mut self.dis_linear[0])
-    }
-
-    /// Compute ssimulacra2 metric using image bytes in CPU memory.
-    pub fn compute_from_cpu_srgb(&mut self, ref_bytes: &[u8], dis_bytes: &[u8]) -> Result<f64> {
+    /// Compute ssimulacra2 metric using image bytes in CPU memory. Useful for processing a single pair of images.
+    pub fn compute_from_cpu_srgb_sync(
+        &mut self,
+        ref_bytes: &[u8],
+        dis_bytes: &[u8],
+        mut tmp_ref: impl ImgMut<u8, C<3>>,
+        mut tmp_dis: impl ImgMut<u8, C<3>>,
+        src_ref_linear: impl ImgMut<f32, C<3>>,
+        src_dis_linear: impl ImgMut<f32, C<3>>,
+        stream: &CuStream,
+    ) -> Result<f64> {
         // profiler_stop().unwrap();
 
-        self.ref_input
-            .copy_from_cpu(ref_bytes, self.main_ref.inner() as _)?;
-        self.dis_input
-            .copy_from_cpu(dis_bytes, self.main_dis.inner() as _)?;
+        tmp_ref.copy_from_cpu(ref_bytes, stream.inner() as _)?;
+        tmp_dis.copy_from_cpu(dis_bytes, stream.inner() as _)?;
 
-        // Convert to linear
-        self.kernel
-            .srgb_to_linear(&self.main_ref, &self.ref_input, &mut self.ref_linear[0]);
-        self.kernel
-            .srgb_to_linear(&self.main_dis, &self.dis_input, &mut self.dis_linear[0]);
-
-        self.compute_sync()
+        self.compute_srgb_sync(tmp_ref, tmp_dis, src_ref_linear, src_dis_linear, stream)
     }
 
     /// Compute ssimulacra2 metric using images already in CUDA memory.
     /// Reference and distorted images must be copied to the [ref_input] and [dis_input] fields.
     /// This will block until CUDA is done to post process scores as that last part is done on the CPU.
-    pub fn compute_sync(&mut self) -> Result<f64> {
-        self.compute()?;
+    pub fn compute_srgb_sync(
+        &mut self,
+        src_ref: impl Img<u8, C<3>>,
+        src_dis: impl Img<u8, C<3>>,
+        src_ref_linear: impl ImgMut<f32, C<3>>,
+        src_dis_linear: impl ImgMut<f32, C<3>>,
+        stream: &CuStream,
+    ) -> Result<f64> {
+        // Convert to linear
+        self.kernel.srgb_to_linear(stream, src_ref, src_ref_linear);
+        self.kernel.srgb_to_linear(stream, src_dis, src_dis_linear);
 
-        // Wait for CUDA to transfer scores back to the CPU before post-processing.
-        self.main_ref.sync().unwrap();
-
-        Ok(self.get_score())
+        self.compute_sync(stream)
     }
 
     /// Compute ssimulacra2 metric using images already in CUDA memory.
     /// Reference and distorted images must be copied to the [ref_input] and [dis_input] fields.
     /// This will block until CUDA is done to post process scores as that last part is done on the CPU.
-    pub fn compute_sync_srgb(&mut self) -> Result<f64> {
-        // Convert to linear
-        self.kernel
-            .srgb_to_linear(&self.main_ref, &self.ref_input, &mut self.ref_linear[0]);
-        self.kernel
-            .srgb_to_linear(&self.main_dis, &self.dis_input, &mut self.dis_linear[0]);
-
-        self.compute()?;
+    pub fn compute_sync(&mut self, stream: &CuStream) -> Result<f64> {
+        self.compute(stream)?;
 
         // Wait for CUDA to transfer scores back to the CPU before post-processing.
-        self.main_ref.sync().unwrap();
+        stream.sync().unwrap();
 
         Ok(self.get_score())
     }
@@ -260,12 +280,8 @@ impl Ssimulacra2 {
     /// Compute ssimulacra2 metric using images already in CUDA memory.
     /// Reference and distorted images must be copied to the linear input images.
     /// This one does not block. To retrieve the score, you must sync with the `main_ref` stream and call [Self::get_score] afterward.
-    pub fn compute(&mut self) -> Result<()> {
-        // In the cuda graph, streams are only representative of parallel work.
-        // We need to sync both streams before launching the graph.
-        self.main_ref.wait_for_stream(&self.main_dis).unwrap();
-
-        self.exec.as_ref().unwrap().launch(&self.main_ref).unwrap();
+    pub fn compute(&mut self, stream: &CuStream) -> Result<()> {
+        self.exec.as_ref().unwrap().launch(stream).unwrap();
         Ok(())
     }
 
@@ -276,15 +292,6 @@ impl Ssimulacra2 {
 
     fn process_scale(&mut self, scale: usize) -> Result<()> {
         let streams: [&CuStream; 6] = self.streams[scale].each_ref().try_into().unwrap();
-
-        streams[0].wait_for_stream(&self.main_ref).unwrap();
-        streams[1].wait_for_stream(&self.main_dis).unwrap();
-
-        self.kernel
-            .linear_to_xyb(streams[0], &self.ref_linear[scale], &mut self.img[scale][8]);
-        self.kernel
-            .linear_to_xyb(streams[1], &self.dis_linear[scale], &mut self.img[scale][9]);
-        // save_img(&self.dev, self.ref_xyb.view(size), &format!("ref_xyb_{scale}"));
 
         streams[2].wait_for_stream(streams[0]).unwrap();
         streams[2].wait_for_stream(streams[1]).unwrap();

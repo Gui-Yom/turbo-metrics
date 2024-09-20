@@ -94,13 +94,7 @@ malloc_planar_impl!(f32, 4);
 
 impl<S: Sample, C: Channels> Drop for Image<S, C> {
     fn drop(&mut self) {
-        unsafe {
-            for ptr in C::iter_ptrs_mut(&mut self.data) {
-                // println!("Dropping plane {:p}", ptr);
-                cudaFreeAsync(ptr.cast(), get_stream()).result().unwrap();
-                // nppiFree(self.device_ptr() as _);
-            }
-        }
+        self.inner_drop(get_stream()).unwrap();
     }
 }
 
