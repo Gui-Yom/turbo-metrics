@@ -8,6 +8,7 @@ use nvptx_core::prelude::*;
 
 mod biplanar;
 mod const_algebra;
+mod constants;
 mod sample_conv;
 
 trait Sample {
@@ -159,6 +160,7 @@ impl ColorRange for Special {
 }
 
 trait TransferCharacteristics {
+    /// Inverse of the OETF, to go back to linear
     fn eotf(value: f32) -> f32;
 }
 
@@ -169,12 +171,41 @@ impl TransferCharacteristics for Passtrough {
     }
 }
 
-trait ColorPrimaries {
+trait MatrixCoefficients {
     const CONSTANTS: Vec2;
+
     fn coefficients<LumaCR: ColorRange, ChromaCR: ColorRange, const N: usize>(
     ) -> (f32, f32, f32, f32, f32)
     where
-        Bitdepth<N>: Sample;
+        Bitdepth<N>: Sample,
+    {
+        //let rgb_max = <Bitdepth<N> as Sample>::MAX_VALUE as f32;
+        let Vec2 { x: kr, y: kb } = Self::CONSTANTS;
+        let y_coeff = 1.0 / LumaCR::luma_range() as f32;
+        let r_coeff = 2.0 * (1.0 - kr) * 1.0 / ChromaCR::chroma_range() as f32;
+        let b_coeff = 2.0 * (1.0 - kb) * 1.0 / ChromaCR::chroma_range() as f32;
+        let kg = 1.0 - kr - kb;
+        let g_coeff1 = -2.0 * (1.0 - kb) * kb / kg * 1.0 / ChromaCR::chroma_range() as f32;
+        let g_coeff2 = -2.0 * (1.0 - kr) * kr / kg * 1.0 / ChromaCR::chroma_range() as f32;
+        (y_coeff, r_coeff, b_coeff, g_coeff1, g_coeff2)
+    }
+}
+
+const fn constants_from_primaries(r: Vec2, g: Vec2, b: Vec2, w: Vec2) -> Vec2 {
+    let r_xyz = r.xy_to_xyz();
+    let g_xyz = g.xy_to_xyz();
+    let b_xyz = b.xy_to_xyz();
+    let w_xyz = w.xy_to_xyz();
+
+    let x_rgb = Vec3::new(r_xyz.x, g_xyz.x, b_xyz.x);
+    let y_rgb = Vec3::new(r_xyz.y, g_xyz.y, b_xyz.y);
+    let z_rgb = Vec3::new(r_xyz.z, g_xyz.z, b_xyz.z);
+
+    let mul = 1.0 / x_rgb.dot(y_rgb.cross(z_rgb));
+    Vec2::new(
+        w_xyz.dot(g_xyz.cross(b_xyz)) * mul,
+        w_xyz.dot(r_xyz.cross(g_xyz)) * mul,
+    )
 }
 
 struct BT709;
@@ -194,49 +225,57 @@ impl TransferCharacteristics for BT709 {
         // value.max(0.0).min(1.0)
     }
 }
-impl ColorPrimaries for BT709 {
-    const CONSTANTS: Vec2 = constants_from_primaries(BT709_R, BT709_G, BT709_B, BT709_W);
-
-    fn coefficients<LumaCR: ColorRange, ChromaCR: ColorRange, const N: usize>(
-    ) -> (f32, f32, f32, f32, f32)
-    where
-        Bitdepth<N>: Sample,
-    {
-        //let rgb_max = <Bitdepth<N> as Sample>::MAX_VALUE as f32;
-        let Vec2 { x: kr, y: kb } = Self::CONSTANTS;
-        let y_coeff = 1.0 / LumaCR::luma_range() as f32;
-        let r_coeff = 2.0 * (1.0 - kr) * 1.0 / ChromaCR::chroma_range() as f32;
-        let b_coeff = 2.0 * (1.0 - kb) * 1.0 / ChromaCR::chroma_range() as f32;
-        let kg = 1.0 - kr - kb;
-        let g_coeff1 = -2.0 * (1.0 - kb) * kb / kg * 1.0 / ChromaCR::chroma_range() as f32;
-        let g_coeff2 = -2.0 * (1.0 - kr) * kr / kg * 1.0 / ChromaCR::chroma_range() as f32;
-        (y_coeff, r_coeff, b_coeff, g_coeff1, g_coeff2)
-    }
+impl MatrixCoefficients for BT709 {
+    const CONSTANTS: Vec2 = constants_from_primaries(
+        constants::BT709_R,
+        constants::BT709_G,
+        constants::BT709_B,
+        constants::BT709_W,
+    );
 }
 
-const D65: Vec2 = Vec2::new(0.3127, 0.3290);
+struct BT601_525;
+impl TransferCharacteristics for BT601_525 {
+    fn eotf(value: f32) -> f32 {
+        const BETA: f32 = 0.018053968510807;
+        const ALPHA: f32 = 1.0 + 5.5 * BETA;
+        /// threshold = bt709_oetf(BETA)
+        const THRESHOLD: f32 = 0.08124285829863521110029445797874;
+        if value >= THRESHOLD {
+            ((value + (ALPHA - 1.0)) / ALPHA).powf_fast(1.0 / 0.45)
+        } else {
+            value / 4.5
+        }
+    }
+}
+impl MatrixCoefficients for BT601_525 {
+    const CONSTANTS: Vec2 = constants_from_primaries(
+        constants::BT601_525_R,
+        constants::BT601_525_G,
+        constants::BT601_525_B,
+        constants::BT601_525_W,
+    );
+}
 
-const BT709_R: Vec2 = Vec2::new(0.640, 0.330);
-const BT709_G: Vec2 = Vec2::new(0.300, 0.600);
-const BT709_B: Vec2 = Vec2::new(0.150, 0.060);
-const BT709_W: Vec2 = D65;
-// const BT709_KR: f32 = 0.2126;
-// const BT709_KG: f32 = 0.7152;
-// const BT709_KB: f32 = 0.0722;
-
-const fn constants_from_primaries(r: Vec2, g: Vec2, b: Vec2, w: Vec2) -> Vec2 {
-    let r_xyz = r.xy_to_xyz();
-    let g_xyz = g.xy_to_xyz();
-    let b_xyz = b.xy_to_xyz();
-    let w_xyz = w.xy_to_xyz();
-
-    let x_rgb = Vec3::new(r_xyz.x, g_xyz.x, b_xyz.x);
-    let y_rgb = Vec3::new(r_xyz.y, g_xyz.y, b_xyz.y);
-    let z_rgb = Vec3::new(r_xyz.z, g_xyz.z, b_xyz.z);
-
-    let mul = 1.0 / x_rgb.dot(y_rgb.cross(z_rgb));
-    Vec2::new(
-        w_xyz.dot(g_xyz.cross(b_xyz)) * mul,
-        w_xyz.dot(r_xyz.cross(g_xyz)) * mul,
-    )
+struct BT601_625;
+impl TransferCharacteristics for BT601_625 {
+    fn eotf(value: f32) -> f32 {
+        const BETA: f32 = 0.018053968510807;
+        const ALPHA: f32 = 1.0 + 5.5 * BETA;
+        /// threshold = bt709_oetf(BETA)
+        const THRESHOLD: f32 = 0.08124285829863521110029445797874;
+        if value >= THRESHOLD {
+            ((value + (ALPHA - 1.0)) / ALPHA).powf_fast(1.0 / 0.45)
+        } else {
+            value / 4.5
+        }
+    }
+}
+impl MatrixCoefficients for BT601_625 {
+    const CONSTANTS: Vec2 = constants_from_primaries(
+        constants::BT601_625_R,
+        constants::BT601_625_G,
+        constants::BT601_625_B,
+        constants::BT601_625_W,
+    );
 }

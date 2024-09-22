@@ -1,5 +1,6 @@
 use crate::{
-    Bitdepth, ColorPrimaries, ColorRange, Full, Limited, Sample, TransferCharacteristics, BT709,
+    Bitdepth, ColorRange, Full, Limited, MatrixCoefficients, Sample, TransferCharacteristics,
+    BT601_525, BT601_625, BT709,
 };
 use nvptx_core::prelude::coords_2d;
 
@@ -17,7 +18,7 @@ unsafe fn biplanaryuv420_to_linearrgb_generic<const BITDEPTH: usize, LumaCR, Chr
     LumaCR: ColorRange,
     ChromaCR: ColorRange,
     Tr: TransferCharacteristics,
-    CP: ColorPrimaries,
+    CP: MatrixCoefficients,
 {
     let (x, y) = coords_2d();
     if x >= width || y >= height {
@@ -104,6 +105,66 @@ pub unsafe extern "ptx-kernel" fn biplanaryuv420_to_linearrgb_10_L_BT709(
     height: usize,
 ) {
     biplanaryuv420_to_linearrgb_generic::<10, Limited, Limited, BT709, BT709>(
+        src_y, src_uv, src_pitch, dst, dst_pitch, width, height,
+    )
+}
+
+#[no_mangle]
+pub unsafe extern "ptx-kernel" fn biplanaryuv420_to_linearrgb_10_F_BT709(
+    src_y: *const u16,
+    src_uv: *const u16,
+    src_pitch: usize,
+    dst: *mut f32,
+    dst_pitch: usize,
+    width: usize,
+    height: usize,
+) {
+    biplanaryuv420_to_linearrgb_generic::<10, Full, Full, BT709, BT709>(
+        src_y, src_uv, src_pitch, dst, dst_pitch, width, height,
+    )
+}
+
+#[no_mangle]
+pub unsafe extern "ptx-kernel" fn biplanaryuv420_to_linearrgb_8_L_BT601_525(
+    src_y: *const u8,
+    src_uv: *const u8,
+    src_pitch: usize,
+    dst: *mut f32,
+    dst_pitch: usize,
+    width: usize,
+    height: usize,
+) {
+    biplanaryuv420_to_linearrgb_generic::<8, Limited, Limited, BT601_525, BT601_525>(
+        src_y, src_uv, src_pitch, dst, dst_pitch, width, height,
+    )
+}
+
+#[no_mangle]
+pub unsafe extern "ptx-kernel" fn biplanaryuv420_to_linearrgb_8_L_BT601_625(
+    src_y: *const u8,
+    src_uv: *const u8,
+    src_pitch: usize,
+    dst: *mut f32,
+    dst_pitch: usize,
+    width: usize,
+    height: usize,
+) {
+    biplanaryuv420_to_linearrgb_generic::<8, Limited, Limited, BT601_625, BT601_625>(
+        src_y, src_uv, src_pitch, dst, dst_pitch, width, height,
+    )
+}
+
+#[no_mangle]
+pub unsafe extern "ptx-kernel" fn biplanaryuv420_to_linearrgb_10_L_BT601_625(
+    src_y: *const u16,
+    src_uv: *const u16,
+    src_pitch: usize,
+    dst: *mut f32,
+    dst_pitch: usize,
+    width: usize,
+    height: usize,
+) {
+    biplanaryuv420_to_linearrgb_generic::<10, Limited, Limited, BT601_625, BT601_625>(
         src_y, src_uv, src_pitch, dst, dst_pitch, width, height,
     )
 }

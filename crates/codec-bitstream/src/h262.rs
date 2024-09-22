@@ -1,11 +1,5 @@
 use std::mem;
 
-/// Extract sequence header obu from mkv CodecPrivate
-pub fn extract_seq_hdr_from_mkv_codec_private(codec_private: &[u8]) -> &[u8] {
-    let obu = &codec_private[4..];
-    obu
-}
-
 #[derive(Debug, Copy, Clone)]
 pub struct ColorCharacteristics {
     pub cp: ColourPrimaries,
@@ -35,31 +29,41 @@ impl ColorCharacteristics {
     }
 }
 
-/// defined by the “Color primaries” section of ISO/IEC 23091-4/ITU-T H.273
+/// As defined in "Table 6-7 – Colour primaries" of the H.262 specification.
 #[derive(Debug, Copy, Clone)]
 #[repr(u8)]
 pub enum ColourPrimaries {
+    Forbidden = 0,
     BT709 = 1,
     Unspecified = 2,
-    BT601 = 6,
-    // TODO complete colour primaries
+    Reserved = 3,
+    FCC = 4,
+    BT601_625 = 5,
+    BT601_525 = 6,
+    SMPTE_240M = 7,
+    // rest is reserved
 }
 
 impl ColourPrimaries {
     pub fn from_byte(byte: u8) -> Self {
-        assert!(byte <= ColourPrimaries::BT601 as u8);
-        unsafe { mem::transmute::<u8, _>(byte) }
+        if byte > ColourPrimaries::SMPTE_240M as u8 {
+            Self::Reserved
+        } else {
+            unsafe { mem::transmute::<u8, _>(byte) }
+        }
     }
 }
 
-/// defined by the “Transfer characteristics” section of ISO/IEC 23091-4/ITU-T H.273
+/// As defined in "Table 6-8 – Transfer characteristics" of the H.262 specification.
 #[derive(Debug, Copy, Clone)]
 #[repr(u8)]
 pub enum TransferCharacteristic {
-    Reserved = 0,
+    Forbidden = 0,
     BT709 = 1,
     Unspecified = 2,
-    Reserved2 = 3,
+    Reserved = 3,
+    Gamma22 = 4,
+    Gamma28 = 5,
     BT601 = 6,
     // TODO complete transfer characteristic
 }
@@ -71,22 +75,28 @@ impl TransferCharacteristic {
     }
 }
 
-/// defined by the “Matrix coefficients” section of ISO/IEC 23091-4/ITU-T H.273
+/// As defined in "Table 6-9 – Matrix coefficients" of the H.262 specification.
 #[derive(Debug, Copy, Clone)]
 #[repr(u8)]
 pub enum MatrixCoefficients {
-    Identity = 0,
+    Forbidden = 0,
     BT709 = 1,
     Unspecified = 2,
     Reserved = 3,
     FCC = 4,
-    BT601 = 6,
-    // TODO complete matrix coefficients
+    BT601_625 = 5,
+    BT601_525 = 6,
+    SMPTE_240M = 7,
+    YCgCo = 8,
+    // rest is reserved
 }
 
 impl MatrixCoefficients {
     pub fn from_byte(byte: u8) -> Self {
-        assert!(byte <= MatrixCoefficients::BT601 as u8);
-        unsafe { mem::transmute::<u8, _>(byte) }
+        if byte > MatrixCoefficients::YCgCo as u8 {
+            Self::Reserved
+        } else {
+            unsafe { mem::transmute::<u8, _>(byte) }
+        }
     }
 }

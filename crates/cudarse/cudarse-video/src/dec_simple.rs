@@ -117,9 +117,6 @@ impl<'a> NvDecoderSimple<'a> {
                         2 => Ok(crate::dec::npp::NvDecFrame::P010(
                             crate::dec::npp::NvDecP010::from_mapping(mapping, format),
                         )),
-                        4 => {
-                            todo!("Unsupported bitdepth 12 with P016 surface format in map_npp")
-                        }
                         other => {
                             todo!(
                                 "Unsupported bitdepth {} with P016 surface format in map_npp",

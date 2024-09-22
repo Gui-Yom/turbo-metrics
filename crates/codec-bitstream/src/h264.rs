@@ -61,56 +61,94 @@ impl NaluType {
     }
 }
 
+#[derive(Debug, Copy, Clone)]
+pub struct ColorCharacteristics {
+    pub cp: ColourPrimaries,
+    pub mc: MatrixCoefficients,
+    pub tc: TransferCharacteristic,
+}
+
+impl ColorCharacteristics {
+    pub fn or(self, other: Self) -> Self {
+        Self {
+            cp: if matches!(self.cp, ColourPrimaries::Unspecified) {
+                other.cp
+            } else {
+                self.cp
+            },
+            mc: if matches!(self.mc, MatrixCoefficients::Unspecified) {
+                other.mc
+            } else {
+                self.mc
+            },
+            tc: if matches!(self.tc, TransferCharacteristic::Unspecified) {
+                other.tc
+            } else {
+                self.tc
+            },
+        }
+    }
+}
+
 /// As defined in "Table E-3 – Colour primaries interpretation using colour_primaries syntax element" of the H.264 specification.
-#[derive(Debug)]
+#[derive(Debug, Copy, Clone)]
 #[repr(u8)]
 pub enum ColourPrimaries {
     Reserved = 0,
     BT709 = 1,
     Unspecified = 2,
     Reserved2 = 3,
+    FCC = 4,
+    BT601_625 = 5,
+    BT601_525 = 6,
     // TODO complete colour primaries
 }
 
 impl ColourPrimaries {
     pub fn from_byte(byte: u8) -> Self {
-        assert!(byte <= ColourPrimaries::Reserved2 as u8);
+        assert!(byte <= ColourPrimaries::BT601_525 as u8);
         unsafe { mem::transmute::<u8, _>(byte) }
     }
 }
 
 /// As defined in "Table E-4 – Transfer characteristics interpretation using transfer_characteristics syntax element" of the H.264 specification.
-#[derive(Debug)]
+#[derive(Debug, Copy, Clone)]
 #[repr(u8)]
 pub enum TransferCharacteristic {
     Reserved = 0,
     BT709 = 1,
     Unspecified = 2,
     Reserved2 = 3,
+    Gamma22 = 4,
+    Gamma28 = 5,
+    BT601 = 6,
     // TODO complete transfer characteristic
 }
 
 impl TransferCharacteristic {
     pub fn from_byte(byte: u8) -> Self {
-        assert!(byte <= TransferCharacteristic::Reserved2 as u8);
+        assert!(byte <= TransferCharacteristic::BT601 as u8);
         unsafe { mem::transmute::<u8, _>(byte) }
     }
 }
 
 /// As defined in "Table E-5 – Matrix coefficients interpretation using matrix_coefficients syntax element" of the H.264 specification.
-#[derive(Debug)]
+#[derive(Debug, Copy, Clone)]
 #[repr(u8)]
 pub enum MatrixCoefficients {
     Identity = 0,
     BT709 = 1,
     Unspecified = 2,
     Reserved = 3,
+    FCC = 4,
+    BT601_625 = 5,
+    BT601_525 = 6,
     // TODO complete matrix coefficients
 }
 
 impl MatrixCoefficients {
     pub fn from_byte(byte: u8) -> Self {
-        assert!(byte <= MatrixCoefficients::Reserved as u8);
+        assert!(byte <= MatrixCoefficients::BT601_525 as u8);
         unsafe { mem::transmute::<u8, _>(byte) }
     }
 }

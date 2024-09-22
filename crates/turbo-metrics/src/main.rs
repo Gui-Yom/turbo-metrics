@@ -1,6 +1,6 @@
 use clap::Parser;
-use codec_bitstream::h264::{ColourPrimaries, MatrixCoefficients, TransferCharacteristic};
-use codec_bitstream::{av1, h264};
+use codec_bitstream::{av1, h264, ColorCharacteristics};
+use cuda_colorspace::ColorspaceConversion;
 use cudarse_npp::get_stream_ctx;
 use cudarse_npp::image::ist::{PSNR, SSIM, WMSSSIM};
 use cudarse_npp::image::isu::Malloc;
@@ -20,6 +20,7 @@ use turbo_metrics::cudarse_video::dec::npp::Img;
 use turbo_metrics::cudarse_video::dec::{CuVideoParser, CuvidParserCallbacks};
 use turbo_metrics::cudarse_video::dec_simple::NvDecoderSimple;
 use turbo_metrics::cudarse_video::sys::{cudaVideoCodec, cudaVideoCodec_enum};
+use turbo_metrics::{color_characteristics_from_format, get_color_matrix, get_transfer};
 
 /// Turbo metrics compare the video tracks of two mkv files.
 ///
@@ -70,7 +71,7 @@ fn main() {
     let ctx = dev.retain_primary_ctx().unwrap();
     ctx.set_current().unwrap();
 
-    let colorspace = cuda_colorspace::Kernel::load().unwrap();
+    let colorspace = ColorspaceConversion::new();
 
     {
         let cb_ref = NvDecoderSimple::new(3, None);
@@ -84,6 +85,7 @@ fn main() {
             demuxer_ref.demux();
         }
         let format = cb_ref.format().unwrap();
+        let colors_ref = color_characteristics_from_format(&format);
         println!("ref: {}", video_format_line(&format));
 
         let size = format.size();
@@ -92,6 +94,7 @@ fn main() {
             demuxer_dis.demux();
         }
         let format_dis = cb_dis.format().unwrap();
+        let colors_dis = color_characteristics_from_format(&format_dis);
         println!("dis: {}", video_format_line(&format_dis));
 
         assert_eq!(size, format_dis.size());
@@ -100,13 +103,13 @@ fn main() {
         cudarse_npp::set_stream(streams[0].inner() as _).unwrap();
         let npp = get_stream_ctx().unwrap();
 
-        let mut linear_rgb_ref = Image::malloc(size.width as _, size.height as _).unwrap();
-        let mut linear_rgb_dis = linear_rgb_ref.malloc_same_size().unwrap();
+        let mut lrgb_ref = Image::malloc(size.width as _, size.height as _).unwrap();
+        let mut lrgb_dis = lrgb_ref.malloc_same_size().unwrap();
 
-        let (mut ref_8bit, mut dis_8bit) = if args.psnr || args.ssim || args.msssim {
+        let (mut quant_ref, mut quant_dis) = if args.psnr || args.ssim || args.msssim {
             (
-                Some(linear_rgb_ref.malloc_same_size().unwrap()),
-                Some(linear_rgb_ref.malloc_same_size().unwrap()),
+                Some(lrgb_ref.malloc_same_size().unwrap()),
+                Some(lrgb_ref.malloc_same_size().unwrap()),
             )
         } else {
             (None, None)
@@ -115,7 +118,7 @@ fn main() {
         let (mut scratch_psnr, mut scores_psnr) = if args.psnr {
             println!("Initializing PSNR");
             (
-                Some(ref_8bit.as_ref().unwrap().psnr_alloc_scratch(npp).unwrap()),
+                Some(quant_ref.as_ref().unwrap().psnr_alloc_scratch(npp).unwrap()),
                 Some(Vec::with_capacity(4096)),
             )
         } else {
@@ -125,7 +128,7 @@ fn main() {
         let (mut scratch_ssim, mut scores_ssim) = if args.ssim {
             println!("Initializing SSIM");
             (
-                Some(ref_8bit.as_ref().unwrap().ssim_alloc_scratch(npp).unwrap()),
+                Some(quant_ref.as_ref().unwrap().ssim_alloc_scratch(npp).unwrap()),
                 Some(Vec::with_capacity(4096)),
             )
         } else {
@@ -136,7 +139,7 @@ fn main() {
             println!("Initializing MSSSIM");
             (
                 Some(
-                    ref_8bit
+                    quant_ref
                         .as_ref()
                         .unwrap()
                         .wmsssim_alloc_scratch(npp)
@@ -151,7 +154,7 @@ fn main() {
         let (mut ssimu, mut scores_ssimu) = if args.ssimulacra2 {
             println!("Initializing SSIMULACRA2");
             (
-                Some(Ssimulacra2::new(&linear_rgb_ref, &linear_rgb_dis, &streams[0]).unwrap()),
+                Some(Ssimulacra2::new(&lrgb_ref, &lrgb_dis, &streams[0]).unwrap()),
                 Some(Vec::with_capacity(4096)),
             )
         } else {
@@ -182,12 +185,11 @@ fn main() {
                     }
                     decode_count += 1;
 
-                    let format = cb_ref.format().unwrap();
                     convert_frame_to_linearrgb(
                         cb_ref.map_npp(&fref, &streams[0]).unwrap(),
-                        format,
+                        colors_ref,
                         &colorspace,
-                        &mut linear_rgb_ref,
+                        &mut lrgb_ref,
                         &streams[0],
                     );
 
@@ -196,12 +198,11 @@ fn main() {
                     //     // break 'main;
                     // }
 
-                    let format = cb_dis.format().unwrap();
                     convert_frame_to_linearrgb(
                         cb_dis.map_npp(&fdis, &streams[1]).unwrap(),
-                        format,
+                        colors_dis,
                         &colorspace,
-                        &mut linear_rgb_dis,
+                        &mut lrgb_dis,
                         &streams[1],
                     );
 
@@ -209,14 +210,14 @@ fn main() {
                     let mut ssim = 0.0;
                     let mut msssim = 0.0;
 
-                    if let (Some(ref_8bit), Some(dis_8bit)) = (&mut ref_8bit, &mut dis_8bit) {
+                    if let (Some(ref_8bit), Some(dis_8bit)) = (&mut quant_ref, &mut quant_dis) {
                         streams[2].wait_for_stream(&streams[0]).unwrap();
                         streams[3].wait_for_stream(&streams[1]).unwrap();
                         colorspace
-                            .rgb_f32_to_8bit(&linear_rgb_ref, &mut *ref_8bit, &streams[2])
+                            .rgb_f32_to_8bit(&lrgb_ref, &mut *ref_8bit, &streams[2])
                             .unwrap();
                         colorspace
-                            .rgb_f32_to_8bit(&linear_rgb_dis, &mut *dis_8bit, &streams[3])
+                            .rgb_f32_to_8bit(&lrgb_dis, &mut *dis_8bit, &streams[3])
                             .unwrap();
 
                         streams[2].wait_for_stream(&streams[3]).unwrap();
@@ -396,7 +397,8 @@ impl<'dec> DemuxerParser<'dec> {
                                 .parse_data(&self.packet, self.frame.timestamp as i64)
                                 .unwrap();
                         }
-                        cudaVideoCodec::cudaVideoCodec_AV1 => {
+                        cudaVideoCodec::cudaVideoCodec_AV1
+                        | cudaVideoCodec::cudaVideoCodec_MPEG2 => {
                             self.parser
                                 .parse_data(&self.frame.data, self.frame.timestamp as i64)
                                 .unwrap();
@@ -426,66 +428,35 @@ fn mkv_codec_id_to_nvdec(id: &str) -> Option<cudaVideoCodec> {
 }
 
 fn video_format_line(format: &CUVIDEOFORMAT) -> impl Display {
+    let (colors, full_range) = color_characteristics_from_format(format);
     format!(
-        "CP: {:?}, TC: {:?}, MC: {:?}, Full range: {}",
-        ColourPrimaries::from_byte(format.video_signal_description.color_primaries,),
-        TransferCharacteristic::from_byte(format.video_signal_description.transfer_characteristics,),
-        MatrixCoefficients::from_byte(format.video_signal_description.matrix_coefficients,),
-        format.video_signal_description.full_range()
+        "CP: {:?}, MC: {:?}, TC: {:?}, Full range: {}",
+        colors.cp, colors.mc, colors.tc, full_range
     )
 }
 
 fn convert_frame_to_linearrgb(
     frame: NvDecFrame<'_>,
-    format: &CUVIDEOFORMAT,
-    colorspace: &cuda_colorspace::Kernel,
-    mut dst: impl ImgMut<f32, C<3>>,
+    colors: (ColorCharacteristics, bool),
+    colorspace: &ColorspaceConversion,
+    dst: impl ImgMut<f32, C<3>>,
     stream: &CuStream,
 ) {
+    let color_matrix = get_color_matrix(&colors.0);
+    let transfer = get_transfer(&colors.0);
     match frame {
-        NvDecFrame::NV12(frame) => {
-            match MatrixCoefficients::from_byte(format.video_signal_description.matrix_coefficients)
-            {
-                MatrixCoefficients::BT709 | MatrixCoefficients::Unspecified => {
-                    if format.video_signal_description.full_range() {
-                        colorspace
-                            .biplanaryuv420_to_linearrgb_8_F_BT709(frame, dst, stream)
-                            .unwrap();
-                        // frame.nv12_to_rgb_bt709_full();
-                    } else {
-                        colorspace
-                            .biplanaryuv420_to_linearrgb_8_L_BT709(frame, dst, stream)
-                            .unwrap();
-                        // frame.nv12_to_rgb_bt709_limited();
-                    }
-                }
-                _ => todo!("Unsupported matrix coefficients"),
-            }
-        }
-        NvDecFrame::P010(frame) => {
-            match MatrixCoefficients::from_byte(format.video_signal_description.matrix_coefficients)
-            {
-                MatrixCoefficients::BT709 | MatrixCoefficients::Unspecified => {
-                    if format.video_signal_description.full_range() {
-                        todo!();
-                        // frame.nv12_to_rgb_bt709_full();
-                    } else {
-                        colorspace
-                            .biplanaryuv420_to_linearrgb_10_L_BT709(frame, dst, stream)
-                            .unwrap();
-                        // frame.nv12_to_rgb_bt709_limited();
-                    }
-                }
-                _ => todo!("Unsupported matrix coefficients"),
-            }
-        }
+        NvDecFrame::NV12(frame) => colorspace
+            .biplanaryuv420_to_linearrgb_8(color_matrix, transfer, colors.1, frame, dst, stream)
+            .unwrap(),
+        NvDecFrame::P010(frame) => colorspace
+            .biplanaryuv420_to_linearrgb_10(color_matrix, transfer, colors.1, frame, dst, stream)
+            .unwrap(),
         other => todo!("Unsupported frame type in turbo metrics : {other:#?}"),
     };
 }
 
 fn save_img(img: impl Img<u8, C<3>>, name: &str, stream: &CuStream) {
     use zune_image::codecs::png::zune_core::colorspace::{ColorCharacteristics, ColorSpace};
-    // dev.synchronize().unwrap();
     let bytes = img.copy_to_cpu(stream.inner() as _).unwrap();
     stream.sync().unwrap();
     let mut img = zune_image::image::Image::from_u8(
@@ -498,18 +469,18 @@ fn save_img(img: impl Img<u8, C<3>>, name: &str, stream: &CuStream) {
         .set_color_trc(ColorCharacteristics::Linear);
     img.save(format!("frames/{name}.png")).unwrap()
 }
-//
-// fn save_img_f32(img: impl Img<f32, C<3>>, name: &str, stream: &CuStream) {
-//     // dev.synchronize().unwrap();
-//     let bytes = img.copy_to_cpu(stream.inner() as _).unwrap();
-//     stream.sync().unwrap();
-//     let mut img = zune_image::image::Image::from_f32(
-//         &bytes,
-//         img.width() as usize,
-//         img.height() as usize,
-//         ColorSpace::RGB,
-//     );
-//     img.metadata_mut()
-//         .set_color_trc(ColorCharacteristics::Linear);
-//     img.save(format!("frames/{name}.png")).unwrap()
-// }
+
+fn save_img_f32(img: impl Img<f32, C<3>>, name: &str, stream: &CuStream) {
+    use zune_image::codecs::png::zune_core::colorspace::{ColorCharacteristics, ColorSpace};
+    let bytes = img.copy_to_cpu(stream.inner() as _).unwrap();
+    stream.sync().unwrap();
+    let mut img = zune_image::image::Image::from_f32(
+        &bytes,
+        img.width() as usize,
+        img.height() as usize,
+        ColorSpace::RGB,
+    );
+    img.metadata_mut()
+        .set_color_trc(ColorCharacteristics::Linear);
+    img.save(format!("frames/{name}.png")).unwrap()
+}
