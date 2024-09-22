@@ -22,6 +22,8 @@ use turbo_metrics::cudarse_video::dec_simple::NvDecoderSimple;
 use turbo_metrics::cudarse_video::sys::{cudaVideoCodec, cudaVideoCodec_enum};
 
 /// Turbo metrics compare the video tracks of two mkv files.
+///
+/// You can select many metrics to be computed together, which will reduce overhead.
 #[derive(Parser, Debug)]
 #[command(version, author)]
 struct CliArgs {
@@ -42,6 +44,16 @@ struct CliArgs {
     /// Compute ssimulacra2 score
     #[arg(long)]
     ssimulacra2: bool,
+
+    /// Only compute metrics every few frames, effectively down-sampling the measurements.
+    /// Still, this tool will decode all frames, hence increasing overhead. Check perf_score to see what I mean.
+    ///
+    /// E.g. 4 invocations with --every 4 will perform around 20% worse than a single pass computing every frame.
+    #[arg(long, default_value = "0")]
+    every: u32,
+    /// Index of the first frame to start computing at. Useful for overlaying separate computations with `every`.
+    #[arg(long, default_value = "0")]
+    skip: u32,
 }
 
 fn main() {
@@ -67,8 +79,6 @@ fn main() {
         let mut demuxer_ref = DemuxerParser::new(&args.reference, &cb_ref);
         // let mut demuxer_dis = DemuxerParser::new("data/dummy_encode2.mkv", &cb_dis);
         let mut demuxer_dis = DemuxerParser::new(&args.distorted, &cb_dis);
-
-        let mut counter = 0;
 
         while cb_ref.format().is_none() {
             demuxer_ref.demux();
@@ -152,6 +162,8 @@ fn main() {
 
         println!("Initialized, now processing ...");
         let start = Instant::now();
+        let mut decode_count = 0;
+        let mut compute_count = 0;
 
         'main: loop {
             while !cb_ref.has_frames() {
@@ -162,6 +174,14 @@ fn main() {
             }
             for (fref, fdis) in cb_ref.frames_sync(&cb_dis) {
                 if let (Some(fref), Some(fdis)) = (fref, fdis) {
+                    if decode_count < args.skip
+                        || (args.every != 0 && decode_count % args.every != 0)
+                    {
+                        decode_count += 1;
+                        continue;
+                    }
+                    decode_count += 1;
+
                     let format = cb_ref.format().unwrap();
                     convert_frame_to_linearrgb(
                         cb_ref.map_npp(&fref, &streams[0]).unwrap(),
@@ -260,7 +280,7 @@ fn main() {
                         scores_ssimu.push(ssimu.as_mut().unwrap().get_score());
                     }
 
-                    counter += 1;
+                    compute_count += 1;
                 } else {
                     break 'main;
                 }
@@ -268,24 +288,28 @@ fn main() {
         }
 
         let total = start.elapsed().as_millis();
-        let total_frames = counter;
+        let fps = compute_count as u128 * 1000 / total;
+        let perf_score =
+            format.size().width as f64 * format.size().height as f64 * compute_count as f64
+                / total as f64
+                / 1000.0;
+        println!("Done !");
         println!(
-            "Done ! Processed {} frame pairs in {total} ms ({} fps)",
-            total_frames,
-            total_frames as u128 * 1000 / total
+            "Decoded: {}, processed: {} frame pairs in {total} ms ({} fps) (perf_score: {:.3})",
+            decode_count, compute_count, fps, perf_score
         );
         println!("Stats :");
         if let Some(scores) = &scores_psnr {
-            println!("  psnr: {:?}", Stats::compute(scores));
+            println!("  psnr: {:#?}", Stats::compute(scores));
         }
         if let Some(scores) = &scores_ssim {
-            println!("  ssim: {:?}", Stats::compute(scores));
+            println!("  ssim: {:#?}", Stats::compute(scores));
         }
         if let Some(scores) = &scores_msssim {
-            println!("  msssim: {:?}", Stats::compute(scores));
+            println!("  msssim: {:#?}", Stats::compute(scores));
         }
         if let Some(scores) = &scores_ssimu {
-            println!("  ssimulacra2: {:?}", Stats::compute(scores));
+            println!("  ssimulacra2: {:#?}", Stats::compute(scores));
         }
     }
 

@@ -368,11 +368,6 @@ impl Ssimulacra2 {
         {
             let [i0, i1, i2, i3, i4, i5, i6, i7, i8, i9] = self.imgt[scale].each_mut();
 
-            // tmpt5: sigma11
-            // tmpt6: sigma22
-            // tmpt7: sigma12
-            // tmpt8: mu1
-            // tmpt9: mu2
             #[rustfmt::skip]
             self.kernel.blur_pass_fused(streams[0],
                 i0, i5,
@@ -385,8 +380,6 @@ impl Ssimulacra2 {
 
         streams[1].wait_for_stream(streams[0]).unwrap();
 
-        // tmpt0: source
-        // tmpt1: distorted
         self.img[scale][8].transpose(
             &mut self.imgt[scale][0],
             self.npp.with_stream(streams[0].inner() as _),
@@ -403,9 +396,6 @@ impl Ssimulacra2 {
         {
             let [i0, i1, i2, i3, i4, i5, i6, i7, i8, i9] = self.imgt[scale].each_mut();
 
-            // tmpt2: ssim
-            // tmpt3: artifact
-            // tmpt4: detail_loss
             self.kernel
                 .compute_error_maps(streams[0], i0, i1, i8, i9, i5, i6, i7, i2, i3, i4);
         }
