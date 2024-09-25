@@ -6,12 +6,11 @@ use cudarse_npp::image::{Img, ImgMut, C, P};
 pub struct Kernel {
     module: CuModule,
     biplanaryuv420_to_linearrgb_8_L_BT709: CuFunction,
-    biplanaryuv420_to_linearrgb_8_F_BT709: CuFunction,
-    biplanaryuv420_to_linearrgb_10_L_BT709: CuFunction,
-    biplanaryuv420_to_linearrgb_10_F_BT709: CuFunction,
+    biplanaryuv420_to_linearrgb_16_L_BT709: CuFunction,
     biplanaryuv420_to_linearrgb_8_L_BT601_525: CuFunction,
+    biplanaryuv420_to_linearrgb_16_L_BT601_525: CuFunction,
     biplanaryuv420_to_linearrgb_8_L_BT601_625: CuFunction,
-    biplanaryuv420_to_linearrgb_10_L_BT601_625: CuFunction,
+    biplanaryuv420_to_linearrgb_16_L_BT601_625: CuFunction,
     biplanaryuv420_to_linearrgb_debug: CuFunction,
     rgb_f32_to_8bit: CuFunction,
 }
@@ -26,18 +25,16 @@ impl Kernel {
         Ok(Self {
             biplanaryuv420_to_linearrgb_8_L_BT709: module
                 .function_by_name("biplanaryuv420_to_linearrgb_8_L_BT709")?,
-            biplanaryuv420_to_linearrgb_8_F_BT709: module
-                .function_by_name("biplanaryuv420_to_linearrgb_8_F_BT709")?,
-            biplanaryuv420_to_linearrgb_10_L_BT709: module
-                .function_by_name("biplanaryuv420_to_linearrgb_10_L_BT709")?,
-            biplanaryuv420_to_linearrgb_10_F_BT709: module
-                .function_by_name("biplanaryuv420_to_linearrgb_10_F_BT709")?,
+            biplanaryuv420_to_linearrgb_16_L_BT709: module
+                .function_by_name("biplanaryuv420_to_linearrgb_16_L_BT709")?,
             biplanaryuv420_to_linearrgb_8_L_BT601_525: module
                 .function_by_name("biplanaryuv420_to_linearrgb_8_L_BT601_525")?,
+            biplanaryuv420_to_linearrgb_16_L_BT601_525: module
+                .function_by_name("biplanaryuv420_to_linearrgb_16_L_BT601_525")?,
             biplanaryuv420_to_linearrgb_8_L_BT601_625: module
                 .function_by_name("biplanaryuv420_to_linearrgb_8_L_BT601_625")?,
-            biplanaryuv420_to_linearrgb_10_L_BT601_625: module
-                .function_by_name("biplanaryuv420_to_linearrgb_10_L_BT601_625")?,
+            biplanaryuv420_to_linearrgb_16_L_BT601_625: module
+                .function_by_name("biplanaryuv420_to_linearrgb_16_L_BT601_625")?,
             biplanaryuv420_to_linearrgb_debug: module
                 .function_by_name("biplanaryuv420_to_linearrgb_debug")?,
             rgb_f32_to_8bit: module.function_by_name("rgb_f32_to_8bit")?,
@@ -75,37 +72,7 @@ impl Kernel {
         }
     }
 
-    pub fn biplanaryuv420_to_linearrgb_8_F_BT709(
-        &self,
-        src: impl Img<u8, P<2>>,
-        mut dst: impl ImgMut<f32, C<3>>,
-        stream: &CuStream,
-    ) -> CuResult<()> {
-        debug_assert_same_size!(src, dst);
-        unsafe {
-            let mut iter = src.alloc_ptrs();
-            let mut y = iter.next().unwrap();
-            let mut uv = iter.next().unwrap();
-            let mut w = dst.width() / 2;
-            let mut h = dst.height() / 2;
-            self.biplanaryuv420_to_linearrgb_8_F_BT709.launch(
-                &launch_config_2d(w, h),
-                stream,
-                kernel_params!(
-                    // src.device_ptr(),
-                    y,
-                    uv,
-                    src.pitch() as usize,
-                    dst.device_ptr_mut(),
-                    dst.pitch() as usize,
-                    w as usize,
-                    h as usize,
-                ),
-            )
-        }
-    }
-
-    pub fn biplanaryuv420_to_linearrgb_10_L_BT709(
+    pub fn biplanaryuv420_to_linearrgb_16_L_BT709(
         &self,
         src: impl Img<u16, P<2>>,
         mut dst: impl ImgMut<f32, C<3>>,
@@ -118,37 +85,7 @@ impl Kernel {
             let mut uv = iter.next().unwrap();
             let mut w = dst.width() / 2;
             let mut h = dst.height() / 2;
-            self.biplanaryuv420_to_linearrgb_10_L_BT709.launch(
-                &launch_config_2d(w, h),
-                stream,
-                kernel_params!(
-                    // src.device_ptr(),
-                    y,
-                    uv,
-                    src.pitch() as usize,
-                    dst.device_ptr_mut(),
-                    dst.pitch() as usize,
-                    w as usize,
-                    h as usize,
-                ),
-            )
-        }
-    }
-
-    pub fn biplanaryuv420_to_linearrgb_10_F_BT709(
-        &self,
-        src: impl Img<u16, P<2>>,
-        mut dst: impl ImgMut<f32, C<3>>,
-        stream: &CuStream,
-    ) -> CuResult<()> {
-        debug_assert_same_size!(src, dst);
-        unsafe {
-            let mut iter = src.alloc_ptrs();
-            let mut y = iter.next().unwrap();
-            let mut uv = iter.next().unwrap();
-            let mut w = dst.width() / 2;
-            let mut h = dst.height() / 2;
-            self.biplanaryuv420_to_linearrgb_10_F_BT709.launch(
+            self.biplanaryuv420_to_linearrgb_16_L_BT709.launch(
                 &launch_config_2d(w, h),
                 stream,
                 kernel_params!(
@@ -195,6 +132,36 @@ impl Kernel {
         }
     }
 
+    pub fn biplanaryuv420_to_linearrgb_16_L_BT601_525(
+        &self,
+        src: impl Img<u16, P<2>>,
+        mut dst: impl ImgMut<f32, C<3>>,
+        stream: &CuStream,
+    ) -> CuResult<()> {
+        debug_assert_same_size!(src, dst);
+        unsafe {
+            let mut iter = src.alloc_ptrs();
+            let mut y = iter.next().unwrap();
+            let mut uv = iter.next().unwrap();
+            let mut w = dst.width() / 2;
+            let mut h = dst.height() / 2;
+            self.biplanaryuv420_to_linearrgb_16_L_BT601_525.launch(
+                &launch_config_2d(w, h),
+                stream,
+                kernel_params!(
+                    // src.device_ptr(),
+                    y,
+                    uv,
+                    src.pitch() as usize,
+                    dst.device_ptr_mut(),
+                    dst.pitch() as usize,
+                    w as usize,
+                    h as usize,
+                ),
+            )
+        }
+    }
+
     pub fn biplanaryuv420_to_linearrgb_8_L_BT601_625(
         &self,
         src: impl Img<u8, P<2>>,
@@ -225,7 +192,7 @@ impl Kernel {
         }
     }
 
-    pub fn biplanaryuv420_to_linearrgb_10_L_BT601_625(
+    pub fn biplanaryuv420_to_linearrgb_16_L_BT601_625(
         &self,
         src: impl Img<u16, P<2>>,
         mut dst: impl ImgMut<f32, C<3>>,
@@ -238,7 +205,7 @@ impl Kernel {
             let mut uv = iter.next().unwrap();
             let mut w = dst.width() / 2;
             let mut h = dst.height() / 2;
-            self.biplanaryuv420_to_linearrgb_10_L_BT601_625.launch(
+            self.biplanaryuv420_to_linearrgb_16_L_BT601_625.launch(
                 &launch_config_2d(w, h),
                 stream,
                 kernel_params!(
@@ -334,7 +301,7 @@ mod tests {
     use cudarse_npp::image::{Image, Img, C};
 
     #[test]
-    fn test_to_rgb() -> CuResult<()> {
+    fn test_8bit() -> CuResult<()> {
         init_cuda_and_primary_ctx()?;
         let kernel = Kernel::load()?;
         let main = CuStream::new()?;

@@ -29,6 +29,10 @@ impl Sample for Bitdepth<12> {
     type Type = u16;
     const MAX_VALUE: u32 = (1 << 12) - 1;
 }
+impl Sample for Bitdepth<16> {
+    type Type = u16;
+    const MAX_VALUE: u32 = (1 << 16) - 1;
+}
 
 trait ColorRange {
     fn min<const N: usize>() -> u32

@@ -43,16 +43,13 @@ impl ColorspaceConversion {
             ColorMatrix::BT709 => match transfer {
                 Transfer::BT709 => {
                     if full_color_range {
-                        self.kernel
-                            .biplanaryuv420_to_linearrgb_8_F_BT709(src, dst, stream)
+                        todo!()
                     } else {
                         self.kernel
                             .biplanaryuv420_to_linearrgb_8_L_BT709(src, dst, stream)
                     }
                 }
-                Transfer::Passthrough => {
-                    todo!()
-                }
+                _ => todo!(),
             },
             ColorMatrix::BT601_525 => match transfer {
                 Transfer::BT709 => {
@@ -63,9 +60,7 @@ impl ColorspaceConversion {
                             .biplanaryuv420_to_linearrgb_8_L_BT601_525(src, dst, stream)
                     }
                 }
-                Transfer::Passthrough => {
-                    todo!()
-                }
+                _ => todo!(),
             },
             ColorMatrix::BT601_625 => match transfer {
                 Transfer::BT709 => {
@@ -76,14 +71,12 @@ impl ColorspaceConversion {
                             .biplanaryuv420_to_linearrgb_8_L_BT601_625(src, dst, stream)
                     }
                 }
-                Transfer::Passthrough => {
-                    todo!()
-                }
+                _ => todo!(),
             },
         }
     }
 
-    pub fn biplanaryuv420_to_linearrgb_10(
+    pub fn biplanaryuv420_to_linearrgb_16(
         &self,
         matrix: ColorMatrix,
         transfer: Transfer,
@@ -96,16 +89,24 @@ impl ColorspaceConversion {
             ColorMatrix::BT709 => match transfer {
                 Transfer::BT709 => {
                     if full_color_range {
-                        self.kernel
-                            .biplanaryuv420_to_linearrgb_10_F_BT709(src, dst, stream)
+                        todo!()
                     } else {
                         self.kernel
-                            .biplanaryuv420_to_linearrgb_10_L_BT709(src, dst, stream)
+                            .biplanaryuv420_to_linearrgb_16_L_BT709(src, dst, stream)
                     }
                 }
-                Transfer::Passthrough => {
-                    todo!()
+                _ => todo!(),
+            },
+            ColorMatrix::BT601_525 => match transfer {
+                Transfer::BT709 => {
+                    if full_color_range {
+                        todo!()
+                    } else {
+                        self.kernel
+                            .biplanaryuv420_to_linearrgb_16_L_BT601_525(src, dst, stream)
+                    }
                 }
+                _ => todo!(),
             },
             ColorMatrix::BT601_625 => match transfer {
                 Transfer::BT709 => {
@@ -113,17 +114,22 @@ impl ColorspaceConversion {
                         todo!()
                     } else {
                         self.kernel
-                            .biplanaryuv420_to_linearrgb_10_L_BT601_625(src, dst, stream)
+                            .biplanaryuv420_to_linearrgb_16_L_BT601_625(src, dst, stream)
                     }
                 }
-                Transfer::Passthrough => {
-                    todo!()
-                }
+                _ => todo!(),
             },
-            _ => {
-                todo!()
-            }
         }
+    }
+
+    pub fn biplanaryuv420_to_linearrgb_debug_8(
+        &self,
+        src: impl Img<u8, P<2>>,
+        dst: impl ImgMut<u8, C<3>>,
+        stream: &CuStream,
+    ) -> CuResult<()> {
+        self.kernel
+            .biplanaryuv420_to_linearrgb_debug(src, dst, stream)
     }
 
     pub fn rgb_f32_to_8bit(

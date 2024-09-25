@@ -113,17 +113,9 @@ impl<'a> NvDecoderSimple<'a> {
                     ))
                 }
                 cudaVideoSurfaceFormat::cudaVideoSurfaceFormat_P016 => {
-                    match format.bit_depth_luma_minus8 {
-                        2 => Ok(crate::dec::npp::NvDecFrame::P010(
-                            crate::dec::npp::NvDecP010::from_mapping(mapping, format),
-                        )),
-                        other => {
-                            todo!(
-                                "Unsupported bitdepth {} with P016 surface format in map_npp",
-                                other + 8
-                            )
-                        }
-                    }
+                    Ok(crate::dec::npp::NvDecFrame::P016(
+                        crate::dec::npp::NvDecP016::from_mapping(mapping, format),
+                    ))
                 }
                 other => todo!("Unsupported surface format '{other:?}' in map_npp"),
             }

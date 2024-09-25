@@ -492,14 +492,14 @@ pub mod npp {
     }
 
     #[derive(Debug)]
-    pub struct NvDecP010<'dec> {
+    pub struct NvDecP016<'dec> {
         pub(crate) frame: FrameMapping<'dec>,
         pub(crate) width: u32,
         pub(crate) height: u32,
         pub(crate) planes: [*mut u16; 2],
     }
 
-    impl<'dec> NvDecP010<'dec> {
+    impl<'dec> NvDecP016<'dec> {
         pub fn from_mapping(mapping: FrameMapping<'dec>, format: &CUVIDEOFORMAT) -> Self {
             Self {
                 width: format.display_width(),
@@ -513,7 +513,7 @@ pub mod npp {
         }
     }
 
-    impl<'dec> Img<u16, P<2>> for NvDecP010<'dec> {
+    impl<'dec> Img<u16, P<2>> for NvDecP016<'dec> {
         fn width(&self) -> u32 {
             self.width
         }
@@ -541,15 +541,11 @@ pub mod npp {
 
     #[derive(Debug)]
     pub enum NvDecFrame<'dec> {
-        /// yuv420 : 8 bits Y plane + 8 bits interleaved UV plane
+        /// 8 bits Y plane + 8 bits interleaved UV plane
         NV12(NvDecNV12<'dec>),
-        /// yuv420 :  16 bits Y plane + 16 bits interleaved UV plane
+        /// 16 bits Y plane + 16 bits interleaved UV plane
         /// https://learn.microsoft.com/en-us/windows/win32/medfound/10-bit-and-16-bit-yuv-video-formats#p016-and-p010
-        /// Values are on 10 bits
-        P010(NvDecP010<'dec>),
-        /// yuv420 :  16 bits Y plane + 16 bits interleaved UV plane
-        /// https://learn.microsoft.com/en-us/windows/win32/medfound/10-bit-and-16-bit-yuv-video-formats#p016-and-p010
-        /// Values are on 12 bits
-        P012,
+        /// Even if it's supposed to be yuv420p10, the values are using the full 16 bit range.
+        P016(NvDecP016<'dec>),
     }
 }

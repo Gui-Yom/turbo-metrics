@@ -12,7 +12,7 @@ repository.workspace = true
 cudarse-driver = { workspace = true }
 cudarse-npp = { workspace = true, optional = true, features = ["icc", "isu"] }
 cudarse-video-sys = { workspace = true }
-spsc = { workspace = true }
+#spsc = { workspace = true }
 tracing = { workspace = true }
 zune-image = { workspace = true }
 

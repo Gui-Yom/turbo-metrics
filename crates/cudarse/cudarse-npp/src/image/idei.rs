@@ -60,6 +60,8 @@ impl_set!(u8, C<2>, 2, _8u, C2);
 impl_set!(u8, C<3>, 3, _8u, C3);
 impl_set!(u8, C<4>, 4, _8u, C4);
 
+impl_set!(u16, C<2>, 2, _16u, C2);
+
 impl_set!(f32, C<2>, 2, _32f, C2);
 impl_set!(f32, C<3>, 3, _32f, C3);
 impl_set!(f32, C<4>, 4, _32f, C4);

@@ -1,17 +1,7 @@
+use crate::print;
 use core::arch::nvptx;
 use core::ffi::CStr;
 use core::panic::PanicInfo;
-
-#[macro_export]
-macro_rules! print {
-    ($fmt:literal, $($ty:ty),*; $($p:expr),*) => {
-        {
-            #[repr(C)]
-            struct __Fmt($($ty),*);
-            print($fmt, &__Fmt($($p),*));
-        }
-    };
-}
 
 /// You're better off removing any panic places in your kernel code as this adds 3000 lines to the compiled ptx.
 #[panic_handler]
@@ -34,11 +24,4 @@ fn panic_handler(info: &PanicInfo) -> ! {
         print(c"\n", &());
         nvptx::trap();
     }
-}
-
-/// You can use the standard C printf template arguments.
-/// `T` must be a `#[repr(C)]` struct.
-#[inline]
-pub unsafe fn print<T>(fmt: &CStr, params: &T) {
-    nvptx::vprintf(fmt.as_ptr().cast(), params as *const T as _);
 }

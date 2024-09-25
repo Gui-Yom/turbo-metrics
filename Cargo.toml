@@ -71,7 +71,7 @@ matroska-demuxer = "0.5"
 nalgebra = { version = "0.33", default-features = false, features = ["std"] }
 paste = "1"
 rerun = "0.18"
-spsc = { path = "../spsc" }
+#spsc = { path = "../spsc" }
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 zune-image = { version = "0.4", default-features = false, features = ["png", "simd", "metadata"] }

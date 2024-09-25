@@ -13,5 +13,5 @@ cudarse-video = { workspace = true, features = ["npp"] }
 stats = { workspace = true }
 matroska-demuxer = { workspace = true }
 ssimulacra2-cuda = { workspace = true }
-spsc = { workspace = true }
+#spsc = { workspace = true }
 zune-image = { workspace = true }
