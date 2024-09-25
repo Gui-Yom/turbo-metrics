@@ -3,6 +3,7 @@ use std::f64::consts::PI;
 use std::fs::File;
 use std::io::Write;
 use std::path::Path;
+use std::process::Command;
 use std::{env, io};
 
 fn main() {
@@ -12,9 +13,16 @@ fn main() {
     println!("cargo:rustc-link-arg={cuda_path}/nvvm/libdevice/libdevice.10.bc");
 
     let root = env::var("CARGO_MANIFEST_DIR").unwrap();
-    // Maybe compile this at build time ?
-    println!("cargo:rustc-link-arg={root}/src/shared.bc");
-    println!("cargo:rerun-if-changed={root}/src/shared.bc");
+    println!("cargo:rerun-if-changed={root}/shared.bc");
+    let out = env::var("OUT_DIR").unwrap();
+    assert!(Command::new("llvm-as")
+        .arg("-o")
+        .arg(&format!("{out}/shared.bc"))
+        .arg(&format!("{root}/src/shared.ll"))
+        .status()
+        .unwrap()
+        .success());
+    println!("cargo:rustc-link-arg={out}/shared.bc");
 
     let out_dir = &env::var("OUT_DIR").expect("can read OUT_DIR");
 

@@ -111,6 +111,8 @@ Build with `cargo build --release -p turbo-metrics`. Start with `turbo-metrics -
 rustup toolchain install stable
 rustup toolchain install nightly
 rustup +nightly target add nvptx64-nvidia-cuda
+rustup +nightly component add llvm-bitcode-linker
+rustup +nightly component add llvm-tools
 ```
 
 ## Planned
