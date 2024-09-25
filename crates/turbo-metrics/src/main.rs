@@ -41,9 +41,9 @@ struct CliArgs {
     ssimulacra2: bool,
 
     /// Only compute metrics every few frames, effectively down-sampling the measurements.
-    /// Still, this tool will decode all frames, hence increasing overhead. Check perf_score to see what I mean.
+    /// Still, this tool will decode all frames, hence increasing overhead. Check Mpx/s to see what I mean.
     ///
-    /// E.g. 4 invocations with --every 4 will perform around 20% worse than a single pass computing every frame.
+    /// E.g. 8 invocations with --every 8 will perform around 50% worse than a single pass computing every frame.
     #[arg(long, default_value = "0")]
     every: u32,
     /// Index of the first frame to start computing at. Useful for overlaying separate computations with `every`.
@@ -172,7 +172,7 @@ fn main() {
             for (fref, fdis) in cb_ref.frames_sync(&cb_dis) {
                 if let (Some(fref), Some(fdis)) = (fref, fdis) {
                     if decode_count < args.skip
-                        || (args.every != 0 && decode_count % args.every != 0)
+                        || (args.every > 1 && decode_count != 0 && decode_count % args.every != 0)
                     {
                         decode_count += 1;
                         continue;

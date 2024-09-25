@@ -960,7 +960,7 @@ dependencies = [
 
 [[package]]
 name = "turbo-metrics"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "clap",
  "codec-bitstream",
