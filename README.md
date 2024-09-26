@@ -108,6 +108,7 @@ Build with `cargo build --release -p turbo-metrics`. Start with `turbo-metrics -
   nightly Rust toolchain
 - [NVIDIA Video Codec SDK](https://developer.nvidia.com/nvidia-video-codec-sdk/download) and its
   `NV_VIDEO_CODEC_SDK` env var.
+- AMD AMF headers with `AMF_SDK_PATH` pointing to it.
 
 ```shell
 rustup toolchain install stable
@@ -131,3 +132,43 @@ rustup +nightly component add llvm-tools
 - ~~Intel hardware decoding~~, AMD hardware decoding, Vulkan video decoding
 - ssimulacra2 using wgpu or vulkan (not locked to CUDA), OpenCL ?
 - NVENC for encoding using the GPU
+
+## About video hardware acceleration
+
+Processing videos efficiently is a 2 parts problem :
+
+### Video decoding
+
+So you want a cross-platform way to decode videos on every possible platform ? Sadge. This is a
+mess, there are nearly as many different api as there are hw vendors, os and gpu apis.
+
+Recap table :
+
+| API          | Windows  | Linux | Intel | AMD | Nvidia    | CUDA     | Vulkan | OpenCL | WGPU | AV1 | HEVC | AVC | MPEG2 | VC1 |
+|--------------|----------|-------|-------|-----|-----------|----------|--------|--------|------|-----|------|-----|-------|-----|
+| NVDEC        | ✅        | ✅     | ❌     | ❌   | ✅         | ✅        | ✅/CUDA | ✅      |      | ✅   | ✅    | ✅   | ✅     | ✅   |
+| VPL          | ✅        | ✅     | ✅     | ❌   | ❌         |          |        |        |      | ✅   | ✅    | ✅   |       |     |
+| AMF          | ✅        | ✅     | ❌     | ✅   | ❌         |          |        |        |      | ✅   | ✅    | ✅   |       |     |
+| DXVA         | ✅        |       | ✅     | ✅   | ✅         |          |        |        | ✅    |     |      | ✅   | ✅     |     |
+| Vulkan Video | ✅        | ✅     | ✅     | ✅   | ✅         | ✅/Vulkan | ✅      | ✅      | ✅    | ✅   | ✅    | ✅   |       |     |
+| VAAPI        | ✅/vaon12 | ✅     | ✅     |     | ✅/Nouveau |          |        |        |      | ✅   | ✅    | ✅   |       |     |
+| VDPAU        |          | ✅     |       |     | ✅         |          |        |        |      |     |      |     |       |     |
+
+There is still the option to decode video on the CPU and stream frames to the GPU for computations.
+This is still faster than doing all processing on the CPU alone.
+
+### Compute
+
+Your GPU will blow your CPU on any image processing task. Processing frames on the GPU is the best
+thing that can be done for speed.
+
+Recap table :
+
+| API      | Windows | Linux | Intel | AMD     | Nvidia | CPU-side Rust | GPU-side Rust |
+|----------|---------|-------|-------|---------|--------|---------------|---------------|
+| CUDA     | ✅       | ✅     |       | ✅/ZLUDA | ✅      | ✅             | ✅/llvm ptx    |
+| Vulkan   | ✅       | ✅     | ✅     | ✅       | ✅      | ✅             | ✅/SpirV       |
+| OpenCL   | ✅       | ✅     | ✅     | ✅       | ✅      | ✅             | ✅/SpirV       |
+| ROCm/HIP | ✅       | ✅     |       | ✅       |        |               |               |
+| WGPU     | ✅       | ✅     | ✅     | ✅       | ✅      | ✅             | ✅/SpirV       |
+

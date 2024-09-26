@@ -8,8 +8,7 @@ fn include(path: &Path, header: &str) -> String {
 }
 
 fn main() {
-    // let root = env!("CARGO_MANIFEST_DIR");
-    let amf = PathBuf::from("D:\\AMD\\AMF");
+    let amf = PathBuf::from(env::var("AMF_SDK_PATH").unwrap());
 
     let bindgen = bindgen::Builder::default()
         .clang_args(["-I", amf.to_str().unwrap()])
