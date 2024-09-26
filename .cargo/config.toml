@@ -1,5 +1,4 @@
 [target.nvptx64-nvidia-cuda]
-# I tune ptx code for my own gpu (rtx 4070)
 # ref: https://developer.nvidia.com/cuda-gpus
-rustflags = ["-Z", "unstable-options", "-C", "linker-flavor=llbc", "-C", "target-cpu=sm_89", "-Z", "tune-cpu=sm_89"]
-#rustflags = ["-Z", "unstable-options", "-C", "linker-flavor=llbc"]
+#rustflags = ["-Z", "unstable-options", "-C", "linker-flavor=llbc", "-C", "target-cpu=sm_89", "-Z", "tune-cpu=sm_89"]
+rustflags = ["-Z", "unstable-options", "-C", "linker-flavor=llbc"]

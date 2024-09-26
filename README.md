@@ -103,9 +103,11 @@ Build with `cargo build --release -p turbo-metrics`. Start with `turbo-metrics -
 - Only tested on Windows 10 x64, but should work elsewhere
 - A recent [CUDA SDK](https://developer.nvidia.com/cuda-toolkit) (tested with 12.5), this project
   uses the `CUDA_PATH` env var, please make sure it is available and correct.
-- Everything should build with Rust stable, except for the cuda kernel which requires a recent (at
-  least 2024-04-24) nightly Rust toolchain
-- [NVIDIA Video Codec SDK](https://developer.nvidia.com/nvidia-video-codec-sdk/download)
+- CUDA NPP, that should be installed with a CUDA SDK.
+- Everything should build with Rust stable, except for the cuda kernels which requires a recent
+  nightly Rust toolchain
+- [NVIDIA Video Codec SDK](https://developer.nvidia.com/nvidia-video-codec-sdk/download) and its
+  `NV_VIDEO_CODEC_SDK` env var.
 
 ```shell
 rustup toolchain install stable
