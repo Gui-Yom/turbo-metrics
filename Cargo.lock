@@ -12,6 +12,23 @@ dependencies = [
 ]
 
 [[package]]
+name = "amf"
+version = "0.1.0"
+dependencies = [
+ "amf-sys",
+ "libloading",
+ "widestring",
+]
+
+[[package]]
+name = "amf-sys"
+version = "0.1.0"
+dependencies = [
+ "bindgen",
+ "widestring",
+]
+
+[[package]]
 name = "anstream"
 version = "0.6.15"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1031,6 +1048,12 @@ dependencies = [
  "bytemuck",
  "safe_arch",
 ]
+
+[[package]]
+name = "widestring"
+version = "1.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7219d36b6eac893fa81e84ebe06485e7dcbb616177469b142df14f1f4deb1311"
 
 [[package]]
 name = "winapi"

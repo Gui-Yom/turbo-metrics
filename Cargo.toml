@@ -1,5 +1,7 @@
 [workspace]
 members = [
+    "crates/amf",
+    "crates/amf-sys",
     "crates/cudarse/cudarse-driver",
     "crates/cudarse/cudarse-driver-sys",
     "crates/cudarse/cudarse-npp",
@@ -22,6 +24,8 @@ members = [
 ]
 # Default members exlude nvptx crates
 default-members = [
+    "crates/amf",
+    "crates/amf-sys",
     "crates/cudarse/cudarse-driver",
     "crates/cudarse/cudarse-driver-sys",
     "crates/cudarse/cudarse-npp",
@@ -47,6 +51,8 @@ repository = "https://github.com/Gui-Yom/turbo-metrics"
 edition = "2021"
 
 [workspace.dependencies]
+amf = { path = "crates/amf", default-features = false }
+amf-sys = { path = "crates/amf-sys", default-features = false }
 codec-bitstream = { path = "crates/codec-bitstream", default-features = false }
 cuda-colorspace = { path = "crates/cuda-colorspace", default-features = false }
 cudarse-driver = { path = "crates/cudarse/cudarse-driver", default-features = false }
@@ -65,8 +71,9 @@ array-init = "2"
 bindgen = "0.70"
 bitstream-io = "2"
 clap = { version = "4", default-features = false, features = ["color", "derive", "error-context", "help", "std", "usage", "wrap_help"] }
-indices = "0.3"
 h264-reader = "0.7"
+indices = "0.3"
+libloading = "0.8"
 matroska-demuxer = "0.5"
 nalgebra = { version = "0.33", default-features = false, features = ["std"] }
 paste = "1"
@@ -74,6 +81,7 @@ rerun = "0.18"
 #spsc = { path = "../spsc" }
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+widestring = "1"
 zune-image = { version = "0.4", default-features = false, features = ["png", "simd", "metadata"] }
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.htm
