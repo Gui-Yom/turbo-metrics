@@ -8,13 +8,26 @@ fn include(path: &Path, header: &str) -> String {
 }
 
 fn main() {
-    let amf = PathBuf::from(env::var("AMF_SDK_PATH").unwrap());
+    let amf_sdk_include = if cfg!(target_os = "windows") {
+        PathBuf::from(env::var("AMF_SDK_PATH").expect(
+            "environment variable AMF_SDK_PATH must be set for nv-video-codec-sys to find the CUDA SDK",
+        ))
+    } else if cfg!(target_os = "linux") {
+        PathBuf::from(env::var("AMF_SDK_PATH").unwrap_or(
+            "/usr/include/AMF".to_string()
+        ))
+    } else {
+        todo!("Unsupported platform")
+    };
+    if !amf_sdk_include.exists() || !amf_sdk_include.is_dir() {
+        panic!("Path to the AMF SDK is invalid or inaccessible : {}", amf_sdk_include.display());
+    }
 
     let bindgen = bindgen::Builder::default()
-        .clang_args(["-I", amf.to_str().unwrap()])
-        .header(include(&amf, "core/Factory.h"))
-        .header(include(&amf, "core/Version.h"))
-        .header(include(&amf, "components/VideoDecoderUVD.h"))
+        .clang_args(["-I", amf_sdk_include.to_str().unwrap()])
+        .header(include(&amf_sdk_include, "core/Factory.h"))
+        .header(include(&amf_sdk_include, "core/Version.h"))
+        .header(include(&amf_sdk_include, "components/VideoDecoderUVD.h"))
         .generate_comments(false)
         .default_enum_style(EnumVariation::Rust {
             non_exhaustive: false,

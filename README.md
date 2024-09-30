@@ -100,38 +100,94 @@ Build with `cargo build --release -p turbo-metrics`. Start with `turbo-metrics -
 
 ## Prerequisites
 
-- Only tested on Windows 10 x64, but should work elsewhere
-- A recent [CUDA SDK](https://developer.nvidia.com/cuda-toolkit) (tested with 12.5), this project
-  uses the `CUDA_PATH` env var, please make sure it is available and correct.
-- CUDA NPP, that should be installed with a CUDA SDK.
-- Everything should build with Rust stable, except for the cuda kernels which requires a recent
-  nightly Rust toolchain
-- [NVIDIA Video Codec SDK](https://developer.nvidia.com/nvidia-video-codec-sdk/download) and its
-  `NV_VIDEO_CODEC_SDK` env var.
-- AMD AMF headers with `AMF_SDK_PATH` pointing to it.
+### Common
 
-```shell
-rustup toolchain install stable
-rustup toolchain install nightly
-rustup +nightly target add nvptx64-nvidia-cuda
-rustup +nightly component add llvm-bitcode-linker
-rustup +nightly component add llvm-tools
-```
+This repository is particularly difficult to set up for a Rust project due to the dependencies on
+various vendor SDKs.
+You need patience and the ability to read error message from builds.
+
+- 64-bit system.
+- CUDA 12.x (tested with 12.5 and 12.6, it might work with previous versions, I don't know)
+- CUDA NPP (normally packaged with CUDA by default, but it's optional component)
+- Rust stable
+- Rust nightly for the CUDA kernels (it should work with only nightly)
+- Various rustup components for the nightly channel :
+  ```shell
+  rustup +nightly target add nvptx64-nvidia-cuda
+  rustup +nightly component add llvm-bitcode-linker
+  rustup +nightly component add llvm-tools
+  ```
+- [NVIDIA Video Codec SDK](https://developer.nvidia.com/nvidia-video-codec-sdk/download) (need
+  headers only on Linux, full sdk on Windows) with the `NV_VIDEO_CODEC_SDK` env var
+- For the AMF backend : AMD AMF SDK headers
+- (in progress) For the libvmaf bindings : libvmaf
+- libclang available somewhere (that's for bindgen)
+
+### Windows
+
+- Tested on Windows 10, but should work elsewhere.
+- `CUDA_PATH` env var pointing to your CUDA install
+- `AMF_SDK_PATH` env var pointing to your AMF SDK install
+- NPP dlls can't be built statically in the resulting binary and must be redistributed with whatever
+  binary that depends on it.
+
+### Linux
+
+- Tested on Fedora 41 with proprietary Nvidia drivers (I do not think CUDA works with Nouveau ?)
+- `CUDA_PATH` env var is optional, by default it will look in `/usr/local/cuda`.
+- `AMF_SDK_PATH` env var is optional, by default it will look in `/usr/include/AMF` as AMF headers
+  were present in my system packages.
+- I need to link to `libstdc++` for NPP libraries, but it should be possible to use `libc++`
+  instead.
 
 ## Planned
 
-- Remove usage of CUDA NPP as it's impossible to link the libraries statically on windows. It's also
-  responsible for most of the code bloat.
-- New improved ssimulacra2 computation leveraging separated planes and fat kernels. (requires the
-  previous point)
-- Move cuda bindings and into their own repository. It's easier to develop in-tree for now.
-- Scene detection for AV1 using CUDA (adapting rav1e scene detection on the gpu). Not even sure
-  that's possible.
-- Other forms of scene detection like histogram analysis.
-- VMAF implementation
-- ~~Intel hardware decoding~~, AMD hardware decoding, Vulkan video decoding
-- ssimulacra2 using wgpu or vulkan (not locked to CUDA), OpenCL ?
-- NVENC for encoding using the GPU
+The base is solid. I plan to implement various tools to help the process of making encodes (except
+encoding itself) from pre-filtering to validation.
+In no particular order or priority :
+
+### Tools
+
+- GUI with plots and interactive usage
+
+### Implementations
+
+- XPSNR
+- VMAF (using both libvmaf and a custom CUDA impl)
+- Scene detection (histogram based should be easy)
+- Scene detection like the one used in rav1e (not even sure that's possible on a GPU)
+- Denoising algorithms (the usual ones in vapoursynth are fucking slow, maybe putting the whole
+  processing chain on the GPU can help, needs more research)
+- New ssimulacra2 implementation, without relying on NPP and with separate planes computations.
+- NVflip
+
+### Inputs
+
+- Region selection
+- Pair of images
+- More containers (mp4)
+- Pipe frames (not sure how that would work with 2 streams)
+- Raw bitstreams
+- More codecs
+- Finish implementing useful colorspaces
+- libavcodec input so everything is supported
+- CPU decoder fallback
+- Integrations with other tools ?
+
+### Outputs
+
+- Parseable stdout
+- JSON output
+- CSV output
+- Graph output
+
+### Platform support
+
+Currently, we're locked to Nvidia hardware. However, nothing here explicitly requires CUDA.
+
+- Other hardware video decoding API.
+- Other accelerated compute platforms (krnl, cubecl, Vulkan).
+- ffmpeg might help a lot since everything is already implemented.
 
 ## About video hardware acceleration
 

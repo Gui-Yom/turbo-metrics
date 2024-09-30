@@ -16,33 +16,66 @@ fn include(path: &Path, header: &str) -> String {
 }
 
 fn main() {
-    let sdk_path = PathBuf::from(env::var("NV_VIDEO_CODEC_SDK").expect(
+    let cuda_path = if cfg!(target_os = "windows") {
+        PathBuf::from(env::var("CUDA_PATH").expect(
+            "environment variable CUDA_PATH must be set for nv-video-codec-sys to find the CUDA SDK",
+        ))
+    } else if cfg!(target_os = "linux") {
+        PathBuf::from(env::var("CUDA_PATH").unwrap_or(
+            "/usr/local/cuda".to_string()
+        ))
+    } else {
+        todo!("Unsupported platform")
+    };
+    if !cuda_path.exists() || !cuda_path.is_dir() {
+        panic!("Path to the CUDA SDK is invalid or inaccessible : {}", cuda_path.display());
+    }
+
+    let video_sdk_path = PathBuf::from(env::var("NV_VIDEO_CODEC_SDK").expect(
         "environment variable NV_VIDEO_CODEC_SDK must be set for nv-video-codec-sys to find the video codec sdk path.",
     ));
-    let sdk_include = sdk_path.join("Interface");
-    let sdk_lib = sdk_path.join("Lib/x64");
-    let cuda_path = PathBuf::from(env::var("CUDA_PATH").expect(
-        "environment variable CUDA_PATH must be set for nv-video-codec-sys to find the CUDA SDK",
-    ));
-    let cuda_include_path = cuda_path.join("include");
+    if !video_sdk_path.exists() || !video_sdk_path.is_dir() {
+        panic!("Path to the Video Codec SDK is invalid or inaccessible : {}", video_sdk_path.display());
+    }
+    #[cfg(target_os = "windows")]
     let cuda_link_path = cuda_path.join("lib/x64");
+    #[cfg(target_os = "linux")]
+    let cuda_link = cuda_path.join("lib64");
 
-    // println!("cargo:rustc-link-lib=cuda");
-    link_lib("cuda");
-    link_lib("nvcuvid");
     println!(
         "cargo:rustc-link-search=native={}",
-        cuda_link_path.display()
+        cuda_link.display()
     );
-    println!("cargo:rustc-link-search=native={}", sdk_lib.display());
+
+    // On Windows, we need to link to the lib in the video codec sdk dir.
+    // Linux uses the standard /usr/lib
+
+    // On Windows we link to the .lib files
+    #[cfg(target_os = "windows")]
+    {
+        let sdk_link = video_sdk_path.join("Lib/x64");
+        println!(
+            "cargo:rustc-link-search=native={}",
+            sdk_link.display()
+        );
+        link_lib("cuda");
+        link_lib("nvcuvid");
+    }
+
+    // On Linux, we link to the .so
+    #[cfg(target_os = "linux")]
+    {
+        println!("cargo:rustc-link-lib=cuda");
+        println!("cargo:rustc-link-lib=nvcuvid");
+    }
     let bindgen = bindgen::Builder::default()
         .clang_args([
             "-I",
-            cuda_include_path.to_str().unwrap(),
+            cuda_path.join("include").to_str().unwrap(),
             "-I",
-            sdk_include.to_str().unwrap(),
+            video_sdk_path.join("Interface").to_str().unwrap(),
         ])
-        .header(include(&sdk_include, "nvcuvid.h"))
+        .header(include(&video_sdk_path.join("Interface"), "nvcuvid.h"))
         .generate_comments(false)
         .default_enum_style(EnumVariation::Rust {
             non_exhaustive: false,

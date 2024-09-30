@@ -292,14 +292,14 @@ impl<'a> CuVideoDecoder<'a> {
     ) -> CuResult<Self> {
         let mut ptr = null_mut();
         let mut create_info = CUVIDDECODECREATEINFO {
-            ulWidth: format.coded_width,
-            ulHeight: format.coded_height,
+            ulWidth: format.coded_width as _,
+            ulHeight: format.coded_height as _,
             // 0 means same as ulWidth
             ulMaxWidth: 0,
             ulMaxHeight: 0,
             // Same as ulWidth means no scaling
-            ulTargetWidth: format.coded_width,
-            ulTargetHeight: format.coded_height,
+            ulTargetWidth: format.coded_width as _,
+            ulTargetHeight: format.coded_height as _,
 
             display_area: _CUVIDDECODECREATEINFO__bindgen_ty_1 {
                 left: format.display_area.left as c_short,
@@ -320,7 +320,7 @@ impl<'a> CuVideoDecoder<'a> {
             OutputFormat: surface_format,
             DeinterlaceMode: cudaVideoDeinterlaceMode::cudaVideoDeinterlaceMode_Weave,
 
-            ulNumDecodeSurfaces: decode_surfaces,
+            ulNumDecodeSurfaces: decode_surfaces as _,
             ulNumOutputSurfaces: 1,
 
             ulCreationFlags: if lock_for_cuda.is_some() {

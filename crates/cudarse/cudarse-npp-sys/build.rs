@@ -7,7 +7,10 @@ use bindgen::EnumVariation;
 
 fn link_lib(lib: &str) {
     if cfg!(feature = "static") {
+        #[cfg(target_os = "windows")]
         println!("cargo:rustc-link-lib=static={lib}");
+        #[cfg(target_os = "linux")]
+        println!("cargo:rustc-link-lib=static={lib}_static");
     } else {
         println!("cargo:rustc-link-lib={lib}");
     }
@@ -18,23 +21,36 @@ fn include(path: &Path, header: &str) -> String {
 }
 
 fn main() {
-    let cuda_path = PathBuf::from(env::var("CUDA_PATH").expect(
-        "environment variable CUDA_PATH must be set for cuda-npp-sys to find the CUDA SDK",
-    ));
-    let include_path = cuda_path.join("include");
-    let link_path = cuda_path.join("lib/x64");
+    let cuda_path = if cfg!(target_os = "windows") {
+        PathBuf::from(env::var("CUDA_PATH").expect(
+            "environment variable CUDA_PATH must be set for nv-video-codec-sys to find the CUDA SDK",
+        ))
+    } else if cfg!(target_os = "linux") {
+        PathBuf::from(env::var("CUDA_PATH").unwrap_or(
+            "/usr/local/cuda".to_string()
+        ))
+    } else {
+        todo!("Unsupported platform")
+    };
+    if !cuda_path.exists() || !cuda_path.is_dir() {
+        panic!("Path to the CUDA SDK is invalid or inaccessible : {}", cuda_path.display());
+    }
+    let cuda_include = cuda_path.join("include");
+    #[cfg(target_os = "windows")]
+    let cuda_link_path = cuda_path.join("lib/x64");
+    #[cfg(target_os = "linux")]
+    let cuda_link = cuda_path.join("lib64");
+
+    println!("cargo:rustc-link-search={}", cuda_link.display());
 
     println!("cargo:rustc-link-lib=cuda");
-    link_lib(if cfg!(feature = "static") {
-        "cudart_static"
-    } else {
-        "cudart"
-    });
-    println!("cargo:rustc-link-search={}", link_path.display());
+    #[cfg(target_os = "linux")]
+    println!("cargo:rustc-link-lib=stdc++");
+    link_lib("cudart");
     let mut bindgen = bindgen::Builder::default()
-        .clang_args(["-I", include_path.to_str().unwrap()])
-        .header(include(&include_path, "nppdefs.h"))
-        .header(include(&include_path, "nppcore.h"))
+        .clang_args(["-I", cuda_include.to_str().unwrap()])
+        .header(include(&cuda_include, "nppdefs.h"))
+        .header(include(&cuda_include, "nppcore.h"))
         .must_use_type("NppStatus")
         //.blocklist_type("(Npp8u)|(Npp8s)|(Npp16u)|(Npp16s)|(Npp32s)|(Npp32f)")
         .generate_comments(false)
@@ -64,48 +80,48 @@ fn main() {
     // npp core
     link_lib("nppc");
     #[cfg(all(feature = "static", target_os = "linux"))]
-    link_lib("culibos");
+    println!("cargo:rustc-link-lib=culibos");
 
     #[cfg(feature = "ial")]
     {
         link_lib("nppial");
         bindgen = bindgen.header(include(
-            &include_path,
+            &cuda_include,
             "nppi_arithmetic_and_logical_operations.h",
         ));
     }
     #[cfg(feature = "icc")]
     {
         link_lib("nppicc");
-        bindgen = bindgen.header(include(&include_path, "nppi_color_conversion.h"));
+        bindgen = bindgen.header(include(&cuda_include, "nppi_color_conversion.h"));
     }
     #[cfg(feature = "idei")]
     {
         link_lib("nppidei");
         bindgen = bindgen.header(include(
-            &include_path,
+            &cuda_include,
             "nppi_data_exchange_and_initialization.h",
         ));
     }
     #[cfg(feature = "if")]
     {
         link_lib("nppif");
-        bindgen = bindgen.header(include(&include_path, "nppi_filtering_functions.h"));
+        bindgen = bindgen.header(include(&cuda_include, "nppi_filtering_functions.h"));
     }
     #[cfg(feature = "ig")]
     {
         link_lib("nppig");
-        bindgen = bindgen.header(include(&include_path, "nppi_geometry_transforms.h"));
+        bindgen = bindgen.header(include(&cuda_include, "nppi_geometry_transforms.h"));
     }
     #[cfg(feature = "ist")]
     {
         link_lib("nppist");
-        bindgen = bindgen.header(include(&include_path, "nppi_statistics_functions.h"));
+        bindgen = bindgen.header(include(&cuda_include, "nppi_statistics_functions.h"));
     }
     #[cfg(feature = "isu")]
     {
         link_lib("nppisu");
-        bindgen = bindgen.header(include(&include_path, "nppi_support_functions.h"));
+        bindgen = bindgen.header(include(&cuda_include, "nppi_support_functions.h"));
     }
     let bindings = bindgen.generate().expect("Unable to generate bindings");
 
