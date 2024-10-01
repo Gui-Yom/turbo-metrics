@@ -26,18 +26,19 @@ fn main() {
             "environment variable CUDA_PATH must be set for nv-video-codec-sys to find the CUDA SDK",
         ))
     } else if cfg!(target_os = "linux") {
-        PathBuf::from(env::var("CUDA_PATH").unwrap_or(
-            "/usr/local/cuda".to_string()
-        ))
+        PathBuf::from(env::var("CUDA_PATH").unwrap_or("/usr/local/cuda".to_string()))
     } else {
         todo!("Unsupported platform")
     };
     if !cuda_path.exists() || !cuda_path.is_dir() {
-        panic!("Path to the CUDA SDK is invalid or inaccessible : {}", cuda_path.display());
+        panic!(
+            "Path to the CUDA SDK is invalid or inaccessible : {}",
+            cuda_path.display()
+        );
     }
     let cuda_include = cuda_path.join("include");
     #[cfg(target_os = "windows")]
-    let cuda_link_path = cuda_path.join("lib/x64");
+    let cuda_link = cuda_path.join("lib/x64");
     #[cfg(target_os = "linux")]
     let cuda_link = cuda_path.join("lib64");
 

@@ -21,31 +21,32 @@ fn main() {
             "environment variable CUDA_PATH must be set for nv-video-codec-sys to find the CUDA SDK",
         ))
     } else if cfg!(target_os = "linux") {
-        PathBuf::from(env::var("CUDA_PATH").unwrap_or(
-            "/usr/local/cuda".to_string()
-        ))
+        PathBuf::from(env::var("CUDA_PATH").unwrap_or("/usr/local/cuda".to_string()))
     } else {
         todo!("Unsupported platform")
     };
     if !cuda_path.exists() || !cuda_path.is_dir() {
-        panic!("Path to the CUDA SDK is invalid or inaccessible : {}", cuda_path.display());
+        panic!(
+            "Path to the CUDA SDK is invalid or inaccessible : {}",
+            cuda_path.display()
+        );
     }
 
     let video_sdk_path = PathBuf::from(env::var("NV_VIDEO_CODEC_SDK").expect(
         "environment variable NV_VIDEO_CODEC_SDK must be set for nv-video-codec-sys to find the video codec sdk path.",
     ));
     if !video_sdk_path.exists() || !video_sdk_path.is_dir() {
-        panic!("Path to the Video Codec SDK is invalid or inaccessible : {}", video_sdk_path.display());
+        panic!(
+            "Path to the Video Codec SDK is invalid or inaccessible : {}",
+            video_sdk_path.display()
+        );
     }
     #[cfg(target_os = "windows")]
-    let cuda_link_path = cuda_path.join("lib/x64");
+    let cuda_link = cuda_path.join("lib/x64");
     #[cfg(target_os = "linux")]
     let cuda_link = cuda_path.join("lib64");
 
-    println!(
-        "cargo:rustc-link-search=native={}",
-        cuda_link.display()
-    );
+    println!("cargo:rustc-link-search=native={}", cuda_link.display());
 
     // On Windows, we need to link to the lib in the video codec sdk dir.
     // Linux uses the standard /usr/lib
@@ -54,10 +55,7 @@ fn main() {
     #[cfg(target_os = "windows")]
     {
         let sdk_link = video_sdk_path.join("Lib/x64");
-        println!(
-            "cargo:rustc-link-search=native={}",
-            sdk_link.display()
-        );
+        println!("cargo:rustc-link-search=native={}", sdk_link.display());
         link_lib("cuda");
         link_lib("nvcuvid");
     }
