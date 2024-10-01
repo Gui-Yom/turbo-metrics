@@ -5,7 +5,7 @@ edition.workspace = true
 authors.workspace = true
 homepage.workspace = true
 repository.workspace = true
-rust-version = "1.73"
+rust-version = "1.77"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
@@ -19,7 +19,7 @@ indices = { workspace = true }
 nvptx-builder = { workspace = true }
 
 [dev-dependencies]
-zune-image.workspace = true
+zune-image = { workspace = true, features = ["png", "simd", "metadata"] }
 
 [features]
 default = ["static"]

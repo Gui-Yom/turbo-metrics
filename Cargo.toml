@@ -80,7 +80,7 @@ rerun = "0.18"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 widestring = "1"
-zune-image = { version = "0.4", default-features = false, features = ["png", "simd", "metadata"] }
+zune-image = { version = "0.4", default-features = false }
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.htm
 

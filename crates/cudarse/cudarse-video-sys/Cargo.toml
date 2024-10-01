@@ -5,6 +5,7 @@ edition.workspace = true
 authors.workspace = true
 homepage.workspace = true
 repository.workspace = true
+rust-version = "1.77"
 
 [dependencies]
 cudarse-driver-sys = { workspace = true }

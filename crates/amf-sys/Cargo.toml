@@ -5,6 +5,7 @@ authors.workspace = true
 homepage.workspace = true
 repository.workspace = true
 edition.workspace = true
+rust-version = "1.77"
 
 [dependencies]
 widestring = { workspace = true }
