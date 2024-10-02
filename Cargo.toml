@@ -70,16 +70,19 @@ bindgen = "0.70"
 bitstream-io = "2"
 clap = { version = "4", default-features = false, features = ["color", "derive", "error-context", "help", "std", "usage", "wrap_help"] }
 h264-reader = "0.7"
+image = { version = "0.25", default-features = false }
 indices = "0.3"
 libloading = "0.8"
 matroska-demuxer = "0.5"
 nalgebra = { version = "0.33", default-features = false, features = ["std"] }
 paste = "1"
+peekable = { version = "0.2", default-features = false }
 rerun = "0.18"
 #spsc = { path = "../spsc" }
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 widestring = "1"
+zune-core = { version = "0.4", default-features = false, features = ["std"] }
 zune-image = { version = "0.4", default-features = false }
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.htm

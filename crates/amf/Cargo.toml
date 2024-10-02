@@ -5,6 +5,7 @@ authors.workspace = true
 homepage.workspace = true
 repository.workspace = true
 edition.workspace = true
+license = "MIT"
 rust-version = "1.77"
 
 [dependencies]
