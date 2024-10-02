@@ -2,9 +2,26 @@ use nalgebra::{Matrix3, Matrix3x1};
 use std::f64::consts::PI;
 use std::fs::File;
 use std::io::Write;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::{env, io};
+
+// See: https://github.com/rust-lang/rust/blob/564758c4c329e89722454dd2fbb35f1ac0b8b47c/src/bootstrap/dist.rs#L2334-L2341
+pub fn rustlib() -> PathBuf {
+    let rustc = env::var_os("RUSTC").unwrap_or_else(|| "rustc".into());
+    let output = Command::new(rustc)
+        .arg("--print")
+        .arg("sysroot")
+        .output()
+        .unwrap();
+    let sysroot = String::from_utf8(output.stdout).unwrap().trim().to_owned();
+    let mut pathbuf = PathBuf::from(sysroot);
+    pathbuf.push("lib");
+    pathbuf.push("rustlib");
+    pathbuf.push(env::var("HOST").expect("No HOST set for host triple"));
+    pathbuf.push("bin");
+    pathbuf
+}
 
 fn main() {
     let cuda_path =
@@ -15,7 +32,8 @@ fn main() {
     let root = env::var("CARGO_MANIFEST_DIR").unwrap();
     println!("cargo:rerun-if-changed={root}/shared.bc");
     let out = env::var("OUT_DIR").unwrap();
-    assert!(Command::new("llvm-as")
+    let llvm_as = rustlib().join("llvm-as");
+    assert!(Command::new(llvm_as)
         .arg("-o")
         .arg(&format!("{out}/shared.bc"))
         .arg(&format!("{root}/src/shared.ll"))
