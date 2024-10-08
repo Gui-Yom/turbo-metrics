@@ -1,0 +1,32 @@
+[package]
+name = "turbo-metrics-cli"
+version = "0.3.0"
+authors.workspace = true
+homepage.workspace = true
+repository.workspace = true
+edition.workspace = true
+license = "AGPL-3"
+rust-version = "1.79"
+
+[[bin]]
+name = "turbo-metrics"
+path = "src/main.rs"
+
+[dependencies]
+clap = { workspace = true }
+turbo-metrics = { workspace = true }
+
+[features]
+default = ["png", "jpeg", "jpeg-xl"]
+# Try to statically link to a maximum of native libraries
+static = ["turbo-metrics/static"]
+# Image format support
+png = ["turbo-metrics/png"]
+jpeg = ["turbo-metrics/jpeg"]
+jpeg-xl = ["turbo-metrics/jpeg-xl"]
+bmp = ["turbo-metrics/bmp"]
+qoi = ["turbo-metrics/qoi"]
+gif = ["turbo-metrics/gif"]
+tiff = ["turbo-metrics/tiff"]
+webp = ["turbo-metrics/webp"]
+avif = ["turbo-metrics/avif"]

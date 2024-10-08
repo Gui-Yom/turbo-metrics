@@ -1,10 +1,10 @@
 use clap::{Args, Parser};
-use peekable::PeekExt;
 use std::fmt::Display;
 use std::fs::File;
 use std::io::{stdin, BufReader, Read};
 use std::path::PathBuf;
-use turbo_metrics::input::probe_image;
+use turbo_metrics::input::peekable::PeekExt;
+use turbo_metrics::input::{probe_image, PROBE_LEN};
 use turbo_metrics::{
     init_cuda, process_img_pair, process_video_pair, MetricsToCompute, VideoOptions,
 };
@@ -66,14 +66,14 @@ fn main() {
     let args = CliArgs::parse();
 
     let mut in_ref =
-        BufReader::new(File::open(&args.reference).unwrap()).peekable_with_capacity(32);
+        BufReader::new(File::open(&args.reference).unwrap()).peekable_with_capacity(PROBE_LEN);
     let in_dis: Box<dyn Read> = if args.distorted.to_str() == Some("-") {
         // Use stdin
         Box::new(BufReader::new(stdin().lock()))
     } else {
         Box::new(BufReader::new(File::open(&args.distorted).unwrap()))
     };
-    let mut in_dis = in_dis.peekable_with_capacity(32);
+    let mut in_dis = in_dis.peekable_with_capacity(PROBE_LEN);
 
     // Try with an image first
     if let Some(probe_ref) = probe_image(&mut in_ref) {

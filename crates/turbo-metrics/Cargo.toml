@@ -9,7 +9,6 @@ license = "AGPL-3"
 rust-version = "1.79"
 
 [dependencies]
-clap = { workspace = true }
 codec-bitstream = { workspace = true }
 cuda-colorspace = { workspace = true }
 cudarse-driver = { workspace = true }

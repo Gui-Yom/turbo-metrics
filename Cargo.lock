@@ -1454,7 +1454,6 @@ dependencies = [
 name = "turbo-metrics"
 version = "0.3.0"
 dependencies = [
- "clap",
  "codec-bitstream",
  "cuda-colorspace",
  "cudarse-driver",
@@ -1467,6 +1466,14 @@ dependencies = [
  "stats",
  "zune-core",
  "zune-image",
+]
+
+[[package]]
+name = "turbo-metrics-cli"
+version = "0.3.0"
+dependencies = [
+ "clap",
+ "turbo-metrics",
 ]
 
 [[package]]

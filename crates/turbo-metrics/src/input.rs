@@ -4,12 +4,15 @@ use cudarse_video::dec::{CuVideoParser, CuvidParserCallbacks};
 use cudarse_video::sys::{cudaVideoCodec, cudaVideoCodec_enum};
 use image::{DynamicImage, GenericImageView};
 use matroska_demuxer::{Frame, MatroskaFile};
+pub use peekable;
 use peekable::Peekable;
 use std::fs::File;
 use std::io::{BufReader, Read};
 use std::path::Path;
 use zune_core::bit_depth::BitType;
 use zune_core::options::DecoderOptions;
+
+pub const PROBE_LEN: usize = 64;
 
 #[derive(Debug, Copy, Clone)]
 pub enum ImageProbe {
@@ -41,7 +44,7 @@ impl ImageProbe {
 /// `None` if we cannot even recognize the image, `Some` if we can recognize the format.
 /// This will peek at the first bytes on the stream.
 pub fn probe_image(r: &mut Peekable<impl Read>) -> Option<ImageProbe> {
-    let mut start = [0; 32];
+    let mut start = [0; PROBE_LEN];
     let len = r.peek(&mut start).unwrap();
     // First try zune_image
     if let Some((f, _)) = zune_image::codecs::ImageFormat::guess_format(&start[..len]) {
