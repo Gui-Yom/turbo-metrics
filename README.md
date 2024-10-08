@@ -11,12 +11,14 @@ Including :
 - Utilities and foundational libraries for codec bitstream demuxing and statistics.
 - Kernels for colorspace conversion and linearization.
 
+---
+
 ## Goal
 
-The goal is to make things go fast by powering up the RTX 3060 in my laptop instead of burning my
-CPU.
+This project started as me noticing my GPU usage at 0% while my CPU was overloaded while doing video
+processing.
 
-Best case is :
+The strategy is to offload as much work as possible onto the GPU :
 
 1. Demux a video file on the CPU
 2. Decode the bitstream on hardware and keep the frame in CUDA memory
@@ -24,48 +26,15 @@ Best case is :
 4. Get the results back to the CPU
 
 In some instances, it would be impossible to decode the frame on the GPU, which means one has to
-stream decoded frames from the CPU (PNG or unsupported codec), this would reduce performance but
+stream decoded frames from the CPU (e.g. image formats), this would reduce performance but
 still be faster than full CPU processing if the frames can stay in gpu memory long enough.
 
-## Tools
+## Subprojects
 
 ### turbo-metrics
 
-CLi to process a pair of videos and compute various metrics and statistics.
-Included metrics :
-
-- PSNR
-- SSIM
-- MSSSIM
-- SSIMULACRA2
-
-Supported video containers :
-
-- MKV
-
-Supported video codecs :
-
-- AV1
-- AVC/H.264
-- MPEG-2 Part 2/H.262
-
-Supported image codecs :
-
-- PNG
-- JPEG
-- JPEG-XL
-- AVIF* (8 bits only, requires libdav1d)
-- Webp*
-- QOI*
-- GIF*
-- TIFF*
-
-\* _feature turned off by default_
-
-Build a release binary with `cargo build --release -p turbo-metrics --features static`. Start with
-`turbo-metrics --help`.
-
-## Libraries
+CLI to process a pair of videos or images and compute various metrics and statistics.
+Available [here](crates/turbo-metrics-cli/README.md).
 
 ### cudarse
 
@@ -87,6 +56,10 @@ libdevice.
 Allows a crate to define a dependency on a nvptx crate and have it built with a single
 `cargo build`.
 
+### cuda-colorspace
+
+Colorspace conversion CUDA kernels used in other crates.
+
 ### ssimulacra2-cuda
 
 An attempt at computing the ssimulacra2 metric with GPU acceleration leveraging NPP and custom
@@ -95,25 +68,28 @@ that runs fast.
 
 Reference implementation : https://github.com/cloudinary/ssimulacra2
 
-Rust implementation : https://github.com/rust-av/ssimulacra2
-
 ### vmaf
 
 Bindings to libvmaf.
 
 ## Prerequisites
 
-### Common
-
 This repository is particularly difficult to set up for a Rust project due to the dependencies on
 various vendor SDKs.
-You need patience and the ability to read error message from builds.
+You need to be patient and be able to read error message from builds.
+
+Also, it uses a novel approach enabled by recent rustc developments to colocate CUDA kernels written
+in Rust within the same cargo workspace. This is very much bleeding edge and the way the crates are
+linked together prevent publishing to crates.io. The only supported way to build any crate in this
+repo is by cloning the git repo.
+
+### Common
 
 - 64-bit system.
 - CUDA 12.x (tested with 12.5 and 12.6, it might work with previous versions, I don't know)
 - CUDA NPP (normally packaged with CUDA by default, but it's optional component)
 - Rust stable
-- Rust nightly for the CUDA kernels (it should work with only nightly)
+- Rust nightly for the CUDA kernels (it should work with only a nightly toolchain and no stable)
 - Various rustup components for the nightly channel :
   ```shell
   rustup +nightly target add nvptx64-nvidia-cuda
@@ -142,6 +118,14 @@ You need patience and the ability to read error message from builds.
   were present in my system packages.
 - I need to link to `libstdc++` for NPP libraries, but it should be possible to use `libc++`
   instead.
+
+## Support this project
+
+There are various ways you can support development.
+
+- File a detailed issue when you encounter a problem
+- Support me through [ko-fi](https://ko-fi.com/ganthouard)
+  or [GitHub Sponsors](https://github.com/sponsors/Gui-Yom)
 
 ## TODO ideas
 
