@@ -46,7 +46,7 @@ impl ColorspaceConversion {
                         todo!()
                     } else {
                         self.kernel
-                            .biplanaryuv420_to_linearrgb_8_L_BT709(src, dst, stream)
+                            .biplanaryuv420_to_linearrgb_8_l_bt709(src, dst, stream)
                     }
                 }
                 _ => todo!(),
@@ -57,7 +57,7 @@ impl ColorspaceConversion {
                         todo!()
                     } else {
                         self.kernel
-                            .biplanaryuv420_to_linearrgb_8_L_BT601_525(src, dst, stream)
+                            .biplanaryuv420_to_linearrgb_8_l_bt601_525(src, dst, stream)
                     }
                 }
                 _ => todo!(),
@@ -68,7 +68,7 @@ impl ColorspaceConversion {
                         todo!()
                     } else {
                         self.kernel
-                            .biplanaryuv420_to_linearrgb_8_L_BT601_625(src, dst, stream)
+                            .biplanaryuv420_to_linearrgb_8_l_bt601_625(src, dst, stream)
                     }
                 }
                 _ => todo!(),
@@ -92,7 +92,7 @@ impl ColorspaceConversion {
                         todo!()
                     } else {
                         self.kernel
-                            .biplanaryuv420_to_linearrgb_16_L_BT709(src, dst, stream)
+                            .biplanaryuv420_to_linearrgb_16_l_bt709(src, dst, stream)
                     }
                 }
                 _ => todo!(),
@@ -103,7 +103,7 @@ impl ColorspaceConversion {
                         todo!()
                     } else {
                         self.kernel
-                            .biplanaryuv420_to_linearrgb_16_L_BT601_525(src, dst, stream)
+                            .biplanaryuv420_to_linearrgb_16_l_bt601_525(src, dst, stream)
                     }
                 }
                 _ => todo!(),
@@ -114,7 +114,7 @@ impl ColorspaceConversion {
                         todo!()
                     } else {
                         self.kernel
-                            .biplanaryuv420_to_linearrgb_16_L_BT601_625(src, dst, stream)
+                            .biplanaryuv420_to_linearrgb_16_l_bt601_625(src, dst, stream)
                     }
                 }
                 _ => todo!(),

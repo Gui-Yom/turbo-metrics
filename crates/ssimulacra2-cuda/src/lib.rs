@@ -29,7 +29,7 @@ pub struct Ssimulacra2 {
     npp: NppStreamContext,
     exec: Option<CuGraphExec>,
 
-    sizes: [NppiRect; SCALES],
+    // sizes: [NppiRect; SCALES],
     sizes_t: [NppiRect; SCALES],
 
     ref_linear: [Image<f32, C<3>>; SCALES - 1],
@@ -90,7 +90,7 @@ impl Ssimulacra2 {
             kernel: Kernel::load(),
             npp,
             exec: None,
-            sizes,
+            // sizes,
             sizes_t,
             ref_linear,
             dis_linear,

@@ -25,17 +25,17 @@ impl CuGraph {
         Ok(CuGraphExec(NonNull::new(exec).expect("null pointer")))
     }
 
-    pub fn get_root_nodes(&self, max_nodes: usize) -> CuResult<Vec<CuGraphNode>> {
-        let mut nodes = Vec::with_capacity(max_nodes);
-        nodes.extend(repeat(null_mut()).take(max_nodes));
-        let mut len = max_nodes;
-        unsafe {
-            sys::cuGraphGetRootNodes(self.0.as_ptr(), nodes.as_mut_ptr(), &mut len).result()?;
-        }
-        dbg!(len);
-        nodes.truncate(len);
-        Ok(unsafe { mem::transmute(nodes) })
-    }
+    // pub fn get_root_nodes(&self, max_nodes: usize) -> CuResult<Vec<CuGraphNode>> {
+    //     let mut nodes = Vec::with_capacity(max_nodes);
+    //     nodes.extend(repeat(null_mut()).take(max_nodes));
+    //     let mut len = max_nodes;
+    //     unsafe {
+    //         sys::cuGraphGetRootNodes(self.0.as_ptr(), nodes.as_mut_ptr(), &mut len).result()?;
+    //     }
+    //     dbg!(len);
+    //     nodes.truncate(len);
+    //     Ok(unsafe { mem::transmute(nodes) })
+    // }
 }
 
 impl Drop for CuGraph {

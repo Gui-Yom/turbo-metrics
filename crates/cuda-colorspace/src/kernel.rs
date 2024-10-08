@@ -4,13 +4,13 @@ use cudarse_npp::debug_assert_same_size;
 use cudarse_npp::image::{Img, ImgMut, C, P};
 
 pub struct Kernel {
-    module: CuModule,
-    biplanaryuv420_to_linearrgb_8_L_BT709: CuFunction,
-    biplanaryuv420_to_linearrgb_16_L_BT709: CuFunction,
-    biplanaryuv420_to_linearrgb_8_L_BT601_525: CuFunction,
-    biplanaryuv420_to_linearrgb_16_L_BT601_525: CuFunction,
-    biplanaryuv420_to_linearrgb_8_L_BT601_625: CuFunction,
-    biplanaryuv420_to_linearrgb_16_L_BT601_625: CuFunction,
+    _module: CuModule,
+    biplanaryuv420_to_linearrgb_8_l_bt709: CuFunction,
+    biplanaryuv420_to_linearrgb_16_l_bt709: CuFunction,
+    biplanaryuv420_to_linearrgb_8_l_bt601_525: CuFunction,
+    biplanaryuv420_to_linearrgb_16_l_bt601_525: CuFunction,
+    biplanaryuv420_to_linearrgb_8_l_bt601_625: CuFunction,
+    biplanaryuv420_to_linearrgb_16_l_bt601_625: CuFunction,
     biplanaryuv420_to_linearrgb_debug: CuFunction,
     f32_to_8bit: CuFunction,
     srgb_to_linear_u8_lookup: CuFunction,
@@ -27,18 +27,18 @@ impl Kernel {
             "/cuda_colorspace_kernel.ptx"
         )))?;
         Ok(Self {
-            biplanaryuv420_to_linearrgb_8_L_BT709: module
-                .function_by_name("biplanaryuv420_to_linearrgb_8_L_BT709")?,
-            biplanaryuv420_to_linearrgb_16_L_BT709: module
-                .function_by_name("biplanaryuv420_to_linearrgb_16_L_BT709")?,
-            biplanaryuv420_to_linearrgb_8_L_BT601_525: module
-                .function_by_name("biplanaryuv420_to_linearrgb_8_L_BT601_525")?,
-            biplanaryuv420_to_linearrgb_16_L_BT601_525: module
-                .function_by_name("biplanaryuv420_to_linearrgb_16_L_BT601_525")?,
-            biplanaryuv420_to_linearrgb_8_L_BT601_625: module
-                .function_by_name("biplanaryuv420_to_linearrgb_8_L_BT601_625")?,
-            biplanaryuv420_to_linearrgb_16_L_BT601_625: module
-                .function_by_name("biplanaryuv420_to_linearrgb_16_L_BT601_625")?,
+            biplanaryuv420_to_linearrgb_8_l_bt709: module
+                .function_by_name("biplanaryuv420_to_linearrgb_8_l_bt709")?,
+            biplanaryuv420_to_linearrgb_16_l_bt709: module
+                .function_by_name("biplanaryuv420_to_linearrgb_16_l_bt709")?,
+            biplanaryuv420_to_linearrgb_8_l_bt601_525: module
+                .function_by_name("biplanaryuv420_to_linearrgb_8_l_bt601_525")?,
+            biplanaryuv420_to_linearrgb_16_l_bt601_525: module
+                .function_by_name("biplanaryuv420_to_linearrgb_16_l_bt601_525")?,
+            biplanaryuv420_to_linearrgb_8_l_bt601_625: module
+                .function_by_name("biplanaryuv420_to_linearrgb_8_l_bt601_625")?,
+            biplanaryuv420_to_linearrgb_16_l_bt601_625: module
+                .function_by_name("biplanaryuv420_to_linearrgb_16_l_bt601_625")?,
             biplanaryuv420_to_linearrgb_debug: module
                 .function_by_name("biplanaryuv420_to_linearrgb_debug")?,
             f32_to_8bit: module.function_by_name("f32_to_8bit")?,
@@ -46,11 +46,11 @@ impl Kernel {
             srgb_to_linear_u8: module.function_by_name("srgb_to_linear_u8")?,
             srgb_to_linear_u16: module.function_by_name("srgb_to_linear_u16")?,
             srgb_to_linear_f32: module.function_by_name("srgb_to_linear_f32")?,
-            module,
+            _module: module,
         })
     }
 
-    pub fn biplanaryuv420_to_linearrgb_8_L_BT709(
+    pub fn biplanaryuv420_to_linearrgb_8_l_bt709(
         &self,
         src: impl Img<u8, P<2>>,
         mut dst: impl ImgMut<f32, C<3>>,
@@ -59,11 +59,11 @@ impl Kernel {
         debug_assert_same_size!(src, dst);
         unsafe {
             let mut iter = src.alloc_ptrs();
-            let mut y = iter.next().unwrap();
-            let mut uv = iter.next().unwrap();
-            let mut w = dst.width() / 2;
-            let mut h = dst.height() / 2;
-            self.biplanaryuv420_to_linearrgb_8_L_BT709.launch(
+            let y = iter.next().unwrap();
+            let uv = iter.next().unwrap();
+            let w = dst.width() / 2;
+            let h = dst.height() / 2;
+            self.biplanaryuv420_to_linearrgb_8_l_bt709.launch(
                 &launch_config_2d(w, h),
                 stream,
                 kernel_params!(
@@ -80,7 +80,7 @@ impl Kernel {
         }
     }
 
-    pub fn biplanaryuv420_to_linearrgb_16_L_BT709(
+    pub fn biplanaryuv420_to_linearrgb_16_l_bt709(
         &self,
         src: impl Img<u16, P<2>>,
         mut dst: impl ImgMut<f32, C<3>>,
@@ -89,11 +89,11 @@ impl Kernel {
         debug_assert_same_size!(src, dst);
         unsafe {
             let mut iter = src.alloc_ptrs();
-            let mut y = iter.next().unwrap();
-            let mut uv = iter.next().unwrap();
-            let mut w = dst.width() / 2;
-            let mut h = dst.height() / 2;
-            self.biplanaryuv420_to_linearrgb_16_L_BT709.launch(
+            let y = iter.next().unwrap();
+            let uv = iter.next().unwrap();
+            let w = dst.width() / 2;
+            let h = dst.height() / 2;
+            self.biplanaryuv420_to_linearrgb_16_l_bt709.launch(
                 &launch_config_2d(w, h),
                 stream,
                 kernel_params!(
@@ -110,7 +110,7 @@ impl Kernel {
         }
     }
 
-    pub fn biplanaryuv420_to_linearrgb_8_L_BT601_525(
+    pub fn biplanaryuv420_to_linearrgb_8_l_bt601_525(
         &self,
         src: impl Img<u8, P<2>>,
         mut dst: impl ImgMut<f32, C<3>>,
@@ -119,11 +119,11 @@ impl Kernel {
         debug_assert_same_size!(src, dst);
         unsafe {
             let mut iter = src.alloc_ptrs();
-            let mut y = iter.next().unwrap();
-            let mut uv = iter.next().unwrap();
-            let mut w = dst.width() / 2;
-            let mut h = dst.height() / 2;
-            self.biplanaryuv420_to_linearrgb_8_L_BT601_525.launch(
+            let y = iter.next().unwrap();
+            let uv = iter.next().unwrap();
+            let w = dst.width() / 2;
+            let h = dst.height() / 2;
+            self.biplanaryuv420_to_linearrgb_8_l_bt601_525.launch(
                 &launch_config_2d(w, h),
                 stream,
                 kernel_params!(
@@ -140,7 +140,7 @@ impl Kernel {
         }
     }
 
-    pub fn biplanaryuv420_to_linearrgb_16_L_BT601_525(
+    pub fn biplanaryuv420_to_linearrgb_16_l_bt601_525(
         &self,
         src: impl Img<u16, P<2>>,
         mut dst: impl ImgMut<f32, C<3>>,
@@ -149,11 +149,11 @@ impl Kernel {
         debug_assert_same_size!(src, dst);
         unsafe {
             let mut iter = src.alloc_ptrs();
-            let mut y = iter.next().unwrap();
-            let mut uv = iter.next().unwrap();
-            let mut w = dst.width() / 2;
-            let mut h = dst.height() / 2;
-            self.biplanaryuv420_to_linearrgb_16_L_BT601_525.launch(
+            let y = iter.next().unwrap();
+            let uv = iter.next().unwrap();
+            let w = dst.width() / 2;
+            let h = dst.height() / 2;
+            self.biplanaryuv420_to_linearrgb_16_l_bt601_525.launch(
                 &launch_config_2d(w, h),
                 stream,
                 kernel_params!(
@@ -170,7 +170,7 @@ impl Kernel {
         }
     }
 
-    pub fn biplanaryuv420_to_linearrgb_8_L_BT601_625(
+    pub fn biplanaryuv420_to_linearrgb_8_l_bt601_625(
         &self,
         src: impl Img<u8, P<2>>,
         mut dst: impl ImgMut<f32, C<3>>,
@@ -179,11 +179,11 @@ impl Kernel {
         debug_assert_same_size!(src, dst);
         unsafe {
             let mut iter = src.alloc_ptrs();
-            let mut y = iter.next().unwrap();
-            let mut uv = iter.next().unwrap();
-            let mut w = dst.width() / 2;
-            let mut h = dst.height() / 2;
-            self.biplanaryuv420_to_linearrgb_8_L_BT601_625.launch(
+            let y = iter.next().unwrap();
+            let uv = iter.next().unwrap();
+            let w = dst.width() / 2;
+            let h = dst.height() / 2;
+            self.biplanaryuv420_to_linearrgb_8_l_bt601_625.launch(
                 &launch_config_2d(w, h),
                 stream,
                 kernel_params!(
@@ -200,7 +200,7 @@ impl Kernel {
         }
     }
 
-    pub fn biplanaryuv420_to_linearrgb_16_L_BT601_625(
+    pub fn biplanaryuv420_to_linearrgb_16_l_bt601_625(
         &self,
         src: impl Img<u16, P<2>>,
         mut dst: impl ImgMut<f32, C<3>>,
@@ -209,11 +209,11 @@ impl Kernel {
         debug_assert_same_size!(src, dst);
         unsafe {
             let mut iter = src.alloc_ptrs();
-            let mut y = iter.next().unwrap();
-            let mut uv = iter.next().unwrap();
-            let mut w = dst.width() / 2;
-            let mut h = dst.height() / 2;
-            self.biplanaryuv420_to_linearrgb_16_L_BT601_625.launch(
+            let y = iter.next().unwrap();
+            let uv = iter.next().unwrap();
+            let w = dst.width() / 2;
+            let h = dst.height() / 2;
+            self.biplanaryuv420_to_linearrgb_16_l_bt601_625.launch(
                 &launch_config_2d(w, h),
                 stream,
                 kernel_params!(
@@ -239,10 +239,10 @@ impl Kernel {
         debug_assert_same_size!(src, dst);
         unsafe {
             let mut iter = src.alloc_ptrs();
-            let mut y = iter.next().unwrap();
-            let mut uv = iter.next().unwrap();
-            let mut w = dst.width() / 2;
-            let mut h = dst.height() / 2;
+            let y = iter.next().unwrap();
+            let uv = iter.next().unwrap();
+            let w = dst.width() / 2;
+            let h = dst.height() / 2;
             self.biplanaryuv420_to_linearrgb_debug.launch(
                 &launch_config_2d(w, h),
                 stream,
@@ -268,8 +268,8 @@ impl Kernel {
     ) -> CuResult<()> {
         debug_assert_same_size!(src, dst);
         unsafe {
-            let mut w = dst.width() * 3;
-            let mut h = dst.height();
+            let w = dst.width() * 3;
+            let h = dst.height();
             self.f32_to_8bit.launch(
                 &launch_config_2d(w, h),
                 stream,
@@ -293,8 +293,8 @@ impl Kernel {
     ) -> CuResult<()> {
         debug_assert_same_size!(src, dst);
         unsafe {
-            let mut w = dst.width() * 3;
-            let mut h = dst.height();
+            let w = dst.width() * 3;
+            let h = dst.height();
             self.srgb_to_linear_u8_lookup.launch(
                 &launch_config_2d(w, h),
                 stream,
@@ -318,8 +318,8 @@ impl Kernel {
     ) -> CuResult<()> {
         debug_assert_same_size!(src, dst);
         unsafe {
-            let mut w = dst.width() * 3;
-            let mut h = dst.height();
+            let w = dst.width() * 3;
+            let h = dst.height();
             self.srgb_to_linear_u8.launch(
                 &launch_config_2d(w, h),
                 stream,
@@ -343,8 +343,8 @@ impl Kernel {
     ) -> CuResult<()> {
         debug_assert_same_size!(src, dst);
         unsafe {
-            let mut w = dst.width() * 3;
-            let mut h = dst.height();
+            let w = dst.width() * 3;
+            let h = dst.height();
             self.srgb_to_linear_u16.launch(
                 &launch_config_2d(w, h),
                 stream,
@@ -368,8 +368,8 @@ impl Kernel {
     ) -> CuResult<()> {
         debug_assert_same_size!(src, dst);
         unsafe {
-            let mut w = dst.width() * 3;
-            let mut h = dst.height();
+            let w = dst.width() * 3;
+            let h = dst.height();
             self.srgb_to_linear_f32.launch(
                 &launch_config_2d(w, h),
                 stream,
@@ -387,7 +387,7 @@ impl Kernel {
 }
 
 fn launch_config_2d(width: u32, height: u32) -> LaunchConfig {
-    const MAX_THREADS_PER_BLOCK: u32 = 256;
+    // const MAX_THREADS_PER_BLOCK: u32 = 256;
     const THREADS_WIDTH: u32 = 16;
     const THREADS_HEIGHT: u32 = 8;
     let num_blocks_w = (width + THREADS_WIDTH - 1) / THREADS_WIDTH;
@@ -432,7 +432,7 @@ mod tests {
         dbg!(&src);
         dbg!(&dst);
 
-        kernel.biplanaryuv420_to_linearrgb_8_L_BT709(&src, &mut dst, &main)?;
+        kernel.biplanaryuv420_to_linearrgb_8_l_bt709(&src, &mut dst, &main)?;
 
         let data = dst.copy_to_cpu(cudarse_npp::get_stream()).unwrap();
         main.sync()?;

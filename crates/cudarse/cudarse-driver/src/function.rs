@@ -55,6 +55,8 @@ impl CuFunction {
         Ok(i)
     }
 
+    /// # Safety
+    /// This method is heavily unsafe as it will not check if the parameters given here match the kernel signature.
     pub unsafe fn launch(
         &self,
         cfg: &LaunchConfig,

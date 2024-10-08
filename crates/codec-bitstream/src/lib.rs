@@ -16,12 +16,6 @@ pub struct ColorCharacteristics {
     pub tc: TransferCharacteristic,
 }
 
-impl Into<(ColourPrimaries, MatrixCoefficients, TransferCharacteristic)> for ColorCharacteristics {
-    fn into(self) -> (ColourPrimaries, MatrixCoefficients, TransferCharacteristic) {
-        (self.cp, self.mc, self.tc)
-    }
-}
-
 impl ColorCharacteristics {
     pub fn from_codec_bytes(codec: Codec, cp: u8, mc: u8, tc: u8) -> Self {
         match codec {
@@ -102,7 +96,7 @@ impl From<h262::ColourPrimaries> for ColourPrimaries {
         match value {
             h262::ColourPrimaries::Reserved | h262::ColourPrimaries::Forbidden => Self::Invalid,
             h262::ColourPrimaries::Unspecified => Self::Unspecified,
-            h262::ColourPrimaries::FCC | h262::ColourPrimaries::SMPTE_240M => Self::Unsupported,
+            h262::ColourPrimaries::FCC | h262::ColourPrimaries::Smpte240m => Self::Unsupported,
             h262::ColourPrimaries::BT709 => Self::BT709,
             h262::ColourPrimaries::BT601_525 => Self::BT601_525,
             h262::ColourPrimaries::BT601_625 => Self::BT601_625,
@@ -207,7 +201,7 @@ impl From<h262::MatrixCoefficients> for MatrixCoefficients {
             }
             h262::MatrixCoefficients::Unspecified => Self::Unspecified,
             h262::MatrixCoefficients::FCC
-            | h262::MatrixCoefficients::SMPTE_240M
+            | h262::MatrixCoefficients::Smpte240m
             | h262::MatrixCoefficients::YCgCo => Self::Unsupported,
             h262::MatrixCoefficients::BT709 => Self::BT709,
             h262::MatrixCoefficients::BT601_525 => Self::BT601_525,

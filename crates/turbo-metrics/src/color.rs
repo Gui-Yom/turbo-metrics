@@ -102,7 +102,6 @@ pub fn convert_frame_to_linearrgb(
         NvDecFrame::P016(frame) => colorspace
             .biplanaryuv420_to_linearrgb_16(color_matrix, transfer, colors.1, frame, dst, stream)
             .unwrap(),
-        other => todo!("Unsupported frame type in turbo metrics : {other:#?}"),
     };
 }
 

@@ -13,14 +13,15 @@ fn main() {
             "environment variable AMF_SDK_PATH must be set for nv-video-codec-sys to find the CUDA SDK",
         ))
     } else if cfg!(target_os = "linux") {
-        PathBuf::from(env::var("AMF_SDK_PATH").unwrap_or(
-            "/usr/include/AMF".to_string()
-        ))
+        PathBuf::from(env::var("AMF_SDK_PATH").unwrap_or("/usr/include/AMF".to_string()))
     } else {
         todo!("Unsupported platform")
     };
     if !amf_sdk_include.exists() || !amf_sdk_include.is_dir() {
-        panic!("Path to the AMF SDK is invalid or inaccessible : {}", amf_sdk_include.display());
+        panic!(
+            "Path to the AMF SDK is invalid or inaccessible : {}",
+            amf_sdk_include.display()
+        );
     }
 
     let bindgen = bindgen::Builder::default()

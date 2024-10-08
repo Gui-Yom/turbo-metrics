@@ -40,16 +40,16 @@ pub enum ColourPrimaries {
     FCC = 4,
     BT601_625 = 5,
     BT601_525 = 6,
-    SMPTE_240M = 7,
+    Smpte240m = 7,
     // rest is reserved
 }
 
 impl ColourPrimaries {
     pub fn from_byte(byte: u8) -> Self {
-        if byte > ColourPrimaries::SMPTE_240M as u8 {
+        if byte > ColourPrimaries::Smpte240m as u8 {
             Self::Reserved
         } else {
-            unsafe { mem::transmute::<u8, _>(byte) }
+            unsafe { mem::transmute::<u8, ColourPrimaries>(byte) }
         }
     }
 }
@@ -71,7 +71,7 @@ pub enum TransferCharacteristic {
 impl TransferCharacteristic {
     pub fn from_byte(byte: u8) -> Self {
         assert!(byte <= TransferCharacteristic::BT601 as u8);
-        unsafe { mem::transmute::<u8, _>(byte) }
+        unsafe { mem::transmute::<u8, TransferCharacteristic>(byte) }
     }
 }
 
@@ -86,7 +86,7 @@ pub enum MatrixCoefficients {
     FCC = 4,
     BT601_625 = 5,
     BT601_525 = 6,
-    SMPTE_240M = 7,
+    Smpte240m = 7,
     YCgCo = 8,
     // rest is reserved
 }
@@ -96,7 +96,7 @@ impl MatrixCoefficients {
         if byte > MatrixCoefficients::YCgCo as u8 {
             Self::Reserved
         } else {
-            unsafe { mem::transmute::<u8, _>(byte) }
+            unsafe { mem::transmute::<u8, MatrixCoefficients>(byte) }
         }
     }
 }

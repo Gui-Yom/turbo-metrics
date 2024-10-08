@@ -2,7 +2,7 @@ use crate::img::{reinterpret_vec, ColorRepr, CpuImg, SampleType};
 use codec_bitstream::{av1, h264};
 use cudarse_video::dec::{CuVideoParser, CuvidParserCallbacks};
 use cudarse_video::sys::{cudaVideoCodec, cudaVideoCodec_enum};
-use image::{DynamicImage, GenericImageView};
+use image::DynamicImage;
 use matroska_demuxer::{Frame, MatroskaFile};
 pub use peekable;
 use peekable::Peekable;

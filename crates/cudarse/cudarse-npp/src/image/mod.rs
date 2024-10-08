@@ -361,14 +361,14 @@ pub trait Img<S: Sample, C: Channels> {
     }
 
     #[cfg(feature = "isu")]
-    fn malloc_same_size<S2: Sample, C2: Channels>(&self) -> crate::Result<Image<S2, C2>>
+    fn malloc_same_size<S2: Sample, C2: Channels>(&self) -> Result<Image<S2, C2>>
     where
         Image<S2, C2>: isu::Malloc,
     {
         isu::Malloc::malloc(self.width(), self.height())
     }
 
-    fn copy_to_cpu(&self, stream: cudaStream_t) -> crate::Result<Vec<S>> {
+    fn copy_to_cpu(&self, stream: cudaStream_t) -> Result<Vec<S>> {
         let mut dst =
             vec![S::default(); self.width() as usize * self.height() as usize * C::NUM_SAMPLES];
 

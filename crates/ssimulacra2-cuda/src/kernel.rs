@@ -1,14 +1,14 @@
 use cudarse_driver::{kernel_params, CuFunction, CuModule, CuStream, LaunchConfig};
 use cudarse_npp::debug_assert_same_size;
-use cudarse_npp::image::{Img, ImgMut, C, P};
+use cudarse_npp::image::{Img, ImgMut, C};
 
 pub struct Kernel {
-    module: CuModule,
+    _module: CuModule,
     srgb_to_linear: CuFunction,
     downscale_by_2: CuFunction,
-    downscale_plane_by_2: CuFunction,
+    // downscale_plane_by_2: CuFunction,
     linear_to_xyb: CuFunction,
-    linear_to_xyb_planar: CuFunction,
+    // linear_to_xyb_planar: CuFunction,
     blur_plane_pass_fused: CuFunction,
     compute_error_maps: CuFunction,
 }
@@ -24,12 +24,12 @@ impl Kernel {
         Self {
             srgb_to_linear: module.function_by_name("srgb_to_linear").unwrap(),
             downscale_by_2: module.function_by_name("downscale_by_2").unwrap(),
-            downscale_plane_by_2: module.function_by_name("downscale_plane_by_2").unwrap(),
+            // downscale_plane_by_2: module.function_by_name("downscale_plane_by_2").unwrap(),
             linear_to_xyb: module.function_by_name("linear_to_xyb_packed").unwrap(),
-            linear_to_xyb_planar: module.function_by_name("linear_to_xyb_planar").unwrap(),
+            // linear_to_xyb_planar: module.function_by_name("linear_to_xyb_planar").unwrap(),
             blur_plane_pass_fused: module.function_by_name("blur_plane_pass_fused").unwrap(),
             compute_error_maps: module.function_by_name("compute_error_maps").unwrap(),
-            module,
+            _module: module,
         }
     }
 
@@ -82,81 +82,81 @@ impl Kernel {
         }
     }
 
-    pub fn downscale_plane_by_2(
-        &self,
-        stream: &CuStream,
-        src: impl Img<f32, C<1>>,
-        mut dst: impl ImgMut<f32, C<1>>,
-    ) {
-        unsafe {
-            const THREADS_WIDTH: u32 = 16;
-            const THREADS_HEIGHT: u32 = 16;
-            let num_blocks_w = (src.width() + THREADS_WIDTH - 1) / THREADS_WIDTH;
-            let num_blocks_h = (src.height() + THREADS_HEIGHT - 1) / THREADS_HEIGHT;
+    // pub fn downscale_plane_by_2(
+    //     &self,
+    //     stream: &CuStream,
+    //     src: impl Img<f32, C<1>>,
+    //     mut dst: impl ImgMut<f32, C<1>>,
+    // ) {
+    //     unsafe {
+    //         const THREADS_WIDTH: u32 = 16;
+    //         const THREADS_HEIGHT: u32 = 16;
+    //         let num_blocks_w = (src.width() + THREADS_WIDTH - 1) / THREADS_WIDTH;
+    //         let num_blocks_h = (src.height() + THREADS_HEIGHT - 1) / THREADS_HEIGHT;
+    //
+    //         self.downscale_plane_by_2
+    //             .launch(
+    //                 &LaunchConfig {
+    //                     grid_dim: (num_blocks_w, num_blocks_h, 1),
+    //                     block_dim: (THREADS_WIDTH, THREADS_HEIGHT, 1),
+    //                     shared_mem_bytes: 0,
+    //                 },
+    //                 stream,
+    //                 kernel_params!(
+    //                     src.width() as usize,
+    //                     src.height() as usize,
+    //                     src.device_ptr(),
+    //                     src.pitch() as usize,
+    //                     dst.width() as usize,
+    //                     dst.height() as usize,
+    //                     dst.device_ptr_mut(),
+    //                     dst.pitch() as usize,
+    //                 ),
+    //             )
+    //             .expect("Could not launch downscale_plane_by_2 kernel");
+    //     }
+    // }
 
-            self.downscale_plane_by_2
-                .launch(
-                    &LaunchConfig {
-                        grid_dim: (num_blocks_w, num_blocks_h, 1),
-                        block_dim: (THREADS_WIDTH, THREADS_HEIGHT, 1),
-                        shared_mem_bytes: 0,
-                    },
-                    stream,
-                    kernel_params!(
-                        src.width() as usize,
-                        src.height() as usize,
-                        src.device_ptr(),
-                        src.pitch() as usize,
-                        dst.width() as usize,
-                        dst.height() as usize,
-                        dst.device_ptr_mut(),
-                        dst.pitch() as usize,
-                    ),
-                )
-                .expect("Could not launch downscale_plane_by_2 kernel");
-        }
-    }
-
-    pub fn downscale_plane_by_2_planar(
-        &self,
-        stream: &CuStream,
-        src: impl Img<f32, P<3>>,
-        mut dst: impl ImgMut<f32, P<3>>,
-    ) {
-        unsafe {
-            const THREADS_WIDTH: u32 = 16;
-            const THREADS_HEIGHT: u32 = 16;
-            let num_blocks_w = (src.width() + THREADS_WIDTH - 1) / THREADS_WIDTH;
-            let num_blocks_h = (src.height() + THREADS_HEIGHT - 1) / THREADS_HEIGHT;
-
-            let width = dst.width();
-            let height = dst.height();
-            let pitch = dst.pitch();
-
-            for (r, w) in src.alloc_ptrs().zip(dst.alloc_ptrs_mut()) {
-                self.downscale_plane_by_2
-                    .launch(
-                        &LaunchConfig {
-                            grid_dim: (num_blocks_w, num_blocks_h, 1),
-                            block_dim: (THREADS_WIDTH, THREADS_HEIGHT, 1),
-                            shared_mem_bytes: 0,
-                        },
-                        stream,
-                        kernel_params!(
-                            src.width() as usize,
-                            src.height() as usize,
-                            r,
-                            src.pitch() as usize,
-                            width as usize,
-                            height as usize,
-                            w,
-                            pitch as usize,
-                        ),
-                    )
-                    .expect("Could not launch downscale_plane_by_2 kernel");
-            }
-        }
-    }
+    // pub fn downscale_plane_by_2_planar(
+    //     &self,
+    //     stream: &CuStream,
+    //     src: impl Img<f32, P<3>>,
+    //     mut dst: impl ImgMut<f32, P<3>>,
+    // ) {
+    //     unsafe {
+    //         const THREADS_WIDTH: u32 = 16;
+    //         const THREADS_HEIGHT: u32 = 16;
+    //         let num_blocks_w = (src.width() + THREADS_WIDTH - 1) / THREADS_WIDTH;
+    //         let num_blocks_h = (src.height() + THREADS_HEIGHT - 1) / THREADS_HEIGHT;
+    //
+    //         let width = dst.width();
+    //         let height = dst.height();
+    //         let pitch = dst.pitch();
+    //
+    //         for (r, w) in src.alloc_ptrs().zip(dst.alloc_ptrs_mut()) {
+    //             self.downscale_plane_by_2
+    //                 .launch(
+    //                     &LaunchConfig {
+    //                         grid_dim: (num_blocks_w, num_blocks_h, 1),
+    //                         block_dim: (THREADS_WIDTH, THREADS_HEIGHT, 1),
+    //                         shared_mem_bytes: 0,
+    //                     },
+    //                     stream,
+    //                     kernel_params!(
+    //                         src.width() as usize,
+    //                         src.height() as usize,
+    //                         r,
+    //                         src.pitch() as usize,
+    //                         width as usize,
+    //                         height as usize,
+    //                         w,
+    //                         pitch as usize,
+    //                     ),
+    //                 )
+    //                 .expect("Could not launch downscale_plane_by_2 kernel");
+    //         }
+    //     }
+    // }
 
     pub fn linear_to_xyb(
         &self,
@@ -183,36 +183,36 @@ impl Kernel {
         }
     }
 
-    pub fn linear_to_xyb_planar(
-        &self,
-        stream: &CuStream,
-        src: impl Img<f32, P<3>>,
-        mut dst: impl ImgMut<f32, P<3>>,
-    ) {
-        debug_assert_same_size!(src, dst);
-        let [src_r, src_g, src_b] = src.storage();
-        let [dst_x, dst_y, dst_b] = src.storage();
-        unsafe {
-            self.linear_to_xyb_planar
-                .launch(
-                    &launch_config_2d(src.width(), src.height()),
-                    stream,
-                    kernel_params!(
-                        src.width() as usize,
-                        src.height() as usize,
-                        src_r,
-                        src_g,
-                        src_b,
-                        src.pitch() as usize,
-                        dst_x,
-                        dst_y,
-                        dst_b,
-                        dst.pitch() as usize,
-                    ),
-                )
-                .expect("Could not launch linear_to_xyb kernel");
-        }
-    }
+    // pub fn linear_to_xyb_planar(
+    //     &self,
+    //     stream: &CuStream,
+    //     src: impl Img<f32, P<3>>,
+    //     dst: impl ImgMut<f32, P<3>>,
+    // ) {
+    //     debug_assert_same_size!(src, dst);
+    //     let [src_r, src_g, src_b] = src.storage();
+    //     let [dst_x, dst_y, dst_b] = src.storage();
+    //     unsafe {
+    //         self.linear_to_xyb_planar
+    //             .launch(
+    //                 &launch_config_2d(src.width(), src.height()),
+    //                 stream,
+    //                 kernel_params!(
+    //                     src.width() as usize,
+    //                     src.height() as usize,
+    //                     src_r,
+    //                     src_g,
+    //                     src_b,
+    //                     src.pitch() as usize,
+    //                     dst_x,
+    //                     dst_y,
+    //                     dst_b,
+    //                     dst.pitch() as usize,
+    //                 ),
+    //             )
+    //             .expect("Could not launch linear_to_xyb kernel");
+    //     }
+    // }
 
     /// Blur 5 packed images in one kernel launch.
     /// We can treat the images as a single plane because each thread only processes a single column.
@@ -326,7 +326,7 @@ impl Kernel {
 }
 
 fn launch_config_2d(width: u32, height: u32) -> LaunchConfig {
-    const MAX_THREADS_PER_BLOCK: u32 = 256;
+    // const MAX_THREADS_PER_BLOCK: u32 = 256;
     const THREADS_WIDTH: u32 = 32;
     const THREADS_HEIGHT: u32 = 8;
     let num_blocks_w = (width + THREADS_WIDTH - 1) / THREADS_WIDTH;
