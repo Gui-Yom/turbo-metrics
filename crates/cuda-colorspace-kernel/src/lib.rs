@@ -10,10 +10,15 @@ mod biplanar;
 mod const_algebra;
 mod constants;
 mod sample_conv;
+mod srgb;
 
 trait Sample {
     type Type: Into<u32> + RoundFromf32;
     const MAX_VALUE: u32;
+
+    fn conv_to_f(v: Self::Type) -> f32 {
+        v.into() as f32 / Self::MAX_VALUE as f32
+    }
 }
 
 struct Bitdepth<const N: usize>;

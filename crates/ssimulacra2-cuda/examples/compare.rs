@@ -1,3 +1,4 @@
+use std::env;
 use std::time::Instant;
 
 use zune_image::codecs::png::zune_core::options::DecoderOptions;
@@ -14,16 +15,14 @@ mod cpu;
 fn main() {
     cudarse_driver::init_cuda_and_primary_ctx().expect("Could not initialize CUDA API");
 
-    let ref_img = zune_image::image::Image::open_with_options(
-        "crates/ssimulacra2-cuda/source.png",
-        DecoderOptions::new_fast(),
-    )
-    .unwrap();
-    let dis_img = zune_image::image::Image::open_with_options(
-        "crates/ssimulacra2-cuda/distorted.png",
-        DecoderOptions::new_fast(),
-    )
-    .unwrap();
+    let mut args = env::args().skip(1);
+    let ref_path = args.next().unwrap();
+    let dis_path = args.next().unwrap();
+
+    let ref_img =
+        zune_image::image::Image::open_with_options(&ref_path, DecoderOptions::new_fast()).unwrap();
+    let dis_img =
+        zune_image::image::Image::open_with_options(&dis_path, DecoderOptions::new_fast()).unwrap();
 
     // Upload to gpu
     assert_eq!(ref_img.dimensions(), dis_img.dimensions());

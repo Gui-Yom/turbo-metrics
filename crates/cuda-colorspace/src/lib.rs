@@ -132,12 +132,39 @@ impl ColorspaceConversion {
             .biplanaryuv420_to_linearrgb_debug(src, dst, stream)
     }
 
-    pub fn rgb_f32_to_8bit(
+    pub fn f32_to_8bit(
         &self,
         src: impl Img<f32, C<3>>,
         dst: impl ImgMut<u8, C<3>>,
         stream: &CuStream,
     ) -> CuResult<()> {
-        self.kernel.rgb_f32_to_8bit(src, dst, stream)
+        self.kernel.f32_to_8bit(src, dst, stream)
+    }
+
+    pub fn srgb_to_linear_u8(
+        &self,
+        src: impl Img<u8, C<3>>,
+        dst: impl ImgMut<f32, C<3>>,
+        stream: &CuStream,
+    ) -> CuResult<()> {
+        self.kernel.srgb_to_linear_u8_lookup(src, dst, stream)
+    }
+
+    pub fn srgb_to_linear_u16(
+        &self,
+        src: impl Img<u16, C<3>>,
+        dst: impl ImgMut<f32, C<3>>,
+        stream: &CuStream,
+    ) -> CuResult<()> {
+        self.kernel.srgb_to_linear_u16(src, dst, stream)
+    }
+
+    pub fn srgb_to_linear_f32(
+        &self,
+        src: impl Img<f32, C<3>>,
+        dst: impl ImgMut<f32, C<3>>,
+        stream: &CuStream,
+    ) -> CuResult<()> {
+        self.kernel.srgb_to_linear_f32(src, dst, stream)
     }
 }

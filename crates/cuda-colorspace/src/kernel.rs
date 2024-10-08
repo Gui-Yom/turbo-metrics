@@ -12,7 +12,11 @@ pub struct Kernel {
     biplanaryuv420_to_linearrgb_8_L_BT601_625: CuFunction,
     biplanaryuv420_to_linearrgb_16_L_BT601_625: CuFunction,
     biplanaryuv420_to_linearrgb_debug: CuFunction,
-    rgb_f32_to_8bit: CuFunction,
+    f32_to_8bit: CuFunction,
+    srgb_to_linear_u8_lookup: CuFunction,
+    srgb_to_linear_u8: CuFunction,
+    srgb_to_linear_u16: CuFunction,
+    srgb_to_linear_f32: CuFunction,
 }
 
 impl Kernel {
@@ -37,7 +41,11 @@ impl Kernel {
                 .function_by_name("biplanaryuv420_to_linearrgb_16_L_BT601_625")?,
             biplanaryuv420_to_linearrgb_debug: module
                 .function_by_name("biplanaryuv420_to_linearrgb_debug")?,
-            rgb_f32_to_8bit: module.function_by_name("rgb_f32_to_8bit")?,
+            f32_to_8bit: module.function_by_name("f32_to_8bit")?,
+            srgb_to_linear_u8_lookup: module.function_by_name("srgb_to_linear_u8_lookup")?,
+            srgb_to_linear_u8: module.function_by_name("srgb_to_linear_u8")?,
+            srgb_to_linear_u16: module.function_by_name("srgb_to_linear_u16")?,
+            srgb_to_linear_f32: module.function_by_name("srgb_to_linear_f32")?,
             module,
         })
     }
@@ -252,7 +260,7 @@ impl Kernel {
         }
     }
 
-    pub fn rgb_f32_to_8bit(
+    pub fn f32_to_8bit(
         &self,
         src: impl Img<f32, C<3>>,
         mut dst: impl ImgMut<u8, C<3>>,
@@ -262,7 +270,107 @@ impl Kernel {
         unsafe {
             let mut w = dst.width() * 3;
             let mut h = dst.height();
-            self.rgb_f32_to_8bit.launch(
+            self.f32_to_8bit.launch(
+                &launch_config_2d(w, h),
+                stream,
+                kernel_params!(
+                    src.device_ptr(),
+                    src.pitch() as usize,
+                    dst.device_ptr_mut(),
+                    dst.pitch() as usize,
+                    w as usize,
+                    h as usize,
+                ),
+            )
+        }
+    }
+
+    pub fn srgb_to_linear_u8_lookup(
+        &self,
+        src: impl Img<u8, C<3>>,
+        mut dst: impl ImgMut<f32, C<3>>,
+        stream: &CuStream,
+    ) -> CuResult<()> {
+        debug_assert_same_size!(src, dst);
+        unsafe {
+            let mut w = dst.width() * 3;
+            let mut h = dst.height();
+            self.srgb_to_linear_u8_lookup.launch(
+                &launch_config_2d(w, h),
+                stream,
+                kernel_params!(
+                    src.device_ptr(),
+                    src.pitch() as usize,
+                    dst.device_ptr_mut(),
+                    dst.pitch() as usize,
+                    w as usize,
+                    h as usize,
+                ),
+            )
+        }
+    }
+
+    pub fn srgb_to_linear_u8(
+        &self,
+        src: impl Img<u8, C<3>>,
+        mut dst: impl ImgMut<f32, C<3>>,
+        stream: &CuStream,
+    ) -> CuResult<()> {
+        debug_assert_same_size!(src, dst);
+        unsafe {
+            let mut w = dst.width() * 3;
+            let mut h = dst.height();
+            self.srgb_to_linear_u8.launch(
+                &launch_config_2d(w, h),
+                stream,
+                kernel_params!(
+                    src.device_ptr(),
+                    src.pitch() as usize,
+                    dst.device_ptr_mut(),
+                    dst.pitch() as usize,
+                    w as usize,
+                    h as usize,
+                ),
+            )
+        }
+    }
+
+    pub fn srgb_to_linear_u16(
+        &self,
+        src: impl Img<u16, C<3>>,
+        mut dst: impl ImgMut<f32, C<3>>,
+        stream: &CuStream,
+    ) -> CuResult<()> {
+        debug_assert_same_size!(src, dst);
+        unsafe {
+            let mut w = dst.width() * 3;
+            let mut h = dst.height();
+            self.srgb_to_linear_u16.launch(
+                &launch_config_2d(w, h),
+                stream,
+                kernel_params!(
+                    src.device_ptr(),
+                    src.pitch() as usize,
+                    dst.device_ptr_mut(),
+                    dst.pitch() as usize,
+                    w as usize,
+                    h as usize,
+                ),
+            )
+        }
+    }
+
+    pub fn srgb_to_linear_f32(
+        &self,
+        src: impl Img<f32, C<3>>,
+        mut dst: impl ImgMut<f32, C<3>>,
+        stream: &CuStream,
+    ) -> CuResult<()> {
+        debug_assert_same_size!(src, dst);
+        unsafe {
+            let mut w = dst.width() * 3;
+            let mut h = dst.height();
+            self.srgb_to_linear_f32.launch(
                 &launch_config_2d(w, h),
                 stream,
                 kernel_params!(
@@ -331,7 +439,7 @@ mod tests {
         dbg!(&data[0..3]);
 
         let mut dst2 = dst.malloc_same_size().unwrap();
-        kernel.rgb_f32_to_8bit(&dst, &mut dst2, &main)?;
+        kernel.f32_to_8bit(&dst, &mut dst2, &main)?;
 
         let data = dst2.copy_to_cpu(cudarse_npp::get_stream()).unwrap();
         main.sync()?;

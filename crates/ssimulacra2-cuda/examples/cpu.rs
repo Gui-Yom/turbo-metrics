@@ -1,3 +1,7 @@
+//! Extracted from https://github.com/rust-av/ssimulacra2
+//! Modified to fit the example
+//! Original is under BSD-2-Clause license
+
 use std::slice;
 
 use zune_image::codecs::png::zune_core::colorspace::{ColorCharacteristics, ColorSpace};

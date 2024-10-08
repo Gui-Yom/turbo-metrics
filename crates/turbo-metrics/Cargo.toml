@@ -15,11 +15,25 @@ cuda-colorspace = { workspace = true }
 cudarse-driver = { workspace = true }
 cudarse-npp = { workspace = true, features = ["isu", "ist"] }
 cudarse-video = { workspace = true, features = ["npp"] }
+image = { workspace = true }
 matroska-demuxer = { workspace = true }
+peekable = { workspace = true }
 ssimulacra2-cuda = { workspace = true }
 stats = { workspace = true }
-zune-image = { workspace = true, features = ["png", "simd", "metadata"] }
+zune-core = { workspace = true }
+zune-image = { workspace = true, features = ["simd", "metadata", "threads"] }
 
 [features]
-default = []
+default = ["png", "jpeg", "jpeg-xl"]
+# Try to statically link to a maximum of native libraries
 static = ["cudarse-driver/static", "cudarse-npp/static", "cudarse-video/static", "ssimulacra2-cuda/static"]
+# Image format support
+png = ["zune-image/png"]
+jpeg = ["zune-image/jpeg"]
+jpeg-xl = ["zune-image/jpeg-xl"]
+bmp = ["zune-image/bmp"]
+qoi = ["image/qoi"]
+gif = ["image/gif"]
+tiff = ["image/tiff"]
+webp = ["image/webp"]
+avif = ["image/avif-native"]

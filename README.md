@@ -8,10 +8,8 @@ Including :
 - A workflow and its tools to develop CUDA kernels in Rust just as another crate in the workspace.
 - A working [ssimulacra2](https://github.com/cloudinary/ssimulacra2)
   implementation with CUDA.
-- In progress bindings to libvmaf and in progress implementation of vmaf
 - Utilities and foundational libraries for codec bitstream demuxing and statistics.
-
-Nearly the whole stack here is custom-built from the CUDA headers and a matroska demuxer.
+- Kernels for colorspace conversion and linearization.
 
 ## Goal
 
@@ -28,6 +26,44 @@ Best case is :
 In some instances, it would be impossible to decode the frame on the GPU, which means one has to
 stream decoded frames from the CPU (PNG or unsupported codec), this would reduce performance but
 still be faster than full CPU processing if the frames can stay in gpu memory long enough.
+
+## Tools
+
+### turbo-metrics
+
+CLi to process a pair of videos and compute various metrics and statistics.
+Included metrics :
+
+- PSNR
+- SSIM
+- MSSSIM
+- SSIMULACRA2
+
+Supported video containers :
+
+- MKV
+
+Supported video codecs :
+
+- AV1
+- AVC/H.264
+- MPEG-2 Part 2/H.262
+
+Supported image codecs :
+
+- PNG
+- JPEG
+- JPEG-XL
+- AVIF* (8 bits only, requires libdav1d)
+- Webp*
+- QOI*
+- GIF*
+- TIFF*
+
+\* _feature turned off by default_
+
+Build a release binary with `cargo build --release -p turbo-metrics --features static`. Start with
+`turbo-metrics --help`.
 
 ## Libraries
 
@@ -64,39 +100,6 @@ Rust implementation : https://github.com/rust-av/ssimulacra2
 ### vmaf
 
 Bindings to libvmaf.
-
-## Tools
-
-### ssimulacra2-cuda-cli
-
-CLI frontend for ssimulacra2-cuda that can compare videos blazingly fast by decoding on the GPU and
-computing on the GPU.
-
-At the time of writing, I'm maxing out my RTX 3060 laptop compute while using 45% of NVDEC total
-capacity. With two h264 videos, I can process around 110 image pairs per second (which is more than
-4x speedup over realtime and orders of magnitude over existing tools).
-
-### turbo-metrics
-
-CLi to process a pair of videos and compute various metrics and statistics.
-Included metrics :
-
-- PSNR
-- SSIM
-- MSSSIM
-- SSIMULACRA2
-
-Supported containers :
-
-- MKV
-
-Supported video codecs :
-
-- AV1
-- AVC/H.264
-- MPEG-2 Part 2/H.262
-
-Build with `cargo build --release -p turbo-metrics`. Start with `turbo-metrics --help`.
 
 ## Prerequisites
 
@@ -140,19 +143,22 @@ You need patience and the ability to read error message from builds.
 - I need to link to `libstdc++` for NPP libraries, but it should be possible to use `libc++`
   instead.
 
-## Planned
+## TODO ideas
 
 The base is solid. I plan to implement various tools to help the process of making encodes (except
-encoding itself) from pre-filtering to validation.
-In no particular order or priority :
+encoding itself) from pre-filtering to validation. In no particular order or priority :
 
-### Tools
+### Tools & workflows
 
 - GUI with plots and interactive usage
+- GUI for interactive inspection of error maps
+- Hull generation, by running a command automatically (e.g.
+  `turbo-metrics --ssimulacra2 --hull --ref ref.png -- avifenc ref.png --crf @`)
 
-### Implementations
+### Algorithms implementations
 
 - XPSNR
+- Butteraugli
 - VMAF (using both libvmaf and a custom CUDA impl)
 - Scene detection (histogram based should be easy)
 - Scene detection like the one used in rav1e (not even sure that's possible on a GPU)
@@ -160,13 +166,12 @@ In no particular order or priority :
   processing chain on the GPU can help, needs more research)
 - New ssimulacra2 implementation, without relying on NPP and with separate planes computations.
 - NVflip
+- Audio metrics ? I don't know much about those
 
 ### Inputs
 
 - Region selection
-- Pair of images
-- More containers (mp4)
-- Pipe frames (not sure how that would work with 2 streams)
+- More video containers (mp4)
 - Raw bitstreams
 - More codecs
 - Finish implementing useful colorspaces
@@ -179,7 +184,7 @@ In no particular order or priority :
 - Parseable stdout
 - JSON output
 - CSV output
-- Graph output
+- Plot output
 
 ### Platform support
 
@@ -187,7 +192,7 @@ Currently, we're locked to Nvidia hardware. However, nothing here explicitly req
 
 - Other hardware video decoding API.
 - Other accelerated compute platforms (krnl, cubecl, Vulkan).
-- ffmpeg might help a lot since everything is already implemented.
+- libavcodec input might help a lot since everything is already implemented.
 
 ## About video hardware acceleration
 
@@ -200,15 +205,15 @@ mess, there are nearly as many different api as there are hw vendors, os and gpu
 
 Recap table :
 
-| API          | Windows  | Linux | Intel | AMD | Nvidia    | CUDA     | Vulkan | OpenCL | WGPU | AV1 | HEVC | AVC | MPEG2 | VC1 |
-|--------------|----------|-------|-------|-----|-----------|----------|--------|--------|------|-----|------|-----|-------|-----|
-| NVDEC        | ✅        | ✅     | ❌     | ❌   | ✅         | ✅        | ✅/CUDA | ✅      |      | ✅   | ✅    | ✅   | ✅     | ✅   |
-| VPL          | ✅        | ✅     | ✅     | ❌   | ❌         |          |        |        |      | ✅   | ✅    | ✅   |       |     |
-| AMF          | ✅        | ✅     | ❌     | ✅   | ❌         |          |        |        |      | ✅   | ✅    | ✅   |       |     |
-| DXVA         | ✅        |       | ✅     | ✅   | ✅         |          |        |        | ✅    |     |      | ✅   | ✅     |     |
-| Vulkan Video | ✅        | ✅     | ✅     | ✅   | ✅         | ✅/Vulkan | ✅      | ✅      | ✅    | ✅   | ✅    | ✅   |       |     |
-| VAAPI        | ✅/vaon12 | ✅     | ✅     |     | ✅/Nouveau |          |        |        |      | ✅   | ✅    | ✅   |       |     |
-| VDPAU        |          | ✅     |       |     | ✅         |          |        |        |      |     |      |     |       |     |
+| API          | Windows  | Linux | Nvidia    | Intel | AMD | AV1 | HEVC | AVC | MPEG2 | VC1 |
+|--------------|----------|-------|-----------|-------|-----|-----|------|-----|-------|-----|
+| NVDEC        | ✅        | ✅     | ✅         | ❌     | ❌   | ✅   | ✅    | ✅   | ✅     | ✅   |
+| VPL          | ✅        | ✅     | ❌         | ✅     | ❌   | ✅   | ✅    | ✅   |       |     |
+| AMF          | ✅        | ✅     | ❌         | ❌     | ✅   | ✅   | ✅    | ✅   |       |     |
+| DXVA         | ✅        |       | ✅         | ✅     | ✅   |     |      | ✅   | ✅     |     |
+| Vulkan Video | ✅        | ✅     | ✅         | ✅     | ✅   | ✅   | ✅    | ✅   |       |     |
+| VAAPI        | 🟦vaon12 | ✅     | 🟦Nouveau | ✅     |     | ✅   | ✅    | ✅   |       |     |
+| VDPAU        |          | ✅     | ✅         |       |     |     |      |     |       |     |
 
 There is still the option to decode video on the CPU and stream frames to the GPU for computations.
 This is still faster than doing all processing on the CPU alone.
@@ -220,11 +225,12 @@ thing that can be done for speed.
 
 Recap table :
 
-| API      | Windows | Linux | Intel | AMD     | Nvidia | CPU-side Rust | GPU-side Rust |
-|----------|---------|-------|-------|---------|--------|---------------|---------------|
-| CUDA     | ✅       | ✅     |       | ✅/ZLUDA | ✅      | ✅             | ✅/llvm ptx    |
-| Vulkan   | ✅       | ✅     | ✅     | ✅       | ✅      | ✅             | ✅/SpirV       |
-| OpenCL   | ✅       | ✅     | ✅     | ✅       | ✅      | ✅             | ✅/SpirV       |
-| ROCm/HIP | ✅       | ✅     |       | ✅       |        |               |               |
-| WGPU     | ✅       | ✅     | ✅     | ✅       | ✅      | ✅             | ✅/SpirV       |
+| API      | Windows | Linux | Intel | AMD     | Nvidia | NVDEC | VPL | AMF | Vulkan Video | CPU-side Rust | GPU-side Rust |
+|----------|---------|-------|-------|---------|--------|-------|-----|-----|--------------|---------------|---------------|
+| CUDA     | ✅       | ✅     |       | 🟦ZLUDA | ✅      | ✅     |     |     |              | ✅             | ✅llvm ptx     |
+| Vulkan   | ✅       | ✅     | ✅     | ✅       | ✅      | ✅     |     | ✅   | ✅            | ✅             | ✅Spir-V       |
+| OpenCL   | ✅       | ✅     | ✅     | ✅       | ✅      |       |     |     |              | ✅             | ✅Spir-V       |
+| ROCm/HIP | ✅       | ✅     |       | ✅       |        |       |     |     |              |               |               |
+| WGPU     | ✅       | ✅     | ✅     | ✅       | ✅      |       |     |     | ✅            | ✅             | ✅Spir-V       |
 
+From both those tables, it seems Vulkan and Vulkan Video are the way forward but well, it's Vulkan.

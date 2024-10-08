@@ -407,7 +407,7 @@ pub trait ImgMut<S: Sample, C: Channels>: Img<S, C> {
     /// Iterator over the pointers of the underlying allocations on device
     fn alloc_ptrs_mut(&mut self) -> impl ExactSizeIterator<Item = *mut S>;
 
-    fn copy_from_cpu(&mut self, data: &[S], stream: cudaStream_t) -> crate::Result<()> {
+    fn copy_from_cpu(&mut self, data: &[S], stream: cudaStream_t) -> Result<()> {
         let width = self.width() as usize;
         let height = self.height() as usize;
         let pitch = self.pitch() as usize;

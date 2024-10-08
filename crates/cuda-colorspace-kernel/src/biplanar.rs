@@ -1,8 +1,8 @@
 use crate::{
-    Bitdepth, ColorRange, Full, Limited, MatrixCoefficients, Sample, TransferCharacteristics,
-    BT601_525, BT601_625, BT709,
+    Bitdepth, ColorRange, Limited, MatrixCoefficients, Sample, TransferCharacteristics, BT601_525,
+    BT601_625, BT709,
 };
-use nvptx_core::prelude::coords_2d;
+use nvptx_core::prelude::*;
 
 #[inline]
 unsafe fn biplanaryuv420_to_linearrgb_generic<const BITDEPTH: usize, LumaCR, ChromaCR, Tr, CP>(
@@ -33,7 +33,7 @@ unsafe fn biplanaryuv420_to_linearrgb_generic<const BITDEPTH: usize, LumaCR, Chr
     let cb = (src_uv.read().into() as i32 - ChromaCR::chroma_neutral() as i32) as f32;
     let cr = (src_uv.add(1).read().into() as i32 - ChromaCR::chroma_neutral() as i32) as f32;
     let r_ = r_coeff * cr;
-    let g_ = g_coeff1 * cb + g_coeff2 * cr;
+    let g_ = fmaf(g_coeff1, cb, g_coeff2 * cr);
     let b_ = b_coeff * cb;
 
     // printf!(c"cb: %i, cr: %i, r_: %i, g_: %i, b_: %i\n", i32, i32, i32, i32, i32; (cb*1000.0) as i32, (cr*1000.0) as i32, (r_*1000.0) as i32, (g_*1000.0) as i32, (b_*1000.0) as i32);

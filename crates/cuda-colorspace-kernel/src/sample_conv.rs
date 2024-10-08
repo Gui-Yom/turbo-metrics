@@ -3,7 +3,7 @@ use nvptx_core::prelude::*;
 
 /// This kernel can be called with 3*width, because channels can be processed independently.
 #[inline]
-unsafe fn rgb_f32_to_generic<const BITDEPTH: usize>(
+unsafe fn f32_to_generic<const BITDEPTH: usize>(
     src: *const f32,
     src_pitch: usize,
     dst: *mut <Bitdepth<BITDEPTH> as Sample>::Type,
@@ -23,7 +23,7 @@ unsafe fn rgb_f32_to_generic<const BITDEPTH: usize>(
 }
 
 #[no_mangle]
-pub unsafe extern "ptx-kernel" fn rgb_f32_to_8bit(
+pub unsafe extern "ptx-kernel" fn f32_to_8bit(
     src: *const f32,
     src_pitch: usize,
     dst: *mut u8,
@@ -31,5 +31,5 @@ pub unsafe extern "ptx-kernel" fn rgb_f32_to_8bit(
     width: usize,
     height: usize,
 ) {
-    rgb_f32_to_generic::<8>(src, src_pitch, dst, dst_pitch, width, height)
+    f32_to_generic::<8>(src, src_pitch, dst, dst_pitch, width, height)
 }
