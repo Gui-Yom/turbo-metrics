@@ -2,6 +2,7 @@ use crate::color::{
     color_characteristics_from_format, convert_frame_to_linearrgb, cpu_to_linear, video_color_print,
 };
 use crate::input::{decode_image_frames, DemuxerParser, ImageProbe};
+use codec_bitstream::Codec;
 use cuda_colorspace::ColorspaceConversion;
 pub use cudarse_driver;
 use cudarse_driver::{CuDevice, CuStream};
@@ -12,13 +13,15 @@ use cudarse_npp::image::{Img, C};
 use cudarse_npp::{get_stream_ctx, set_stream};
 pub use cudarse_video;
 use cudarse_video::dec_simple::NvDecoderSimple;
+use cudarse_video::sys::{cudaVideoCodec, cudaVideoCodec_enum};
 use ssimulacra2_cuda::Ssimulacra2;
 pub use stats;
 use stats::full::Stats;
+use std::fmt::{Display, Formatter};
 use std::io::Read;
 use std::path::Path;
 use std::sync::LazyLock;
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
 pub mod color;
 pub mod img;
@@ -52,7 +55,7 @@ pub fn init_cuda() {
     static CUDA_INIT: LazyLock<Cuda> = LazyLock::new(|| {
         cudarse_driver::init_cuda().expect("Could not initialize the CUDA API");
         let dev = CuDevice::get(0).unwrap();
-        println!(
+        eprintln!(
             "Using device {} with CUDA version {}",
             dev.name().unwrap(),
             cudarse_driver::cuda_driver_version().unwrap()
@@ -142,24 +145,24 @@ pub fn process_img_pair(
     if let Some(psnr) = &mut psnr {
         let score = quant_ref.psnr(&quant_dis, psnr, ctx).unwrap();
         stream.sync().unwrap();
-        println!("PSNR: {score:.3}");
+        eprintln!("PSNR: {score:.3}");
     }
 
     if let Some(ssim) = &mut ssim {
         let score = quant_ref.ssim(&quant_dis, ssim, ctx).unwrap();
         stream.sync().unwrap();
-        println!("SSIM: {score:.3}");
+        eprintln!("SSIM: {score:.3}");
     }
 
     if let Some(msssim) = &mut msssim {
         let score = quant_ref.wmsssim(&quant_dis, msssim, ctx).unwrap();
         stream.sync().unwrap();
-        println!("MSSSIM: {score:.3}");
+        eprintln!("MSSSIM: {score:.3}");
     }
 
     if let Some(ssimu2) = &mut ssimu2 {
         let score = ssimu2.compute_sync(&stream).unwrap();
-        println!("SSIMULACRA2: {score:.3}");
+        eprintln!("SSIMULACRA2: {score:.3}");
     }
 }
 
@@ -176,7 +179,6 @@ pub fn process_video_pair(
     let cb_dis = NvDecoderSimple::new(3, None);
 
     let mut demuxer_ref = DemuxerParser::new(reference, &cb_ref);
-    // let mut demuxer_dis = DemuxerParser::new("data/dummy_encode2.mkv", &cb_dis);
     let mut demuxer_dis = DemuxerParser::new(distorted, &cb_dis);
 
     while cb_ref.format().is_none() {
@@ -184,7 +186,13 @@ pub fn process_video_pair(
     }
     let format = cb_ref.format().unwrap();
     let colors_ref = color_characteristics_from_format(&format);
-    println!("ref: {}", video_color_print(&format));
+    eprintln!(
+        "Reference: {:12}, {}x{}, {}",
+        demuxer_ref.codec(),
+        format.display_width(),
+        format.display_height(),
+        video_color_print(&format)
+    );
 
     let size = format.size();
 
@@ -193,7 +201,13 @@ pub fn process_video_pair(
     }
     let format_dis = cb_dis.format().unwrap();
     let colors_dis = color_characteristics_from_format(&format_dis);
-    println!("dis: {}", video_color_print(&format_dis));
+    eprintln!(
+        "Distorted: {:12}, {}x{}, {}",
+        demuxer_dis.codec(),
+        format_dis.display_width(),
+        format_dis.display_height(),
+        video_color_print(&format_dis)
+    );
 
     assert_eq!(size, format_dis.size());
 
@@ -215,7 +229,7 @@ pub fn process_video_pair(
     };
 
     let (mut scratch_psnr, mut scores_psnr) = if metrics.psnr {
-        println!("Initializing PSNR");
+        eprintln!("Initializing PSNR");
         (
             Some(quant_ref.as_ref().unwrap().psnr_alloc_scratch(npp).unwrap()),
             Some(Vec::with_capacity(4096)),
@@ -225,7 +239,7 @@ pub fn process_video_pair(
     };
 
     let (mut scratch_ssim, mut scores_ssim) = if metrics.ssim {
-        println!("Initializing SSIM");
+        eprintln!("Initializing SSIM");
         (
             Some(quant_ref.as_ref().unwrap().ssim_alloc_scratch(npp).unwrap()),
             Some(Vec::with_capacity(4096)),
@@ -235,7 +249,7 @@ pub fn process_video_pair(
     };
 
     let (mut scratch_msssim, mut scores_msssim) = if metrics.msssim {
-        println!("Initializing MSSSIM");
+        eprintln!("Initializing MSSSIM");
         (
             Some(
                 quant_ref
@@ -251,7 +265,7 @@ pub fn process_video_pair(
     };
 
     let (mut ssimu, mut scores_ssimu) = if metrics.ssimulacra2 {
-        println!("Initializing SSIMULACRA2");
+        eprintln!("Initializing SSIMULACRA2");
         (
             Some(Ssimulacra2::new(&lrgb_ref, &lrgb_dis, &streams[0]).unwrap()),
             Some(Vec::with_capacity(4096)),
@@ -262,7 +276,7 @@ pub fn process_video_pair(
 
     streams[0].sync().unwrap();
 
-    println!("Initialized, now processing ...");
+    eprintln!("Initialized, now processing ...");
     let start = Instant::now();
     let mut decode_count = 0;
     let mut compute_count = 0;
@@ -391,30 +405,71 @@ pub fn process_video_pair(
         }
     }
 
-    let total = start.elapsed().as_millis();
-    let fps = compute_count as u128 * 1000 / total;
+    let duration = start.elapsed();
+    let fps = compute_count as u128 * 1000 / duration.as_millis();
     let perf_score =
         format.size().width as f64 * format.size().height as f64 * compute_count as f64
-            / total as f64
+            / duration.as_millis() as f64
             / 1000.0;
-    println!("Done !");
-    println!(
-        "Decoded: {}, processed: {} frame pairs in {total} ms ({} fps) (Mpx/s: {:.3})",
-        decode_count, compute_count, fps, perf_score
+    eprintln!(
+        "Decoded: {}, processed: {} frame pairs in {} ({} fps) (Mpx/s: {:.3})",
+        decode_count,
+        compute_count,
+        format_duration(duration),
+        fps,
+        perf_score
     );
-    println!("Stats :");
+    eprintln!("Stats :");
     if let Some(scores) = &scores_psnr {
-        println!("  psnr: {:#?}", Stats::compute(scores));
+        eprintln!("psnr: {:#?}", Stats::compute(scores));
     }
     if let Some(scores) = &scores_ssim {
-        println!("  ssim: {:#?}", Stats::compute(scores));
+        eprintln!("ssim: {:#?}", Stats::compute(scores));
     }
     if let Some(scores) = &scores_msssim {
-        println!("  msssim: {:#?}", Stats::compute(scores));
+        eprintln!("msssim: {:#?}", Stats::compute(scores));
     }
     if let Some(scores) = &scores_ssimu {
-        println!("  ssimulacra2: {:#?}", Stats::compute(scores));
+        eprintln!("ssimulacra2: {:#?}", Stats::compute(scores));
     }
+}
+
+pub fn cuda_codec_to_codec(codec: cudaVideoCodec) -> Codec {
+    match codec {
+        cudaVideoCodec_enum::cudaVideoCodec_MPEG2 => Codec::H262,
+        cudaVideoCodec_enum::cudaVideoCodec_H264 => Codec::H264,
+        cudaVideoCodec_enum::cudaVideoCodec_AV1 => Codec::AV1,
+        _ => todo!(),
+    }
+}
+
+fn format_duration(duration: Duration) -> impl Display {
+    struct DurationFmt(Duration);
+    impl Display for DurationFmt {
+        fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+            let mut secs = self.0.as_secs();
+            let minutes = secs / 60;
+            secs = secs % 60;
+            let millis = self.0.subsec_millis();
+            if minutes > 0 {
+                write!(f, "{} m", minutes)?;
+                if secs > 0 {
+                    write!(f, " ")?;
+                }
+            }
+            if secs > 0 {
+                write!(f, "{} s", secs)?;
+                if millis > 0 {
+                    write!(f, " ")?;
+                }
+            }
+            if millis > 0 {
+                write!(f, "{} ms", millis)?;
+            }
+            Ok(())
+        }
+    }
+    DurationFmt(duration)
 }
 
 pub fn save_img(img: impl Img<u8, C<3>>, name: &str, stream: &CuStream) {

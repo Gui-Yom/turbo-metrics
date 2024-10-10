@@ -1,5 +1,6 @@
+use crate::cuda_codec_to_codec;
 use crate::img::{reinterpret_vec, ColorRepr, CpuImg, SampleType};
-use codec_bitstream::{av1, h264};
+use codec_bitstream::{av1, h264, Codec};
 use cudarse_video::dec::{CuVideoParser, CuvidParserCallbacks};
 use cudarse_video::sys::{cudaVideoCodec, cudaVideoCodec_enum};
 use image::DynamicImage;
@@ -145,7 +146,7 @@ impl<'dec> DemuxerParser<'dec> {
 
         match codec {
             cudaVideoCodec_enum::cudaVideoCodec_MPEG2 => {
-                dbg!(v_track.codec_private());
+                // dbg!(v_track.codec_private());
                 if let Some(private) = v_track.codec_private() {
                     parser.parse_data(private, 0).unwrap();
                 }
@@ -210,6 +211,10 @@ impl<'dec> DemuxerParser<'dec> {
                 return false;
             }
         }
+    }
+
+    pub fn codec(&self) -> Codec {
+        cuda_codec_to_codec(self.codec)
     }
 }
 

@@ -20,13 +20,13 @@ struct CliArgs {
     /// Distorted media, either a video muxed in mkv or a single image. Use '-' to read from stdin.
     distorted: PathBuf,
 
-    /// Compute PSNR score
+    /// Compute PSNR score (computed using NPP in linear RGB)
     #[arg(long)]
     psnr: bool,
-    /// Compute SSIM score
+    /// Compute SSIM score (computed using NPP in linear RGB)
     #[arg(long)]
     ssim: bool,
-    /// Compute MSSSIM score
+    /// Compute MSSSIM score (computed using NPP in linear RGB)
     #[arg(long)]
     msssim: bool,
     /// Compute ssimulacra2 score

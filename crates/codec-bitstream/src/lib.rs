@@ -1,3 +1,5 @@
+use std::fmt::{Display, Formatter};
+
 pub mod av1;
 pub mod h262;
 pub mod h264;
@@ -7,6 +9,21 @@ pub enum Codec {
     AV1,
     H264,
     H262,
+}
+
+impl Display for Codec {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "{:width$}",
+            match self {
+                Codec::AV1 => "AV1",
+                Codec::H264 => "H.264/AVC",
+                Codec::H262 => "H.262/MPEG2",
+            },
+            width = f.width().unwrap_or(0)
+        )
+    }
 }
 
 #[derive(Debug, Copy, Clone)]
@@ -39,17 +56,26 @@ impl ColorCharacteristics {
 
     pub fn or(self, other: Self) -> Self {
         Self {
-            cp: if matches!(self.cp, ColourPrimaries::Unspecified) {
+            cp: if matches!(
+                self.cp,
+                ColourPrimaries::Unspecified | ColourPrimaries::Invalid
+            ) {
                 other.cp
             } else {
                 self.cp
             },
-            mc: if matches!(self.mc, MatrixCoefficients::Unspecified) {
+            mc: if matches!(
+                self.mc,
+                MatrixCoefficients::Unspecified | MatrixCoefficients::Invalid
+            ) {
                 other.mc
             } else {
                 self.mc
             },
-            tc: if matches!(self.tc, TransferCharacteristic::Unspecified) {
+            tc: if matches!(
+                self.tc,
+                TransferCharacteristic::Unspecified | TransferCharacteristic::Invalid
+            ) {
                 other.tc
             } else {
                 self.tc

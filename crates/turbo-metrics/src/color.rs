@@ -1,14 +1,14 @@
 use crate::img::{reinterpret_slice, CpuImg, SampleType};
-use crate::npp;
+use crate::{cuda_codec_to_codec, npp};
 use codec_bitstream::{
-    Codec, ColorCharacteristics, ColourPrimaries, MatrixCoefficients, TransferCharacteristic,
+    ColorCharacteristics, ColourPrimaries, MatrixCoefficients, TransferCharacteristic,
 };
 use cuda_colorspace::{ColorMatrix, ColorspaceConversion, Transfer};
 use cudarse_driver::CuStream;
 use cudarse_npp::image::isu::Malloc;
 use cudarse_npp::image::{ImgMut, C};
 use cudarse_video::dec::npp::NvDecFrame;
-use cudarse_video::sys::{cudaVideoCodec, cudaVideoCodec_enum, CUVIDEOFORMAT};
+use cudarse_video::sys::CUVIDEOFORMAT;
 use std::fmt::Display;
 
 pub fn color_characteristics_from_format(format: &CUVIDEOFORMAT) -> (ColorCharacteristics, bool) {
@@ -22,15 +22,6 @@ pub fn color_characteristics_from_format(format: &CUVIDEOFORMAT) -> (ColorCharac
         .or(color_characteristics_fallback(format)),
         format.video_signal_description.full_range(),
     )
-}
-
-fn cuda_codec_to_codec(codec: cudaVideoCodec) -> Codec {
-    match codec {
-        cudaVideoCodec_enum::cudaVideoCodec_MPEG2 => Codec::H262,
-        cudaVideoCodec_enum::cudaVideoCodec_H264 => Codec::H264,
-        cudaVideoCodec_enum::cudaVideoCodec_AV1 => Codec::AV1,
-        _ => todo!(),
-    }
 }
 
 fn color_characteristics_fallback(format: &CUVIDEOFORMAT) -> ColorCharacteristics {
@@ -81,8 +72,11 @@ pub fn get_transfer(colors: &ColorCharacteristics) -> Transfer {
 pub fn video_color_print(format: &CUVIDEOFORMAT) -> impl Display {
     let (colors, full_range) = color_characteristics_from_format(format);
     format!(
-        "CP: {:?}, MC: {:?}, TC: {:?}, Full range: {}",
-        colors.cp, colors.mc, colors.tc, full_range
+        "CP: {:?}, MC: {:?}, TC: {:?}, CR: {}",
+        colors.cp,
+        colors.mc,
+        colors.tc,
+        if full_range { "Full" } else { "Limited" }
     )
 }
 
