@@ -999,12 +999,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "57c0d7b74b563b49d38dae00a0c37d4d6de9b432382b2892f0574ddcae73fd0a"
 
 [[package]]
-name = "peekable"
-version = "0.2.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "955e8dc14fabcb29297b9cd64c7d1b8d367d8959924b609b6f36d772ee8ff313"
-
-[[package]]
 name = "pin-project-lite"
 version = "0.2.14"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1461,7 +1455,6 @@ dependencies = [
  "cudarse-video",
  "image",
  "matroska-demuxer",
- "peekable",
  "ssimulacra2-cuda",
  "stats",
  "zune-core",

@@ -1,5 +1,5 @@
 use crate::img::{reinterpret_slice, CpuImg, SampleType};
-use crate::{cuda_codec_to_codec, npp};
+use crate::{npp, nvdec_to_codec};
 use codec_bitstream::{
     ColorCharacteristics, ColourPrimaries, MatrixCoefficients, TransferCharacteristic,
 };
@@ -14,7 +14,7 @@ use std::fmt::Display;
 pub fn color_characteristics_from_format(format: &CUVIDEOFORMAT) -> (ColorCharacteristics, bool) {
     (
         ColorCharacteristics::from_codec_bytes(
-            cuda_codec_to_codec(format.codec),
+            nvdec_to_codec(format.codec),
             format.video_signal_description.color_primaries,
             format.video_signal_description.matrix_coefficients,
             format.video_signal_description.transfer_characteristics,

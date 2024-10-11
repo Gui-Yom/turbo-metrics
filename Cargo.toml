@@ -78,7 +78,6 @@ libloading = "0.8"
 matroska-demuxer = "0.5"
 nalgebra = { version = "0.33", default-features = false, features = ["std"] }
 paste = "1"
-peekable = { version = "0.2", default-features = false }
 rerun = "0.18"
 #spsc = { path = "../spsc" }
 tracing = "0.1"

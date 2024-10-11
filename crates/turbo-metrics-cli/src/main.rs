@@ -1,10 +1,10 @@
-use clap::{Args, Parser};
-use std::fmt::Display;
+use clap::Parser;
 use std::fs::File;
 use std::io::{stdin, BufReader, Read};
 use std::path::PathBuf;
-use turbo_metrics::input::peekable::PeekExt;
-use turbo_metrics::input::{probe_image, PROBE_LEN};
+use std::process::ExitCode;
+use turbo_metrics::input_image::probe_image;
+use turbo_metrics::input_video::{Demuxer, VideoProbe};
 use turbo_metrics::{
     init_cuda, process_img_pair, process_video_pair, MetricsToCompute, VideoOptions,
 };
@@ -62,18 +62,18 @@ impl CliArgs {
     }
 }
 
-fn main() {
+fn main() -> ExitCode {
     let args = CliArgs::parse();
 
-    let mut in_ref =
-        BufReader::new(File::open(&args.reference).unwrap()).peekable_with_capacity(PROBE_LEN);
-    let in_dis: Box<dyn Read> = if args.distorted.to_str() == Some("-") {
+    let dis_is_stdin = args.distorted.to_str() == Some("-");
+
+    let mut in_ref = BufReader::new(File::open(&args.reference).unwrap());
+    let mut in_dis: BufReader<Box<dyn Read>> = BufReader::new(if dis_is_stdin {
         // Use stdin
-        Box::new(BufReader::new(stdin().lock()))
+        Box::new(stdin().lock())
     } else {
-        Box::new(BufReader::new(File::open(&args.distorted).unwrap()))
-    };
-    let mut in_dis = in_dis.peekable_with_capacity(PROBE_LEN);
+        Box::new(File::open(&args.distorted).unwrap())
+    });
 
     // Try with an image first
     if let Some(probe_ref) = probe_image(&mut in_ref) {
@@ -93,7 +93,7 @@ fn main() {
                         probe_dis,
                         &args.metrics(),
                     );
-                    return;
+                    ExitCode::SUCCESS
                 } else {
                     eprintln!(
                         "Distorted '{}' detected as {:?} but no decoder is available (missing crate feature / unimplemented).",
@@ -101,12 +101,12 @@ fn main() {
                         probe_dis
                     );
                     eprintln!("Aborting.");
-                    return;
+                    ExitCode::FAILURE
                 }
             } else {
                 eprintln!("Reference is an image, so we expect an image as distorted.");
                 eprintln!("Aborting.");
-                return;
+                ExitCode::FAILURE
             }
         } else {
             eprintln!(
@@ -115,16 +115,65 @@ fn main() {
                 probe_ref
             );
             eprintln!("Aborting.");
-            return;
+            ExitCode::FAILURE
         }
     } else {
-        // not an image
-        init_cuda();
-        process_video_pair(
-            &args.reference,
-            &args.distorted,
-            &args.metrics(),
-            &args.video_options(),
-        );
+        match VideoProbe::probe_file(in_ref) {
+            Ok(Ok(probe_ref)) => {
+                let probe_dis = if dis_is_stdin {
+                    VideoProbe::probe_stream(in_dis)
+                } else {
+                    VideoProbe::probe_file(BufReader::new(File::open(&args.distorted).unwrap()))
+                };
+                match probe_dis {
+                    Ok(Ok(probe_dis)) => {
+                        init_cuda();
+                        process_video_pair(
+                            <VideoProbe as Into<Box<dyn Demuxer>>>::into(probe_ref),
+                            <VideoProbe as Into<Box<dyn Demuxer>>>::into(probe_dis),
+                            &args.metrics(),
+                            &args.video_options(),
+                        );
+                        ExitCode::SUCCESS
+                    }
+                    Ok(Err(e)) => {
+                        if dis_is_stdin {
+                            eprintln!("Unsupported distorted from stream : {e:?}");
+                        } else {
+                            eprintln!(
+                                "Unsupported distorted file '{}' : {e:?}",
+                                args.distorted.display()
+                            );
+                        }
+                        ExitCode::FAILURE
+                    }
+                    Err(e) => {
+                        if dis_is_stdin {
+                            eprintln!("Could not read distorted from stdin : {e}");
+                        } else {
+                            eprintln!(
+                                "Could not read distorted file '{}' : {e}",
+                                args.distorted.display()
+                            );
+                        }
+                        ExitCode::FAILURE
+                    }
+                }
+            }
+            Ok(Err(e)) => {
+                eprintln!(
+                    "Unsupported reference file '{}' : {e:?}",
+                    args.reference.display(),
+                );
+                ExitCode::FAILURE
+            }
+            Err(e) => {
+                eprintln!(
+                    "Can't read reference file '{}' : {e}",
+                    args.reference.display(),
+                );
+                ExitCode::FAILURE
+            }
+        }
     }
 }

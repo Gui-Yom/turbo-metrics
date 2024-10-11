@@ -14,6 +14,7 @@ Included metrics :
 Supported video containers :
 
 - MKV
+- IVF
 
 Supported video codecs :
 

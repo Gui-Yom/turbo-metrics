@@ -1,7 +1,8 @@
 use crate::color::{
     color_characteristics_from_format, convert_frame_to_linearrgb, cpu_to_linear, video_color_print,
 };
-use crate::input::{decode_image_frames, DemuxerParser, ImageProbe};
+use crate::input_image::{decode_image_frames, ImageProbe};
+use crate::input_video::Demuxer;
 use codec_bitstream::Codec;
 use cuda_colorspace::ColorspaceConversion;
 pub use cudarse_driver;
@@ -12,20 +13,21 @@ use cudarse_npp::image::isu::Malloc;
 use cudarse_npp::image::{Img, C};
 use cudarse_npp::{get_stream_ctx, set_stream};
 pub use cudarse_video;
+use cudarse_video::dec::CuVideoParser;
 use cudarse_video::dec_simple::NvDecoderSimple;
-use cudarse_video::sys::{cudaVideoCodec, cudaVideoCodec_enum};
+use cudarse_video::sys::cudaVideoCodec;
 use ssimulacra2_cuda::Ssimulacra2;
 pub use stats;
 use stats::full::Stats;
 use std::fmt::{Display, Formatter};
 use std::io::Read;
-use std::path::Path;
 use std::sync::LazyLock;
 use std::time::{Duration, Instant};
 
 pub mod color;
 pub mod img;
-pub mod input;
+pub mod input_image;
+pub mod input_video;
 
 #[derive(Debug, Default)]
 pub struct MetricsToCompute {
@@ -167,8 +169,8 @@ pub fn process_img_pair(
 }
 
 pub fn process_video_pair(
-    reference: &Path,
-    distorted: &Path,
+    mut demuxer_ref: impl Demuxer,
+    mut demuxer_dis: impl Demuxer,
     metrics: &MetricsToCompute,
     opts: &VideoOptions,
 ) {
@@ -178,11 +180,25 @@ pub fn process_video_pair(
     let cb_ref = NvDecoderSimple::new(3, None);
     let cb_dis = NvDecoderSimple::new(3, None);
 
-    let mut demuxer_ref = DemuxerParser::new(reference, &cb_ref);
-    let mut demuxer_dis = DemuxerParser::new(distorted, &cb_dis);
+    let mut parser_ref = CuVideoParser::new(
+        codec_to_nvdec(demuxer_ref.codec()),
+        &cb_ref,
+        Some(demuxer_ref.clock_rate()),
+        None,
+    )
+    .unwrap();
 
+    let mut parser_dis = CuVideoParser::new(
+        codec_to_nvdec(demuxer_dis.codec()),
+        &cb_dis,
+        Some(dbg!(demuxer_dis.clock_rate())),
+        None,
+    )
+    .unwrap();
+
+    demuxer_ref.init(&mut parser_ref);
     while cb_ref.format().is_none() {
-        demuxer_ref.demux();
+        demuxer_ref.demux(&mut parser_ref);
     }
     let format = cb_ref.format().unwrap();
     let colors_ref = color_characteristics_from_format(&format);
@@ -196,8 +212,9 @@ pub fn process_video_pair(
 
     let size = format.size();
 
+    demuxer_dis.init(&mut parser_dis);
     while cb_dis.format().is_none() {
-        demuxer_dis.demux();
+        demuxer_dis.demux(&mut parser_dis);
     }
     let format_dis = cb_dis.format().unwrap();
     let colors_dis = color_characteristics_from_format(&format_dis);
@@ -283,10 +300,10 @@ pub fn process_video_pair(
 
     'main: loop {
         while !cb_ref.has_frames() {
-            demuxer_ref.demux();
+            demuxer_ref.demux(&mut parser_ref);
         }
         while !cb_dis.has_frames() {
-            demuxer_dis.demux();
+            demuxer_dis.demux(&mut parser_dis);
         }
         for (fref, fdis) in cb_ref.frames_sync(&cb_dis) {
             if let (Some(fref), Some(fdis)) = (fref, fdis) {
@@ -434,12 +451,22 @@ pub fn process_video_pair(
     }
 }
 
-pub fn cuda_codec_to_codec(codec: cudaVideoCodec) -> Codec {
+pub fn nvdec_to_codec(codec: cudaVideoCodec) -> Codec {
+    use cudarse_video::sys::cudaVideoCodec::*;
     match codec {
-        cudaVideoCodec_enum::cudaVideoCodec_MPEG2 => Codec::H262,
-        cudaVideoCodec_enum::cudaVideoCodec_H264 => Codec::H264,
-        cudaVideoCodec_enum::cudaVideoCodec_AV1 => Codec::AV1,
+        cudaVideoCodec_MPEG2 => Codec::H262,
+        cudaVideoCodec_H264 => Codec::H264,
+        cudaVideoCodec_AV1 => Codec::AV1,
         _ => todo!(),
+    }
+}
+
+pub fn codec_to_nvdec(codec: Codec) -> cudaVideoCodec {
+    use cudarse_video::sys::cudaVideoCodec::*;
+    match codec {
+        Codec::H262 => cudaVideoCodec_MPEG2,
+        Codec::H264 => cudaVideoCodec_H264,
+        Codec::AV1 => cudaVideoCodec_AV1,
     }
 }
 

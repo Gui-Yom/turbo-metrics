@@ -3,12 +3,23 @@ use std::fmt::{Display, Formatter};
 pub mod av1;
 pub mod h262;
 pub mod h264;
+pub mod ivf;
 
 #[derive(Debug, Copy, Clone)]
 pub enum Codec {
     AV1,
     H264,
     H262,
+}
+
+impl Codec {
+    pub fn from_fourcc(fourcc: [u8; 4]) -> Option<Self> {
+        match &fourcc {
+            b"AV01" => Some(Self::AV1),
+            b"AVC1" => Some(Self::H264),
+            _ => None,
+        }
+    }
 }
 
 impl Display for Codec {

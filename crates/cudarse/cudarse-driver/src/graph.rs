@@ -1,7 +1,5 @@
 use crate::{sys, CuStream};
 use std::ffi::CString;
-use std::iter::repeat;
-use std::mem;
 use std::path::Path;
 use std::ptr::{null_mut, NonNull};
 use sys::{
