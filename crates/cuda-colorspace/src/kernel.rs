@@ -22,9 +22,12 @@ pub struct Kernel {
 impl Kernel {
     pub fn load() -> CuResult<Self> {
         //let path = "target/nvptx64-nvidia-cuda/release-nvptx/ssimulacra2_cuda_kernel.ptx";
-        let module = CuModule::load_ptx(include_str!(concat!(
-            env!("OUT_DIR"),
-            "/cuda_colorspace_kernel.ptx"
+        // let module = CuModule::load_ptx(include_str!(concat!(
+        //     env!("CARGO_CDYLIB_DIR_CUDA_COLORSPACE_KERNEL"),
+        //     "/cuda_colorspace_kernel.ptx"
+        // )))?;
+        let module = CuModule::load_ptx(include_str!(env!(
+            "CARGO_CDYLIB_FILE_CUDA_COLORSPACE_KERNEL"
         )))?;
         Ok(Self {
             biplanaryuv420_to_linearrgb_8_l_bt709: module

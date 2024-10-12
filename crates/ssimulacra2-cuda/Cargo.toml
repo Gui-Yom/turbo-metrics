@@ -16,9 +16,7 @@ array-init = { workspace = true }
 cudarse-driver = { workspace = true }
 cudarse-npp = { workspace = true, features = ["isu", "ial", "idei", "if", "ist"] }
 indices = { workspace = true }
-
-[build-dependencies]
-nvptx-builder = { workspace = true }
+ssimulacra2-cuda-kernel = { version = "0.1", path = "../ssimulacra2-cuda-kernel", artifact = "cdylib", target = "nvptx64-nvidia-cuda" }
 
 [dev-dependencies]
 zune-image = { workspace = true, features = ["png", "simd", "metadata"] }

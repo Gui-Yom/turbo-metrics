@@ -355,9 +355,9 @@ dependencies = [
 name = "cuda-colorspace"
 version = "0.1.0"
 dependencies = [
+ "cuda-colorspace-kernel",
  "cudarse-driver",
  "cudarse-npp",
- "nvptx-builder",
 ]
 
 [[package]]
@@ -1250,7 +1250,7 @@ dependencies = [
  "cudarse-driver",
  "cudarse-npp",
  "indices",
- "nvptx-builder",
+ "ssimulacra2-cuda-kernel",
  "zune-image",
 ]
 

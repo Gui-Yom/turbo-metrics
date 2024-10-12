@@ -2,3 +2,38 @@
 # ref: https://developer.nvidia.com/cuda-gpus
 #rustflags = ["-Z", "unstable-options", "-C", "linker-flavor=llbc", "-C", "target-cpu=sm_89", "-Z", "tune-cpu=sm_89"]
 rustflags = ["-Z", "unstable-options", "-C", "linker-flavor=llbc"]
+
+[unstable]
+bindeps = true
+
+[profile.dev.package.cuda-colorspace-kernel]
+inherits = "release-nvptx"
+opt-level = 3
+debug = false
+debug-assertions = false
+overflow-checks = false
+incremental = false
+
+[profile.release.package.cuda-colorspace-kernel]
+inherits = "release-nvptx"
+opt-level = 3
+debug = false
+debug-assertions = false
+overflow-checks = false
+incremental = false
+
+[profile.dev.package.ssimulacra2-cuda-kernel]
+inherits = "release-nvptx"
+opt-level = 3
+debug = false
+debug-assertions = false
+overflow-checks = false
+incremental = false
+
+[profile.release.package.ssimulacra2-cuda-kernel]
+inherits = "release-nvptx"
+opt-level = 3
+debug = false
+debug-assertions = false
+overflow-checks = false
+incremental = false

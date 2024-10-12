@@ -12,9 +12,7 @@ rust-version = "1.77"
 [dependencies]
 cudarse-driver = { workspace = true }
 cudarse-npp = { workspace = true }
+cuda-colorspace-kernel = { version = "0.1", path = "../cuda-colorspace-kernel", artifact = "cdylib", target = "nvptx64-nvidia-cuda" }
 
 [dev-dependencies]
 cudarse-npp = { workspace = true, features = ["isu", "idei"] }
-
-[build-dependencies]
-nvptx-builder = { workspace = true }

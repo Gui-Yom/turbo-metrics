@@ -88,8 +88,7 @@ repo is by cloning the git repo.
 - 64-bit system.
 - CUDA 12.x (tested with 12.5 and 12.6, it might work with previous versions, I don't know)
 - CUDA NPP (normally packaged with CUDA by default, but it's optional component)
-- Rust stable
-- Rust nightly for the CUDA kernels (it should work with only a nightly toolchain and no stable)
+- Rust nightly (because of CUDA kernels and unstable Cargo features)
 - Various rustup components for the nightly channel :
   ```shell
   rustup +nightly target add nvptx64-nvidia-cuda

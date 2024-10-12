@@ -17,7 +17,7 @@ impl Kernel {
     pub fn load() -> Self {
         //let path = "target/nvptx64-nvidia-cuda/release-nvptx/ssimulacra2_cuda_kernel.ptx";
         let module = CuModule::load_ptx(include_str!(concat!(
-            env!("OUT_DIR"),
+            env!("CARGO_CDYLIB_DIR_SSIMULACRA2_CUDA_KERNEL"),
             "/ssimulacra2_cuda_kernel.ptx"
         )))
         .unwrap();
