@@ -11,4 +11,4 @@ license = "MIT"
 crate-type = ["rlib", "cdylib"]
 
 [dependencies]
-nvptx-core = { workspace = true }
+nvptx-std = { workspace = true }

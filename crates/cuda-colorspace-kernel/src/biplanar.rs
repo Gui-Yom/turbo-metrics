@@ -2,7 +2,7 @@ use crate::{
     Bitdepth, ColorRange, Limited, MatrixCoefficients, Sample, TransferCharacteristics, BT601_525,
     BT601_625, BT709,
 };
-use nvptx_core::prelude::*;
+use nvptx_std::prelude::*;
 
 #[inline]
 unsafe fn biplanaryuv420_to_linearrgb_generic<const BITDEPTH: usize, LumaCR, ChromaCR, Tr, CP>(

@@ -1,6 +1,7 @@
 [package]
 name = "cudarse-driver"
 version = "0.1.0"
+description = "Bindings to the CUDA Driver API that tries to stay faithful to the original"
 edition.workspace = true
 authors.workspace = true
 homepage.workspace = true

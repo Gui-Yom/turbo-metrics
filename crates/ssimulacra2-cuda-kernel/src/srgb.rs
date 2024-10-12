@@ -1,4 +1,4 @@
-use nvptx_core::prelude::*;
+use nvptx_std::prelude::*;
 
 // Adjusted for continuity of first derivative.
 const SRGB_ALPHA: f32 = 1.055_010_7;

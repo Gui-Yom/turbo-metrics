@@ -1,6 +1,7 @@
 [package]
 name = "ssimulacra2-cuda"
 version = "0.1.0"
+description = "Ssimulacra2 implementation running on CUDA"
 edition.workspace = true
 authors.workspace = true
 homepage.workspace = true

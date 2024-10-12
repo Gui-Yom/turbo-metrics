@@ -1,4 +1,4 @@
-use nvptx_core::prelude::*;
+use nvptx_std::prelude::*;
 
 trait Sample {
     type Type: Into<u32>;

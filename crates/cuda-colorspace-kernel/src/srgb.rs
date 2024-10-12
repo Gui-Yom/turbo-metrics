@@ -1,5 +1,5 @@
 use crate::{Bitdepth, Sample};
-use nvptx_core::prelude::*;
+use nvptx_std::prelude::*;
 
 #[rustfmt::skip]
 const SRGB8_TO_LINEARF32_LUT: [f32; 256] = [

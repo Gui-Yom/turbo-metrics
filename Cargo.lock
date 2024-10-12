@@ -364,7 +364,7 @@ dependencies = [
 name = "cuda-colorspace-kernel"
 version = "0.1.0"
 dependencies = [
- "nvptx-core",
+ "nvptx-std",
 ]
 
 [[package]]
@@ -977,7 +977,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "nvptx-core"
+name = "nvptx-std"
 version = "0.1.0"
 
 [[package]]
@@ -1043,6 +1043,10 @@ name = "quick-error"
 version = "2.0.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a993555f31e5a609f617c12db6250dedcac1b0a85076912c436e6fc9b2c8e6a3"
+
+[[package]]
+name = "quick-stats"
+version = "0.1.0"
 
 [[package]]
 name = "quote"
@@ -1255,7 +1259,7 @@ name = "ssimulacra2-cuda-kernel"
 version = "0.1.0"
 dependencies = [
  "nalgebra",
- "nvptx-core",
+ "nvptx-std",
 ]
 
 [[package]]
@@ -1263,10 +1267,6 @@ name = "static_assertions"
 version = "1.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a2eb9349b6444b326872e140eb1cf5e7c522154d69e7a0ffb0fb81c06b37543f"
-
-[[package]]
-name = "stats"
-version = "0.1.0"
 
 [[package]]
 name = "syn"
@@ -1455,8 +1455,8 @@ dependencies = [
  "cudarse-video",
  "image",
  "matroska-demuxer",
+ "quick-stats",
  "ssimulacra2-cuda",
- "stats",
  "zune-core",
  "zune-image",
 ]
@@ -1526,7 +1526,7 @@ dependencies = [
 name = "vmaf-cuda-kernel"
 version = "0.1.0"
 dependencies = [
- "nvptx-core",
+ "nvptx-std",
 ]
 
 [[package]]

@@ -1,6 +1,7 @@
 [package]
 name = "cudarse-video"
 version = "0.1.0"
+description = "Bindings to the CUVID/NVDEC libraries"
 edition.workspace = true
 authors.workspace = true
 homepage.workspace = true

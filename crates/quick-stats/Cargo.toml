@@ -1,6 +1,7 @@
 [package]
-name = "stats"
+name = "quick-stats"
 version = "0.1.0"
+description = "Quick stats"
 edition.workspace = true
 authors.workspace = true
 homepage.workspace = true

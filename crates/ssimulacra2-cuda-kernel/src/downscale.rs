@@ -1,4 +1,4 @@
-use nvptx_core::prelude::*;
+use nvptx_std::prelude::*;
 
 /// Downscale by taking the average of 2x2 patches
 #[no_mangle]

@@ -1,11 +1,12 @@
 [package]
 name = "turbo-metrics"
 version = "0.3.0"
+description = "Toolkit to compute quality metrics fast using a GPU"
 authors.workspace = true
 homepage.workspace = true
 repository.workspace = true
 edition.workspace = true
-license = "AGPL-3"
+license = "AGPL-3.0-or-later"
 rust-version = "1.79"
 
 [dependencies]
@@ -17,7 +18,7 @@ cudarse-video = { workspace = true, features = ["npp"] }
 image = { workspace = true }
 matroska-demuxer = { workspace = true }
 ssimulacra2-cuda = { workspace = true }
-stats = { workspace = true }
+quick-stats = { workspace = true }
 zune-core = { workspace = true }
 zune-image = { workspace = true, features = ["simd", "metadata", "threads"] }
 

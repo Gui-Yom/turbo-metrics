@@ -1,4 +1,4 @@
-use nvptx_core::prelude::*;
+use nvptx_std::prelude::*;
 
 const K_M02: f32 = 0.078f32;
 const K_M00: f32 = 0.30f32;

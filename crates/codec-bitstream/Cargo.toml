@@ -1,6 +1,7 @@
 [package]
 name = "codec-bitstream"
 version = "0.1.0"
+description = "Parsers for common bitstream structures found in video codecs"
 edition.workspace = true
 authors.workspace = true
 homepage.workspace = true

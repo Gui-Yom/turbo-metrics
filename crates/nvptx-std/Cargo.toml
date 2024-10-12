@@ -1,6 +1,7 @@
 [package]
-name = "nvptx-core"
+name = "nvptx-std"
 version = "0.1.0"
+description = "stdlib for nvptx64-nvidia-cuda"
 edition.workspace = true
 authors.workspace = true
 homepage.workspace = true

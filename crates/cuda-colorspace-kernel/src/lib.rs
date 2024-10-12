@@ -4,7 +4,7 @@
 #![feature(asm_experimental_arch)]
 
 use crate::const_algebra::{Vec2, Vec3};
-use nvptx_core::prelude::*;
+use nvptx_std::prelude::*;
 
 mod biplanar;
 mod const_algebra;

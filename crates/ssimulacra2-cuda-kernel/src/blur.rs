@@ -1,6 +1,6 @@
 use core::hint::unreachable_unchecked;
 
-use nvptx_core::prelude::*;
+use nvptx_std::prelude::*;
 
 /// Filter values as computed by the build script
 mod consts {

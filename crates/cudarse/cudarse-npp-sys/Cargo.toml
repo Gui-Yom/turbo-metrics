@@ -1,6 +1,7 @@
 [package]
 name = "cudarse-npp-sys"
 version = "0.1.0"
+description = "Low-level bindings to the CUDA NPP libraries"
 edition.workspace = true
 authors.workspace = true
 homepage.workspace = true

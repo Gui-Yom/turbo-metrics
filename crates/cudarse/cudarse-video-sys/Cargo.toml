@@ -1,6 +1,7 @@
 [package]
 name = "cudarse-video-sys"
 version = "0.1.0"
+description = "Low-level bindings to the CUVID/NVDEC libraries"
 edition.workspace = true
 authors.workspace = true
 homepage.workspace = true

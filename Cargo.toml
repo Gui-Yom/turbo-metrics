@@ -2,47 +2,32 @@
 members = [
     "crates/amf",
     "crates/amf-sys",
+    "crates/codec-bitstream",
+    "crates/cuda-colorspace",
+    "crates/cuda-colorspace-kernel",
     "crates/cudarse/cudarse-driver",
     "crates/cudarse/cudarse-driver-sys",
     "crates/cudarse/cudarse-npp",
     "crates/cudarse/cudarse-npp-sys",
     "crates/cudarse/cudarse-video",
     "crates/cudarse/cudarse-video-sys",
-    "crates/codec-bitstream",
     "crates/nvptx-builder",
-    "crates/nvptx-core",
+    "crates/nvptx-std",
+    "crates/quick-stats",
     "crates/ssimulacra2-cuda-kernel",
     "crates/ssimulacra2-cuda",
-    "crates/stats",
     "crates/turbo-metrics",
     "crates/turbo-metrics-cli",
     "crates/vmaf",
     "crates/vmaf-cuda",
     "crates/vmaf-cuda-kernel",
-    "crates/cuda-colorspace",
-    "crates/cuda-colorspace-kernel",
 ]
-# Default members exlude nvptx crates
 default-members = [
-    "crates/amf",
-    "crates/amf-sys",
-    "crates/cudarse/cudarse-driver",
-    "crates/cudarse/cudarse-driver-sys",
-    "crates/cudarse/cudarse-npp",
-    "crates/cudarse/cudarse-npp-sys",
-    "crates/cudarse/cudarse-video",
-    "crates/cudarse/cudarse-video-sys",
-    "crates/codec-bitstream",
-    "crates/nvptx-builder",
-    "crates/ssimulacra2-cuda",
-    "crates/stats",
-    "crates/turbo-metrics",
     "crates/turbo-metrics-cli",
-    "crates/vmaf",
-    "crates/vmaf-cuda",
-    "crates/cuda-colorspace",
 ]
 resolver = "2"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.htm
 
 [workspace.package]
 authors = ["Guillaume Anthouard <guillaume.anthouard@hotmail.fr>"]
@@ -51,21 +36,21 @@ repository = "https://github.com/Gui-Yom/turbo-metrics"
 edition = "2021"
 
 [workspace.dependencies]
-amf = { path = "crates/amf", default-features = false }
-amf-sys = { path = "crates/amf-sys", default-features = false }
-codec-bitstream = { path = "crates/codec-bitstream", default-features = false }
-cuda-colorspace = { path = "crates/cuda-colorspace", default-features = false }
-cudarse-driver = { path = "crates/cudarse/cudarse-driver", default-features = false }
-cudarse-driver-sys = { path = "crates/cudarse/cudarse-driver-sys", default-features = false }
-cudarse-npp = { path = "crates/cudarse/cudarse-npp", default-features = false }
-cudarse-npp-sys = { path = "crates/cudarse/cudarse-npp-sys", default-features = false }
-cudarse-video = { path = "crates/cudarse/cudarse-video", default-features = false }
-cudarse-video-sys = { path = "crates/cudarse/cudarse-video-sys", default-features = false }
-nvptx-builder = { path = "crates/nvptx-builder", default-features = false }
-nvptx-core = { path = "crates/nvptx-core", default-features = false }
-ssimulacra2-cuda = { path = "crates/ssimulacra2-cuda", default-features = false }
-stats = { path = "crates/stats", default-features = false }
-turbo-metrics = { path = "crates/turbo-metrics", default-features = false }
+amf = { version = "0.1", path = "crates/amf", default-features = false }
+amf-sys = { version = "0.1", path = "crates/amf-sys", default-features = false }
+codec-bitstream = { version = "0.1", path = "crates/codec-bitstream", default-features = false }
+cuda-colorspace = { version = "0.1", path = "crates/cuda-colorspace", default-features = false }
+cudarse-driver = { version = "0.1", path = "crates/cudarse/cudarse-driver", default-features = false }
+cudarse-driver-sys = { version = "0.1", path = "crates/cudarse/cudarse-driver-sys", default-features = false }
+cudarse-npp = { version = "0.1", path = "crates/cudarse/cudarse-npp", default-features = false }
+cudarse-npp-sys = { version = "0.1", path = "crates/cudarse/cudarse-npp-sys", default-features = false }
+cudarse-video = { version = "0.1", path = "crates/cudarse/cudarse-video", default-features = false }
+cudarse-video-sys = { version = "0.1", path = "crates/cudarse/cudarse-video-sys", default-features = false }
+nvptx-builder = { version = "0.1", path = "crates/nvptx-builder", default-features = false }
+nvptx-std = { version = "0.1", path = "crates/nvptx-std", default-features = false }
+quick-stats = { version = "0.1", path = "crates/quick-stats", default-features = false }
+ssimulacra2-cuda = { version = "0.1", path = "crates/ssimulacra2-cuda", default-features = false }
+turbo-metrics = { version = "0.3", path = "crates/turbo-metrics", default-features = false }
 
 array-init = "2"
 bindgen = "0.70"
@@ -85,8 +70,6 @@ tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 widestring = "1"
 zune-core = { version = "0.4", default-features = false, features = ["std"] }
 zune-image = { version = "0.4", default-features = false }
-
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.htm
 
 # Profile specifically for building nvptx code
 [profile.release-nvptx]

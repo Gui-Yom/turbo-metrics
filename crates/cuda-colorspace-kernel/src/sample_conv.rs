@@ -1,5 +1,5 @@
 use crate::{Bitdepth, Sample};
-use nvptx_core::prelude::*;
+use nvptx_std::prelude::*;
 
 /// This kernel can be called with 3*width, because channels can be processed independently.
 #[inline]
