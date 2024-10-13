@@ -1,5 +1,6 @@
 pub mod full {
     #[derive(Debug)]
+    #[cfg_attr(feature = "serde", derive(serde::Serialize))]
     pub struct Stats {
         pub min: f64,
         pub max: f64,

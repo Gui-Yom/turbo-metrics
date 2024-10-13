@@ -1,4 +1,5 @@
-use clap::Parser;
+use crate::output::Output;
+use clap::{Parser, ValueEnum};
 use std::fs::File;
 use std::io::{stdin, BufReader, Read};
 use std::path::PathBuf;
@@ -9,29 +10,22 @@ use turbo_metrics::{
     init_cuda, process_img_pair, process_video_pair, MetricsToCompute, VideoOptions,
 };
 
-/// Turbo metrics compare the video tracks of two mkv files.
+mod output;
+
+/// Turbo metrics compare two images of videos using quality metrics.
 ///
-/// You can select many metrics to be computed together, which will reduce overhead.
+/// Video decoding and metric computations happen on your Nvidia GPU.
 #[derive(Parser, Debug)]
 #[command(version, author)]
 struct CliArgs {
-    /// Reference media, either a video muxed in mkv or a single image.
+    /// Reference media.
     reference: PathBuf,
-    /// Distorted media, either a video muxed in mkv or a single image. Use '-' to read from stdin.
+    /// Distorted media. Use '-' to read from stdin.
     distorted: PathBuf,
 
-    /// Compute PSNR score (computed using NPP in linear RGB)
-    #[arg(long)]
-    psnr: bool,
-    /// Compute SSIM score (computed using NPP in linear RGB)
-    #[arg(long)]
-    ssim: bool,
-    /// Compute MSSSIM score (computed using NPP in linear RGB)
-    #[arg(long)]
-    msssim: bool,
-    /// Compute ssimulacra2 score
-    #[arg(long)]
-    ssimulacra2: bool,
+    /// Select the metrics to compute, selecting many at once will reduce overhead because the video will only be decoded once.
+    #[arg(short, long)]
+    metrics: Vec<Metrics>,
 
     /// Only compute metrics every few frames, effectively down-sampling the measurements.
     /// Still, this tool will decode all frames, hence increasing overhead. Check Mpx/s to see what I mean.
@@ -42,15 +36,32 @@ struct CliArgs {
     /// Index of the first frame to start computing at. Useful for overlaying separate computations with `every`.
     #[arg(long, default_value = "0")]
     skip: u32,
+
+    /// Choose the CLI stdout format. Omit the option for the default.
+    /// Status messages will be printed to stderr in all cases.
+    #[arg(long, value_enum)]
+    output: Option<Output>,
+}
+
+#[derive(Debug, Copy, Clone, PartialEq, ValueEnum)]
+pub enum Metrics {
+    /// PSNR computed with NPP in linear RGB
+    PSNR,
+    /// SSIM computed with NPP in linear RGB
+    SSIM,
+    /// MSSSIM computed with NPP in linear RGB
+    MSSSIM,
+    /// SSIMULACRA2 computed with CUDA
+    SSIMULACRA2,
 }
 
 impl CliArgs {
     fn metrics(&self) -> MetricsToCompute {
         MetricsToCompute {
-            psnr: self.psnr,
-            ssim: self.ssim,
-            msssim: self.msssim,
-            ssimulacra2: self.ssimulacra2,
+            psnr: self.metrics.contains(&Metrics::PSNR),
+            ssim: self.metrics.contains(&Metrics::SSIM),
+            msssim: self.metrics.contains(&Metrics::MSSSIM),
+            ssimulacra2: self.metrics.contains(&Metrics::SSIMULACRA2),
         }
     }
 
@@ -59,6 +70,10 @@ impl CliArgs {
             every: self.every,
             skip: self.skip,
         }
+    }
+
+    fn output(&self) -> Output {
+        self.output.unwrap_or_default()
     }
 }
 
@@ -86,14 +101,20 @@ fn main() -> ExitCode {
 
                     init_cuda();
                     // Yay, we can decode both as an image
-                    process_img_pair(
+                    let result = process_img_pair(
                         &mut in_ref,
                         &mut in_dis,
                         probe_ref,
                         probe_dis,
                         &args.metrics(),
                     );
-                    ExitCode::SUCCESS
+
+                    if let Some(result) = result {
+                        args.output().display_image_result(&result);
+                        ExitCode::SUCCESS
+                    } else {
+                        ExitCode::FAILURE
+                    }
                 } else {
                     eprintln!(
                         "Distorted '{}' detected as {:?} but no decoder is available (missing crate feature / unimplemented).",
@@ -128,13 +149,19 @@ fn main() -> ExitCode {
                 match probe_dis {
                     Ok(Ok(probe_dis)) => {
                         init_cuda();
-                        process_video_pair(
+                        let result = process_video_pair(
                             <VideoProbe as Into<Box<dyn Demuxer>>>::into(probe_ref),
                             <VideoProbe as Into<Box<dyn Demuxer>>>::into(probe_dis),
                             &args.metrics(),
                             &args.video_options(),
                         );
-                        ExitCode::SUCCESS
+
+                        if let Some(result) = &result {
+                            args.output().display_video_result(result);
+                            ExitCode::SUCCESS
+                        } else {
+                            ExitCode::FAILURE
+                        }
                     }
                     Ok(Err(e)) => {
                         if dis_is_stdin {

@@ -157,17 +157,16 @@ encoding itself) from pre-filtering to validation. In no particular order or pri
 - Region selection
 - More video containers (mp4)
 - Raw bitstreams
-- More codecs
+- More codecs (HEVC, VP8, VP9, VC1)
 - Finish implementing useful colorspaces
+- HDR support
 - libavcodec input so everything is supported
 - CPU decoder fallback
 - Integrations with other tools ?
 
 ### Outputs
 
-- Parseable stdout
-- JSON output
-- CSV output
+- Nicer interactive output (tracing-indicatif ?)
 - Plot output
 
 ### Platform support

@@ -38,7 +38,56 @@ Supported image codecs :
 Build a release binary with `cargo build --release -p turbo-metrics --features static`. Start with
 `turbo-metrics --help`.
 
-## Example
+## Usage
+
+```text
+Usage: turbo-metrics [OPTIONS] <REFERENCE> <DISTORTED>
+
+Arguments:
+  <REFERENCE>
+          Reference media
+
+  <DISTORTED>
+          Distorted media. Use '-' to read from stdin
+
+Options:
+  -m, --metrics <METRICS>
+          Select the metrics to compute, selecting many at once will reduce overhead because the video will only be decoded once
+
+          Possible values:
+          - psnr:        PSNR computed with NPP in linear RGB
+          - ssim:        SSIM computed with NPP in linear RGB
+          - msssim:      MSSSIM computed with NPP in linear RGB
+          - ssimulacra2: SSIMULACRA2 computed with CUDA
+
+      --every <EVERY>
+          Only compute metrics every few frames, effectively down-sampling the measurements. Still, this tool will decode all frames, hence increasing overhead. Check Mpx/s to see what I mean.
+
+          E.g. 8 invocations with --every 8 will perform around 50% worse than a single pass computing every frame.
+
+          [default: 0]
+
+      --skip <SKIP>
+          Index of the first frame to start computing at. Useful for overlaying separate computations with `every`
+
+          [default: 0]
+
+      --output <OUTPUT>
+          Choose the CLI stdout format. Omit the option for the default. Status messages will be printed to stderr in all cases
+
+          Possible values:
+          - default: Default classic output for human reading. This won't print the score for each individual frames
+          - json:    Json object output. Contains both per-frame scores and aggregated stats
+          - csv:     CSV output. Only contains per-frame scores
+
+  -h, --help
+          Print help (see a summary with '-h')
+
+  -V, --version
+          Print version
+```
+
+## Example output
 
 ```shell
 $ turbo-metrics.exe --ssimulacra2 ref.mkv dis.mkv

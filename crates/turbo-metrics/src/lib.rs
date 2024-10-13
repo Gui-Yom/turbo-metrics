@@ -52,6 +52,49 @@ pub struct VideoOptions {
     pub skip: u32,
 }
 
+#[derive(Debug)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize))]
+pub struct ResultsVideoMetric {
+    pub scores: Vec<f64>,
+    pub stats: Stats,
+}
+
+impl From<Vec<f64>> for ResultsVideoMetric {
+    fn from(value: Vec<f64>) -> Self {
+        Self {
+            stats: Stats::compute(&value),
+            scores: value,
+        }
+    }
+}
+
+#[derive(Debug)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize))]
+pub struct ResultsVideo {
+    pub frame_count: usize,
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
+    pub psnr: Option<ResultsVideoMetric>,
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
+    pub ssim: Option<ResultsVideoMetric>,
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
+    pub msssim: Option<ResultsVideoMetric>,
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
+    pub ssimulacra2: Option<ResultsVideoMetric>,
+}
+
+#[derive(Debug)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize))]
+pub struct ResultsImage {
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
+    pub psnr: Option<f64>,
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
+    pub ssim: Option<f64>,
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
+    pub msssim: Option<f64>,
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
+    pub ssimulacra2: Option<f64>,
+}
+
 pub fn init_cuda() {
     struct Cuda(CuDevice);
     static CUDA_INIT: LazyLock<Cuda> = LazyLock::new(|| {
@@ -78,7 +121,7 @@ pub fn process_img_pair(
     probe_ref: ImageProbe,
     probe_dis: ImageProbe,
     metrics: &MetricsToCompute,
-) {
+) -> Option<ResultsImage> {
     let cpu_img_ref = decode_image_frames(in_ref, probe_ref);
     let cpu_img_dis = decode_image_frames(in_dis, probe_dis);
 
@@ -90,18 +133,16 @@ pub fn process_img_pair(
 
     if cpu_img_ref.len() != cpu_img_dis.len() {
         eprintln!("Images have a different number of frames. Aborting.");
-        return;
+        return None;
     }
 
     if cpu_img_ref.len() > 1 {
-        eprintln!(
-            "Note that animated images are unsupported, only the first frame will be evaluated"
-        );
+        eprintln!("WARN: animated images are unsupported, only the first frame will be evaluated");
     }
 
     if width != cpu_img_dis[0].width || height != cpu_img_dis[0].height {
         eprintln!("Images are not the same size. Aborting.");
-        return;
+        return None;
     }
 
     let stream = CuStream::new().unwrap();
@@ -144,28 +185,43 @@ pub fn process_img_pair(
 
     stream.join(&stream2).unwrap();
 
-    if let Some(psnr) = &mut psnr {
+    let psnr_score = if let Some(psnr) = &mut psnr {
         let score = quant_ref.psnr(&quant_dis, psnr, ctx).unwrap();
         stream.sync().unwrap();
-        eprintln!("PSNR: {score:.3}");
-    }
+        Some(*score as f64)
+    } else {
+        None
+    };
 
-    if let Some(ssim) = &mut ssim {
+    let ssim_score = if let Some(ssim) = &mut ssim {
         let score = quant_ref.ssim(&quant_dis, ssim, ctx).unwrap();
         stream.sync().unwrap();
-        eprintln!("SSIM: {score:.3}");
-    }
+        Some(*score as f64)
+    } else {
+        None
+    };
 
-    if let Some(msssim) = &mut msssim {
+    let msssim_score = if let Some(msssim) = &mut msssim {
         let score = quant_ref.wmsssim(&quant_dis, msssim, ctx).unwrap();
         stream.sync().unwrap();
-        eprintln!("MSSSIM: {score:.3}");
-    }
+        Some(*score as f64)
+    } else {
+        None
+    };
 
-    if let Some(ssimu2) = &mut ssimu2 {
+    let ssimulacra2_score = if let Some(ssimu2) = &mut ssimu2 {
         let score = ssimu2.compute_sync(&stream).unwrap();
-        eprintln!("SSIMULACRA2: {score:.3}");
-    }
+        Some(score)
+    } else {
+        None
+    };
+
+    Some(ResultsImage {
+        psnr: psnr_score,
+        ssim: ssim_score,
+        msssim: msssim_score,
+        ssimulacra2: ssimulacra2_score,
+    })
 }
 
 pub fn process_video_pair(
@@ -173,7 +229,7 @@ pub fn process_video_pair(
     mut demuxer_dis: impl Demuxer,
     metrics: &MetricsToCompute,
     opts: &VideoOptions,
-) {
+) -> Option<ResultsVideo> {
     // Init the colorspace conversion module
     let colorspace = ColorspaceConversion::new();
 
@@ -436,19 +492,14 @@ pub fn process_video_pair(
         fps,
         perf_score
     );
-    eprintln!("Stats :");
-    if let Some(scores) = &scores_psnr {
-        eprintln!("psnr: {:#?}", Stats::compute(scores));
-    }
-    if let Some(scores) = &scores_ssim {
-        eprintln!("ssim: {:#?}", Stats::compute(scores));
-    }
-    if let Some(scores) = &scores_msssim {
-        eprintln!("msssim: {:#?}", Stats::compute(scores));
-    }
-    if let Some(scores) = &scores_ssimu {
-        eprintln!("ssimulacra2: {:#?}", Stats::compute(scores));
-    }
+
+    Some(ResultsVideo {
+        frame_count: compute_count,
+        psnr: scores_psnr.map(Into::into),
+        ssim: scores_ssim.map(Into::into),
+        msssim: scores_msssim.map(Into::into),
+        ssimulacra2: scores_ssimu.map(Into::into),
+    })
 }
 
 pub fn nvdec_to_codec(codec: cudaVideoCodec) -> Codec {

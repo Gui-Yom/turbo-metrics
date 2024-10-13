@@ -9,3 +9,4 @@ repository.workspace = true
 license = "MIT"
 
 [dependencies]
+serde = { workspace = true, optional = true }
