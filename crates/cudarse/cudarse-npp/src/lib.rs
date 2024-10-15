@@ -80,7 +80,7 @@ pub fn set_stream(stream: cudaStream_t) -> Result<()> {
 /// Uses stream ordered cuda malloc and free.
 #[derive(Debug)]
 pub struct ScratchBuffer {
-    // Device ptr !
+    /// Device ptr !
     pub ptr: *mut c_void,
     pub len: usize,
 }
@@ -95,6 +95,12 @@ impl ScratchBuffer {
     /// Allocates enough memory to hold at least `T`.
     pub fn alloc<T: Sized>(stream: cudaStream_t) -> Result<Self> {
         Self::alloc_len(size_of::<T>(), stream)
+    }
+
+    pub fn alloc_from_host<T: Sized>(data: &T, stream: cudaStream_t) -> Result<Self> {
+        let mut self_ = Self::alloc::<T>(stream)?;
+        self_.copy_from_cpu(data, stream)?;
+        Ok(self_)
     }
 
     /// Size of the allocation on device
@@ -129,14 +135,28 @@ impl ScratchBuffer {
     }
 
     /// Asynchronously copy data from the device buffer to a buffer in host memory.
-    pub fn copy_to_cpu_buf(&self, out: &mut [u8], stream: cudaStream_t) -> Result<()> {
-        assert_eq!(out.len(), self.len);
+    pub fn copy_to_cpu_buf<T: Sized>(&self, out: &mut [T], stream: cudaStream_t) -> Result<()> {
+        assert_eq!(out.len() * size_of::<T>(), self.len);
         unsafe {
             cudaMemcpyAsync(
                 out.as_mut_ptr().cast(),
                 self.ptr.cast_const(),
                 self.len,
                 cudaMemcpyKind::cudaMemcpyDeviceToHost,
+                stream,
+            )
+            .result()
+        }
+    }
+
+    pub fn copy_from_cpu<T>(&mut self, data: &T, stream: cudaStream_t) -> Result<()> {
+        assert_eq!(size_of_val(data), self.len);
+        unsafe {
+            cudaMemcpyAsync(
+                self.ptr,
+                data as *const T as _,
+                self.len,
+                cudaMemcpyKind::cudaMemcpyHostToDevice,
                 stream,
             )
             .result()

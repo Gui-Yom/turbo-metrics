@@ -193,13 +193,13 @@ macro_rules! impl_convert {
                         self.size(),
                         ctx,
                     )
-                }.result()?;
-                Ok(())
+                }.result()
             }
         }
     };
 }
 
+impl_convert!(u8, C<1>, i16, _8u16s, C1);
 impl_convert!(u8, C<3>, f32, _8u32f, C3);
 
 pub trait Scale<S: Sample, C: Channels> {

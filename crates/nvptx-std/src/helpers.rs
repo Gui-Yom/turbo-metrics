@@ -1,5 +1,6 @@
 use core::arch::asm;
 use core::arch::nvptx;
+use core::ops::Add;
 
 pub const WARP_SIZE: usize = 32;
 
@@ -90,6 +91,35 @@ pub unsafe fn shfl_down_sync_u32(mask: u32, value: u32, offset: u32, width: u32)
     out
 }
 
+#[inline]
+pub unsafe fn warp_sum_u32(value: u32) -> u32 {
+    warp_reduce_u32(value, Add::add)
+}
+
+#[inline]
+pub unsafe fn warp_reduce_u32(mut value: u32, mut red: impl FnMut(u32, u32) -> u32) -> u32 {
+    #[inline(always)]
+    unsafe fn shfl_bfly_u32(mask: u32, value: u32, offset: u32, width: u32) -> u32 {
+        let out;
+        asm!(
+            "shfl.sync.bfly.b32 {out}, {v}, {offset}, {width}, {mask};",
+            out = out(reg32) out,
+            v = in(reg32) value,
+            offset = in(reg32) offset,
+            width = in(reg32) width,
+            mask = in(reg32) mask
+        );
+        out
+    }
+
+    value = red(value, shfl_bfly_u32(0xffffffff, value, 16, 32));
+    value = red(value, shfl_bfly_u32(0xffffffff, value, 8, 32));
+    value = red(value, shfl_bfly_u32(0xffffffff, value, 4, 32));
+    value = red(value, shfl_bfly_u32(0xffffffff, value, 2, 32));
+    value = red(value, shfl_bfly_u32(0xffffffff, value, 1, 32));
+    value
+}
+
 /// Reads the 32-bit unsigned old located at the address in global or shared memory, computes (old + val), and stores
 /// the result back to memory at the same address. These three operations are performed in one atomic transaction.
 /// The function returns old.
@@ -97,7 +127,7 @@ pub unsafe fn shfl_down_sync_u32(mask: u32, value: u32, offset: u32, width: u32)
 pub unsafe fn atomic_add_global_u32(ptr: *mut u32, value: u32) -> u32 {
     let out;
     asm!(
-    "atom.global.add.u32 {out}, {p}, {v};",
+    "atom.global.add.u32 {out}, [{p}], {v};",
     out = out(reg32) out,
     p = in(reg64) ptr,
     v = in(reg32) value

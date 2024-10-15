@@ -71,14 +71,9 @@ unsafe fn motion_generic<const N: usize>(
     let mut abs_dist =
         blurred_sample.abs_diff(prev_blurred.byte_add(y * prev_blurred_pitch).add(x).read() as u32);
 
-    abs_dist += shfl_down_sync_u32(0xffffffff, abs_dist, 16, 32);
-    abs_dist += shfl_down_sync_u32(0xffffffff, abs_dist, 8, 32);
-    abs_dist += shfl_down_sync_u32(0xffffffff, abs_dist, 4, 32);
-    abs_dist += shfl_down_sync_u32(0xffffffff, abs_dist, 2, 32);
-    abs_dist += shfl_down_sync_u32(0xffffffff, abs_dist, 1, 32);
+    let abs_dist = warp_sum_u32(abs_dist);
 
-    let lane = lane();
-    if lane == 0 {
+    if lane() == 0 {
         atomic_add_global_u64(sad, abs_dist as u64);
     }
 }

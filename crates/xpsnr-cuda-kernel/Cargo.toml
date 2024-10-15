@@ -1,14 +1,12 @@
 [package]
-name = "ssimulacra2-cuda-kernel"
+name = "xpsnr-cuda-kernel"
 version = "0.1.0"
-description = "Ssimulacra2 CUDA implementation (device code)"
-edition.workspace = true
+description = "XPSNR metric computation (device code)"
 authors.workspace = true
 homepage.workspace = true
 repository.workspace = true
+edition.workspace = true
 license = "MIT"
-
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [lib]
 crate-type = ["rlib", "cdylib"]
@@ -18,4 +16,3 @@ nvptx-std = { workspace = true }
 
 [build-dependencies]
 nvptx-builder = { workspace = true }
-nalgebra = { workspace = true }
