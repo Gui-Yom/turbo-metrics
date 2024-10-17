@@ -36,6 +36,12 @@ struct CliArgs {
     /// Index of the first frame to start computing at. Useful for overlaying separate computations with `every`.
     #[arg(long, default_value = "0")]
     skip: u32,
+    /// Index of the first frame to start computing at the reference frame. Additive with `skip`.
+    #[arg(long, default_value = "0")]
+    skip_ref: u32,
+    /// Index of the first frame to start computing at the distorted frame. Additive with `skip`.
+    #[arg(long, default_value = "0")]
+    skip_dis: u32,
 
     /// Choose the CLI stdout format. Omit the option for the default.
     /// Status messages will be printed to stderr in all cases.
@@ -69,6 +75,8 @@ impl CliArgs {
         VideoOptions {
             every: self.every,
             skip: self.skip,
+            skip_ref: self.skip_ref,
+            skip_dis: self.skip_dis,
         }
     }
 
@@ -95,8 +103,8 @@ fn main() -> ExitCode {
         if probe_ref.can_decode() {
             if let Some(probe_dis) = probe_image(&mut in_dis) {
                 if probe_dis.can_decode() {
-                    if args.every != 0 || args.skip != 0 {
-                        eprintln!("WARN: --every and --skip are useless with a pair of images");
+                    if args.every != 0 || args.skip != 0 || args.skip_ref != 0 || args.skip_dis != 0 {
+                        eprintln!("WARN: --every and --skip[_ref/_dist] are useless with a pair of images");
                     }
 
                     init_cuda();
