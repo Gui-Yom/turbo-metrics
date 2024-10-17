@@ -120,6 +120,35 @@ pub unsafe fn warp_reduce_u32(mut value: u32, mut red: impl FnMut(u32, u32) -> u
     value
 }
 
+#[inline]
+pub unsafe fn warp_sum_f32(value: f32) -> f32 {
+    warp_reduce_f32(value, Add::add)
+}
+
+#[inline]
+pub unsafe fn warp_reduce_f32(mut value: f32, mut red: impl FnMut(f32, f32) -> f32) -> f32 {
+    #[inline(always)]
+    unsafe fn shfl_bfly_f32(mask: u32, value: f32, offset: u32, width: u32) -> f32 {
+        let out;
+        asm!(
+            "shfl.sync.bfly.b32 {out}, {v}, {offset}, {width}, {mask};",
+            out = out(reg32) out,
+            v = in(reg32) value,
+            offset = in(reg32) offset,
+            width = in(reg32) width,
+            mask = in(reg32) mask
+        );
+        out
+    }
+
+    value = red(value, shfl_bfly_f32(0xffffffff, value, 16, 32));
+    value = red(value, shfl_bfly_f32(0xffffffff, value, 8, 32));
+    value = red(value, shfl_bfly_f32(0xffffffff, value, 4, 32));
+    value = red(value, shfl_bfly_f32(0xffffffff, value, 2, 32));
+    value = red(value, shfl_bfly_f32(0xffffffff, value, 1, 32));
+    value
+}
+
 /// Reads the 32-bit unsigned old located at the address in global or shared memory, computes (old + val), and stores
 /// the result back to memory at the same address. These three operations are performed in one atomic transaction.
 /// The function returns old.
@@ -145,6 +174,34 @@ pub unsafe fn atomic_add_global_u64(ptr: *mut u64, value: u64) -> u64 {
     "cvta.to.global.u64 {tmp}, {p};",
     "atom.global.add.u64 {out}, [{tmp}], {v};",
     tmp = out(reg64) _,
+    out = out(reg64) out,
+    p = in(reg64) ptr,
+    v = in(reg64) value
+    );
+    out
+}
+
+#[inline(always)]
+pub unsafe fn atomic_add_global_f32(ptr: *mut f32, value: f32) -> f32 {
+    let out;
+    asm!(
+    // "cvta.to.global.f32 {tmp}, {p};",
+    "atom.global.add.f32 {out}, [{p}], {v};",
+    // tmp = out(reg64) _,
+    out = out(reg32) out,
+    p = in(reg64) ptr,
+    v = in(reg32) value
+    );
+    out
+}
+
+#[inline(always)]
+pub unsafe fn atomic_add_global_f64(ptr: *mut f64, value: f64) -> f64 {
+    let out;
+    asm!(
+    // "cvta.to.global.f64 {tmp}, {p};",
+    "atom.global.add.f64 {out}, [{p}], {v};",
+    // tmp = out(reg64) _,
     out = out(reg64) out,
     p = in(reg64) ptr,
     v = in(reg64) value

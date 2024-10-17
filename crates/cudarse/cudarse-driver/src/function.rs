@@ -101,4 +101,7 @@ macro_rules! kernel_params {
     ($($p:expr,)*) => {
         &[$(kernel_params!(@single $p)),*]
     };
+    ($($p:expr),*) => {
+        &[$(kernel_params!(@single $p)),*]
+    };
 }

@@ -31,6 +31,7 @@ pub struct Xpsnr {
     /// Device buffer to store spatial activity values computed per block
     sact_dev: ScratchBuffer,
     tact_dev: ScratchBuffer,
+    wsse_dev: ScratchBuffer,
     sse: Vec<u32>,
     sact: Vec<u32>,
     tact: Vec<u32>,
@@ -61,6 +62,8 @@ impl Xpsnr {
         let tact =
             ScratchBuffer::alloc_len(size_of::<u32>() * num_blocks, stream.inner() as _).unwrap();
 
+        let wsse_dev = ScratchBuffer::alloc_from_host(&0.0, stream.inner() as _).unwrap();
+
         let highpass_coeffs = [-1, -2, -1, -2, 12, -2, -1, -2, -1];
         let highpass_coeffs =
             ScratchBuffer::alloc_from_host(&highpass_coeffs, stream.inner() as _).unwrap();
@@ -82,6 +85,7 @@ impl Xpsnr {
             tact: vec![0; num_blocks],
             highpass_coeffs,
             weights: vec![0.0; num_blocks],
+            wsse_dev,
         }
     }
 
@@ -110,28 +114,30 @@ impl Xpsnr {
             &mut self.tact_dev,
         );
         let num_blocks = self.blocks_w * self.blocks_h;
-        self.sse_dev
-            .copy_to_cpu_buf(&mut self.sse, stream.inner() as _)
-            .unwrap();
-        self.sact_dev
-            .copy_to_cpu_buf(&mut self.sact, stream.inner() as _)
-            .unwrap();
-        self.tact_dev
-            .copy_to_cpu_buf(&mut self.tact, stream.inner() as _)
-            .unwrap();
 
         let width = self.ref_.width();
         let height = self.ref_.height();
         let block_weight_smoothing = width * height <= 640 * 480;
-        let mut msact = 1.0;
         const BITDEPTH: u32 = 8;
-        for blk in 0..num_blocks {
-            msact += 1.0 + self.sact[blk] as f64 / (16 * 16) as f64;
-            msact += 2.0 * self.tact[blk] as f64 / (16 * 16) as f64;
-            msact = msact.max((1 << (BITDEPTH - 2)) as f64);
-            msact *= msact;
-            self.weights[blk] = msact.sqrt().recip();
-            if block_weight_smoothing {
+
+        let wsse = if block_weight_smoothing {
+            self.sse_dev
+                .copy_to_cpu_buf(&mut self.sse, stream.inner() as _)
+                .unwrap();
+            self.sact_dev
+                .copy_to_cpu_buf(&mut self.sact, stream.inner() as _)
+                .unwrap();
+            self.tact_dev
+                .copy_to_cpu_buf(&mut self.tact, stream.inner() as _)
+                .unwrap();
+            stream.sync().unwrap();
+
+            for blk in 0..num_blocks {
+                let mut msact = 1.0 + self.sact[blk] as f64 / (16 * 16) as f64;
+                msact += 2.0 * self.tact[blk] as f64 / (16 * 16) as f64;
+                msact = msact.max((1 << (BITDEPTH - 2)) as f64);
+                msact *= msact;
+                self.weights[blk] = msact.sqrt().recip();
                 let mut msact_prev = if blk % self.blocks_w == 0 {
                     // First column
                     if blk > 1 {
@@ -158,14 +164,27 @@ impl Xpsnr {
                     self.weights[blk] = self.weights[blk].min(msact_prev);
                 }
             }
-        }
-        let wsse = self
-            .sse
-            .iter()
-            .zip(&self.weights)
-            .map(|(&sse, &w)| w * sse as f64)
-            .reduce(Add::add)
-            .unwrap();
+            self.sse
+                .iter()
+                .zip(&self.weights)
+                .map(|(&sse, &w)| w * sse as f64)
+                .reduce(Add::add)
+                .unwrap()
+        } else {
+            self.kernel.xpsnr_postprocess(
+                stream,
+                &self.sse_dev,
+                &self.sact_dev,
+                &self.tact_dev,
+                &mut self.wsse_dev,
+            );
+            let mut tmp = 0.0f32;
+            self.wsse_dev
+                .copy_to_cpu(&mut tmp, stream.inner() as _)
+                .unwrap();
+            tmp as f64
+        };
+
         let wsse = if wsse.is_sign_negative() {
             0
         } else {

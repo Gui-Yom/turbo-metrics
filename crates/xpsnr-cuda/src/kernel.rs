@@ -5,6 +5,7 @@ use cudarse_npp::{debug_assert_same_size, ScratchBuffer};
 pub struct Kernel {
     _module: CuModule,
     xpsnr_support_8: CuFunction,
+    xpsnr_postprocess: CuFunction,
 }
 
 impl Kernel {
@@ -17,6 +18,7 @@ impl Kernel {
         .unwrap();
         Self {
             xpsnr_support_8: module.function_by_name("xpsnr_support_8").unwrap(),
+            xpsnr_postprocess: module.function_by_name("xpsnr_postprocess").unwrap(),
             _module: module,
         }
     }
@@ -60,6 +62,39 @@ impl Kernel {
                 )
                 .expect("Could not launch srgb_to_linear kernel");
         }
+    }
+
+    pub fn xpsnr_postprocess(
+        &self,
+        stream: &CuStream,
+        sse: &ScratchBuffer,
+        sact: &ScratchBuffer,
+        tact: &ScratchBuffer,
+        wsse: &mut ScratchBuffer,
+    ) {
+        assert_eq!(sse.len, sact.len);
+        assert_eq!(sse.len, tact.len);
+        assert_eq!(wsse.len, 4);
+        unsafe {
+            self.xpsnr_postprocess
+                .launch(
+                    &launch_config_1d(sse.len as u32),
+                    stream,
+                    kernel_params!(sse.ptr, sact.ptr, tact.ptr, sse.len, wsse.ptr),
+                )
+                .expect("Could not launch srgb_to_linear kernel");
+        }
+    }
+}
+
+fn launch_config_1d(width: u32) -> LaunchConfig {
+    // const MAX_THREADS_PER_BLOCK: u32 = 256;
+    const THREADS_WIDTH: u32 = 128;
+    let num_blocks_w = (width + THREADS_WIDTH - 1) / THREADS_WIDTH;
+    LaunchConfig {
+        grid_dim: (num_blocks_w, 1, 1),
+        block_dim: (THREADS_WIDTH, 1, 1),
+        shared_mem_bytes: 0,
     }
 }
 

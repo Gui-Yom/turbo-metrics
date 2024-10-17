@@ -86,8 +86,10 @@ repo is by cloning the git repo.
 ### Common
 
 - 64-bit system.
+- Nvidia GPU, exact requirement is unknown, but you should be safe with a GTX 10xx or later (codec
+  support will vary with your GPU generation).
 - CUDA 12.x (tested with 12.5 and 12.6, it might work with previous versions, I don't know)
-- CUDA NPP (normally packaged with CUDA by default, but it's optional component)
+- CUDA NPP (normally packaged with CUDA by default, but it's an optional component)
 - Rust stable
 - Rust nightly for the CUDA kernels (it should work with only a nightly toolchain and no stable)
 - Various rustup components for the nightly channel :
@@ -100,7 +102,7 @@ repo is by cloning the git repo.
   headers only on Linux, full sdk on Windows) with the `NV_VIDEO_CODEC_SDK` env var
 - For the AMF backend : AMD AMF SDK headers
 - (in progress) For the libvmaf bindings : libvmaf
-- libclang available somewhere (that's for bindgen)
+- clang toolchain (that's for bindgen)
 
 ### Windows
 
@@ -144,6 +146,7 @@ encoding itself) from pre-filtering to validation. In no particular order or pri
 - XPSNR
 - Butteraugli
 - VMAF (using both libvmaf and a custom CUDA impl)
+- CAMBI (banding detector present in libvmaf)
 - Scene detection (histogram based should be easy)
 - Scene detection like the one used in rav1e (not even sure that's possible on a GPU)
 - Denoising algorithms (the usual ones in vapoursynth are fucking slow, maybe putting the whole

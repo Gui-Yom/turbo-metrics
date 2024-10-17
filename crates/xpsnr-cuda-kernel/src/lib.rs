@@ -5,7 +5,7 @@
 
 use core::arch::nvptx;
 use core::ops::Add;
-use nvptx_std::prelude::{atomic_add_global_u32, lane, warp_sum_u32};
+use nvptx_std::prelude::*;
 /*
 For each block :
     sum of squared error
@@ -88,6 +88,34 @@ pub unsafe extern "ptx-kernel" fn xpsnr_support_8(
         atomic_add_global_u32(sact.add(block_idx), sact_value);
         atomic_add_global_u32(tact.add(block_idx), tact_value);
         atomic_add_global_u32(sse.add(block_idx), se);
+    }
+}
+
+#[no_mangle]
+pub unsafe extern "ptx-kernel" fn xpsnr_postprocess(
+    sse: *const u32,
+    sact: *const u32,
+    tact: *const u32,
+    len: usize,
+    wsse: *mut f32,
+) {
+    let x = coords_1d();
+
+    if x >= len {
+        return;
+    }
+
+    let num_samples = (16 * 16) as f32;
+    let mut msact = 1.0 + sact.add(x).read() as f32 / num_samples;
+    msact += 2.0 * tact.add(x).read() as f32 / num_samples;
+    msact = msact.max((1 << (8 - 2)) as f32);
+    msact *= msact;
+    let weight = msact.rsqrt();
+    let wsse_value = sse.add(x).read() as f32 * weight;
+    let wsse_value = warp_sum_f32(wsse_value);
+
+    if lane() == 0 {
+        atomic_add_global_f32(wsse, wsse_value);
     }
 }
 
