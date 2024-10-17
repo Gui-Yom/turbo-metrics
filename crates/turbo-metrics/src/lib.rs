@@ -50,6 +50,10 @@ pub struct VideoOptions {
     pub every: u32,
     /// Index of the first frame to start computing at. Useful for overlaying separate computations with `every`.
     pub skip: u32,
+    /// Index of the first frame to start computing at for the reference frame.
+    pub skip_ref: u32,
+    /// Index of the first frame to start computing at for the distorted frame.
+    pub skip_dis: u32,
 }
 
 #[derive(Debug)]
@@ -354,6 +358,29 @@ pub fn process_video_pair(
     let mut decode_count = 0;
     let mut compute_count = 0;
 
+    let mut skipped_ref = 0;
+    let mut skipped_dis = 0;
+
+    // Discard skipped initial frames:
+    demuxer_ref.demux(&mut parser_ref);
+    while skipped_ref < opts.skip_ref {
+        if cb_ref.frames().next().is_none() {
+            demuxer_ref.demux(&mut parser_ref);
+            continue;
+        }
+        skipped_ref += 1;
+    }
+    demuxer_dis.demux(&mut parser_dis);
+    while skipped_dis < opts.skip_dis {
+        if cb_dis.frames().next().is_none() {
+            demuxer_dis.demux(&mut parser_dis);
+            continue;
+        }
+        skipped_dis += 1;
+    }
+
+    println!();
+
     'main: loop {
         while !cb_ref.has_frames() {
             demuxer_ref.demux(&mut parser_ref);
@@ -370,6 +397,7 @@ pub fn process_video_pair(
                     continue;
                 }
                 decode_count += 1;
+                print!("\rDecoding frame {}", decode_count);
 
                 convert_frame_to_linearrgb(
                     cb_ref.map_npp(&fref, &streams[0]).unwrap(),
@@ -379,15 +407,6 @@ pub fn process_video_pair(
                     &streams[0],
                 );
 
-                // if decode_count == 130
-                //     || decode_count == 200
-                //     || decode_count == 250
-                //     || decode_count == 300
-                // {
-                //     save_img_f32(&lrgb_ref, &format!("lrgb_ref{}", decode_count), &streams[0]);
-                //     // break 'main;
-                // }
-
                 convert_frame_to_linearrgb(
                     cb_dis.map_npp(&fdis, &streams[1]).unwrap(),
                     colors_dis,
@@ -395,6 +414,18 @@ pub fn process_video_pair(
                     &mut lrgb_dis,
                     &streams[1],
                 );
+
+                // if decode_count == 1001
+                //     || decode_count == 1051
+                //     || decode_count == 1101
+                //     || decode_count == 1151
+                // {
+                //     save_img_f32(&lrgb_ref, &format!("lrgb_ref{}", decode_count), &streams[0])));
+                //     save_img_f32(&lrgb_dis, &format!("lrgb_dis{}", decode_count), &streams[0]);
+                //     //println!("Saved image!");
+                //     // break 'main;
+                // }
+
 
                 let mut psnr = 0.0;
                 let mut ssim = 0.0;

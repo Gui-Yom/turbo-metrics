@@ -72,6 +72,16 @@ Options:
 
           [default: 0]
 
+      --skip-ref <SKIP_REF>
+          Index of the first frame to start computing at the reference frame. Additive with `skip`
+
+          [default: 0]
+
+      --skip-dis <SKIP_DIS>
+          Index of the first frame to start computing at the distorted frame. Additive with `skip`
+
+          [default: 0]
+
       --output <OUTPUT>
           Choose the CLI stdout format. Omit the option for the default. Status messages will be printed to stderr in all cases
 
