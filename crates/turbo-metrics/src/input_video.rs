@@ -1,4 +1,5 @@
 use crate::input_image::PROBE_LEN;
+use codec_bitstream::h264::NaluType;
 use codec_bitstream::{av1, h264, ivf, Codec};
 use cudarse_video::dec::CuVideoParser;
 use matroska_demuxer::{Frame, MatroskaFile, TrackEntry};
@@ -7,6 +8,7 @@ use std::fmt::{Debug, Display, Formatter};
 use std::fs::File;
 use std::io;
 use std::io::{BufRead, BufReader, ErrorKind, Read, Seek};
+use tracing::trace;
 
 pub type Matroska = MatroskaFile<BufReader<File>>;
 
@@ -111,9 +113,9 @@ fn mkv_find_video_track(matroska: &MatroskaFile<impl Read + Seek>) -> Option<(us
 pub trait Demuxer {
     fn codec(&self) -> Codec;
     fn clock_rate(&self) -> u32;
-    /// Kickstart parsing
+    /// Kickstart parsing by feeding out of band data in the parser
     fn init(&mut self, parser: &mut CuVideoParser);
-    /// Return false if there is no more data
+    /// Feed a single packet into the parser, return false if there is no more data
     fn demux(&mut self, parser: &mut CuVideoParser) -> bool;
 }
 
@@ -192,6 +194,8 @@ pub struct MkvDemuxer {
     mkv: Matroska,
     nal_length_size: usize,
     frame: Frame,
+    /// Offset after the data we have already read in the frame
+    frame_offset: usize,
     packet: Vec<u8>,
     track_id: u64,
     codec: Codec,
@@ -207,6 +211,7 @@ impl MkvDemuxer {
             mkv,
             nal_length_size: 0,
             frame: Default::default(),
+            frame_offset: 0,
             packet: vec![],
             track_id: id as u64,
             codec,
@@ -249,34 +254,59 @@ impl Demuxer for MkvDemuxer {
     }
 
     fn demux(&mut self, parser: &mut CuVideoParser) -> bool {
-        loop {
-            if let Ok(true) = self.mkv.next_frame(&mut self.frame) {
-                if self.frame.track - 1 == self.track_id {
-                    match self.codec {
-                        Codec::H264 => {
-                            h264::packet_to_annexb(
-                                &mut self.packet,
-                                &self.frame.data,
-                                self.nal_length_size,
-                            );
-                            parser
-                                .parse_data(&self.packet, self.frame.timestamp as i64)
-                                .unwrap();
-                        }
-                        Codec::AV1 | Codec::H262 => {
-                            parser
-                                .parse_data(&self.frame.data, self.frame.timestamp as i64)
-                                .unwrap();
-                        }
+        // Pull a frame if we're empty
+        if self.frame.data.len() - self.frame_offset == 0 {
+            // Loop because the next frame might not be from the video track we expect
+            loop {
+                if let Ok(true) = self.mkv.next_frame(&mut self.frame) {
+                    if self.frame.track - 1 == self.track_id {
+                        self.frame_offset = 0;
+                        break;
                     }
-                    return true;
                 } else {
-                    continue;
+                    parser.flush().unwrap();
+                    return false;
                 }
-            } else {
-                parser.flush().unwrap();
-                return false;
             }
+        }
+
+        // There should be data available in the frame at this point
+        if self.frame.data.len() - self.frame_offset > 0 {
+            match self.codec {
+                Codec::AV1 | Codec::H262 => {
+                    // TODO investigate if feeding a full frame can cause a problem with those codecs
+                    parser
+                        .parse_data(&self.frame.data, self.frame.timestamp as i64)
+                        .unwrap();
+                    // This triggers a new frame to be pulled next time
+                    self.frame_offset = self.frame.data.len();
+                    true
+                }
+                Codec::H264 => {
+                    // With H.264, we must feed a single NALU at a time to cuvid
+                    // Feeding more than one will cause it to fire many decode callbacks at the same time, causing problems with the dpb.
+                    if let Ok(read) = h264::avcc_into_annexb(
+                        &self.frame.data[self.frame_offset..],
+                        self.nal_length_size,
+                        &mut self.packet,
+                    ) {
+                        self.frame_offset += read;
+                        trace!(
+                            "parse {:?} ({} bytes)",
+                            NaluType::from_nalu_header(self.packet[4]),
+                            self.packet.len()
+                        );
+                        parser
+                            .parse_data(&self.packet, self.frame.timestamp as i64)
+                            .unwrap();
+                        true
+                    } else {
+                        panic!("incomplete nalu");
+                    }
+                }
+            }
+        } else {
+            false
         }
     }
 }

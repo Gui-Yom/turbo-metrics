@@ -1,14 +1,23 @@
+//! Utilities to demux H.264 bitstreams and parse metadata information.
+//!
+//! There are two formats for H.264 bitstreams, this module contains functions to convert from one format to another.
+//! - AVCC : NALUs are prefixed by their length (very easy to read). Extradata is at the start of the stream or stored out of band like in MKV.
+//! - AnnexB : NALUs start with delimiters that cannot occur anywhere else in a well-formed bitstream. (Harder to parse, also what parsers like cuvid expects)
+//!
+//! Reference is the H.264 spec. Also, https://stackoverflow.com/questions/24884827/possible-locations-for-sequence-picture-parameter-sets-for-h-264-stream/24890903#24890903 was a nice read.
+
 use std::collections::VecDeque;
 use std::io::{Cursor, ErrorKind, Read};
 use std::iter::repeat;
 use std::{io, mem};
 
-use bitstream_io::{BigEndian, BitRead, BitReader};
+use bitstream_io::{BigEndian, BitRead, BitReader, ByteRead};
 use h264_reader::annexb::AnnexBReader;
 use h264_reader::avcc::AvccError;
 use h264_reader::nal::{Nal, RefNal};
 use h264_reader::push::{AccumulatedNalHandler, NalAccumulator, NalInterest};
 
+/// NALU delimiter for annexB format
 pub const NALU_DELIMITER: [u8; 4] = [0, 0, 0, 1];
 
 /*
@@ -36,6 +45,8 @@ pub const NALU_DELIMITER: [u8; 4] = [0, 0, 0, 1];
 22..23 Reserved                                                       non-VCL
 24..31 Unspecified                                                    non-VCL
  */
+
+/// 5 bits type identifier for a NALU
 #[derive(Debug)]
 #[repr(u8)]
 pub enum NaluType {
@@ -154,13 +165,12 @@ impl MatrixCoefficients {
 }
 
 /// Get NAL units with SPS and PPS from the avc decoder configuration record.
-#[allow(unused_variables)]
 pub fn avcc_extradata_to_annexb(codec_private: &[u8]) -> (usize, Vec<u8>) {
     let mut reader = BitReader::endian(Cursor::new(codec_private), BigEndian);
-    let version: u8 = reader.read(8).unwrap();
-    let profile: u8 = reader.read(8).unwrap();
-    let profile_compat: u8 = reader.read(8).unwrap();
-    let level: u8 = reader.read(8).unwrap();
+    let _version: u8 = reader.read(8).unwrap();
+    let _profile: u8 = reader.read(8).unwrap();
+    let _profile_compat: u8 = reader.read(8).unwrap();
+    let _level: u8 = reader.read(8).unwrap();
     reader.read::<u8>(6).unwrap(); // Reserved
     let nal_size: u8 = reader.read::<u8>(2).unwrap() + 1;
     reader.read::<u8>(3).unwrap(); // Reserved
@@ -202,20 +212,45 @@ pub fn extract_sps_pps_clean(codec_private: &[u8]) -> Result<Vec<u8>, AvccError>
     Ok(nalus)
 }
 
-pub fn packet_to_annexb(buffer: &mut Vec<u8>, mut packet: &[u8], nal_length_size: usize) {
-    buffer.clear();
-    while packet.len() > nal_length_size {
-        let mut len = 0usize;
-        // Read a variable number of bytes in big endian format
-        for &byte in packet.iter().take(nal_length_size) {
-            len = (len << 8) | byte as usize;
-        }
-        packet = &packet[nal_length_size..];
-        buffer.extend_from_slice(&NALU_DELIMITER);
-        buffer.extend_from_slice(&packet[..len]);
-        packet = &packet[len..];
+/// Format a single length delimited NALU into an AnnexB format
+pub fn read_avcc_into_annexb(
+    mut r: impl Read,
+    nal_length_size: usize,
+    nalu: &mut Vec<u8>,
+) -> io::Result<()> {
+    let mut len = 0usize;
+    let mut bytes = [0, 0, 0, 0];
+    debug_assert!(nal_length_size <= bytes.len());
+    r.read_exact(&mut bytes[..nal_length_size])?;
+    // Read a variable number of bytes in big endian format
+    for &byte in &bytes[..nal_length_size] {
+        len = (len << 8) | byte as usize;
     }
-    assert!(packet.is_empty());
+    nalu.resize(len + NALU_DELIMITER.len(), 0);
+    nalu[..NALU_DELIMITER.len()].copy_from_slice(&NALU_DELIMITER);
+    r.read_exact(&mut nalu[NALU_DELIMITER.len()..])
+}
+
+/// Format a single length delimited NALU into an AnnexB format. Returns how many bytes were read from the input slice.
+pub fn avcc_into_annexb(
+    buf: &[u8],
+    nal_length_size: usize,
+    nalu: &mut Vec<u8>,
+) -> Result<usize, ()> {
+    let mut len = 0usize;
+    if buf.len() <= nal_length_size {
+        // Not enough data
+        return Err(());
+    }
+    // Read a variable number of bytes in big endian format
+    for &byte in &buf[..nal_length_size] {
+        len = (len << 8) | byte as usize;
+    }
+    nalu.resize(len + NALU_DELIMITER.len(), 0);
+    nalu[..NALU_DELIMITER.len()].copy_from_slice(&NALU_DELIMITER);
+    let total_len = len + nal_length_size;
+    nalu[NALU_DELIMITER.len()..].copy_from_slice(&buf[nal_length_size..total_len]);
+    Ok(total_len)
 }
 
 pub struct NalReader<R: Read> {

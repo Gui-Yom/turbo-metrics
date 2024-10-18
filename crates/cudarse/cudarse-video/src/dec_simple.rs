@@ -12,7 +12,7 @@ use std::collections::VecDeque;
 use std::iter::repeat_with;
 use std::ops::DerefMut;
 use std::slice;
-use tracing::{debug, error};
+use tracing::{debug, error, trace};
 
 /// Simple decoder for single threaded use.
 pub struct NvDecoderSimple<'a> {
@@ -159,6 +159,12 @@ impl CuvidParserCallbacks for NvDecoderSimple<'_> {
     }
 
     fn decode_picture(&self, pic: &CUVIDPICPARAMS) -> Result<(), ()> {
+        // TODO investigate if having a decode queue here would allow us to feed many nalus at once without fearing a 'still in decode queue' bug
+        trace!(
+            "decode {} ({} bytes)",
+            pic.CurrPicIdx,
+            pic.nBitstreamDataLen
+        );
         if let Some((decoder, _, _)) = self.decoder.get() {
             if self
                 .frames
@@ -172,10 +178,6 @@ impl CuvidParserCallbacks for NvDecoderSimple<'_> {
             {
                 panic!("decode {} : still in decode queue", pic.CurrPicIdx);
             }
-            debug!(
-                "decode {} ({} bytes)",
-                pic.CurrPicIdx, pic.nBitstreamDataLen
-            );
             decoder.decode(pic).unwrap();
             Ok(())
         } else {
@@ -186,7 +188,7 @@ impl CuvidParserCallbacks for NvDecoderSimple<'_> {
 
     fn display_picture(&self, disp: Option<&CUVIDPARSERDISPINFO>) -> Result<(), ()> {
         if let Some(idx) = disp.map(|d| d.picture_index) {
-            debug!("display {}", idx);
+            trace!("display {}", idx);
         }
         self.frames.borrow_mut().push_back(disp.cloned());
         Ok(())
@@ -197,9 +199,10 @@ impl CuvidParserCallbacks for NvDecoderSimple<'_> {
             let messages =
                 unsafe { slice::from_raw_parts(sei.pSEIMessage, sei.sei_message_count as usize) };
             for msg in messages {
-                debug!(
+                trace!(
                     "SEI {} ({} bytes)",
-                    msg.sei_message_type, msg.sei_message_size
+                    msg.sei_message_type,
+                    msg.sei_message_size
                 );
             }
         }
@@ -212,9 +215,15 @@ mod tests {
     use crate::dec::CuVideoParser;
     use crate::dec_simple::NvDecoderSimple;
     use codec_bitstream::h264::{NalReader, NaluType};
+    use codec_bitstream::{h264, Codec};
+    use core::slice;
     use cudarse_driver::CuStream;
     use cudarse_video_sys::cudaVideoCodec;
+    use matroska_demuxer::{Frame, MatroskaFile};
+    use std::collections::VecDeque;
     use std::fs::File;
+    use std::io::BufReader;
+    use std::path::PathBuf;
     use tracing::debug;
     use tracing_subscriber::EnvFilter;
 
@@ -304,6 +313,67 @@ mod tests {
                     panic!("Can't map")
                 };
                 let Ok(mapping2) = cb2.map(&frame2, &CuStream::DEFAULT) else {
+                    panic!("Can't map")
+                };
+            }
+        }
+    }
+
+    #[test]
+    fn repro_dpbbug_mkv() {
+        tracing_subscriber::fmt()
+            .compact()
+            .with_env_filter(EnvFilter::from_default_env())
+            .init();
+        cudarse_driver::init_cuda_and_primary_ctx().unwrap();
+        let cb = NvDecoderSimple::new(3, None);
+        let mut parser =
+            CuVideoParser::new(cudaVideoCodec::cudaVideoCodec_H264, &cb, None, None).unwrap();
+        let mut mkv = MatroskaFile::open(BufReader::new(
+            File::open("../../../data/dpbbug.mkv").unwrap(),
+        ))
+        .unwrap();
+        let track = &mkv.tracks()[0];
+        let mut frame = Frame::default();
+        let mut packet = Vec::new();
+
+        let (nal_length_size, sps_pps) =
+            h264::avcc_extradata_to_annexb(track.codec_private().unwrap());
+        // dbg!(nal_length_size);
+        parser.parse_data(&sps_pps, 0).unwrap();
+
+        let mut offset = 0;
+
+        'main: loop {
+            if frame.data.len() - offset == 0 {
+                if let Ok(true) = mkv.next_frame(&mut frame) {
+                    offset = 0;
+                } else {
+                    parser.flush().unwrap();
+                }
+            }
+            if frame.data.len() - offset > 0 {
+                if let Ok(read) =
+                    h264::avcc_into_annexb(&frame.data[offset..], nal_length_size, &mut packet)
+                {
+                    offset += read;
+                } else {
+                    panic!("incomplete nalu");
+                }
+                debug!(
+                    "parse {:?} ({} bytes)",
+                    NaluType::from_nalu_header(packet[4]),
+                    packet.len()
+                );
+                parser.parse_data(&packet, frame.timestamp as i64).unwrap();
+            }
+
+            for frame in cb.frames() {
+                let Some(frame) = frame else {
+                    break 'main;
+                };
+                debug!("got frame {}", frame.picture_index);
+                let Ok(mapping) = cb.map(&frame, &CuStream::DEFAULT) else {
                     panic!("Can't map")
                 };
             }

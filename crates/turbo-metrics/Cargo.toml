@@ -19,6 +19,7 @@ image = { workspace = true }
 matroska-demuxer = { workspace = true }
 serde = { workspace = true, optional = true }
 ssimulacra2-cuda = { workspace = true }
+tracing = { workspace = true }
 quick-stats = { workspace = true }
 zune-core = { workspace = true }
 zune-image = { workspace = true, features = ["simd", "metadata", "threads"] }

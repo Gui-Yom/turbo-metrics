@@ -247,7 +247,7 @@ pub fn process_video_pair(
     let mut parser_dis = CuVideoParser::new(
         codec_to_nvdec(demuxer_dis.codec()),
         &cb_dis,
-        Some(dbg!(demuxer_dis.clock_rate())),
+        Some(demuxer_dis.clock_rate()),
         None,
     )
     .unwrap();

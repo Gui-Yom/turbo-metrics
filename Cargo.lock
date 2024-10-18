@@ -426,6 +426,7 @@ dependencies = [
  "cudarse-driver",
  "cudarse-npp",
  "cudarse-video-sys",
+ "matroska-demuxer",
  "tracing",
  "tracing-subscriber",
  "zune-image",
@@ -1483,6 +1484,7 @@ dependencies = [
  "quick-stats",
  "serde",
  "ssimulacra2-cuda",
+ "tracing",
  "zune-core",
  "zune-image",
 ]
