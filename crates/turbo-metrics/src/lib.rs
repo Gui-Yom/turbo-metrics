@@ -420,8 +420,8 @@ pub fn process_video_pair(
                 //     || decode_count == 1101
                 //     || decode_count == 1151
                 // {
-                //     save_img_f32(&lrgb_ref, &format!("lrgb_ref{}", decode_count), &streams[0])));
-                //     save_img_f32(&lrgb_dis, &format!("lrgb_dis{}", decode_count), &streams[0]);
+                //     save_img_f32(&lrgb_ref, &format!("lrgb_ref{}", decode_count), &streams[0]);
+                //     save_img_f32(&lrgb_dis, &format!("lrgb_dis{}", decode_count), &streams[1]);
                 //     //println!("Saved image!");
                 //     // break 'main;
                 // }
@@ -508,6 +508,7 @@ pub fn process_video_pair(
             }
         }
     }
+    println!();
 
     let duration = start.elapsed();
     let fps = compute_count as u128 * 1000 / duration.as_millis();
