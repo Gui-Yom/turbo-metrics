@@ -1,8 +1,3 @@
-use std::ffi::{c_int, c_short, c_ulong, c_void};
-use std::marker::PhantomData;
-use std::mem;
-use std::ptr::{null, null_mut, NonNull};
-
 use crate::sys::{
     _CUVIDDECODECREATEINFO__bindgen_ty_1, _CUVIDDECODECREATEINFO__bindgen_ty_2,
     cudaVideoChromaFormat, cudaVideoCodec, cudaVideoCreateFlags, cudaVideoDeinterlaceMode,
@@ -17,6 +12,15 @@ use crate::sys::{
 };
 use cudarse_driver::sys::CuResult;
 use cudarse_driver::{CuCtx, CuStream};
+use cudarse_video_sys::{
+    _CUVIDRECONFIGUREDECODERINFO__bindgen_ty_1, _CUVIDRECONFIGUREDECODERINFO__bindgen_ty_2,
+    cuvidReconfigureDecoder, CUVIDRECONFIGUREDECODERINFO,
+};
+use std::ffi::{c_int, c_short, c_ulong, c_void};
+use std::marker::PhantomData;
+use std::mem;
+use std::ptr::{null, null_mut, NonNull};
+use tracing::debug;
 
 pub trait CuvidParserCallbacks {
     /// Called when a new sequence is being parsed (parameters change)
@@ -342,6 +346,32 @@ impl<'a> CuVideoDecoder<'a> {
             inner: NonNull::new(ptr).unwrap(),
             marker: PhantomData,
         })
+    }
+
+    /// Reconfigure the decoder to accommodate a smaller frame size or to resize the number of decode surfaces.
+    pub fn reconfigure(&self, format: &CUVIDEOFORMAT) -> CuResult<()> {
+        let mut info = CUVIDRECONFIGUREDECODERINFO {
+            ulWidth: format.coded_width,
+            ulHeight: format.coded_height,
+            ulTargetWidth: format.display_width(),
+            ulTargetHeight: format.display_height(),
+            ulNumDecodeSurfaces: 0,
+            display_area: _CUVIDRECONFIGUREDECODERINFO__bindgen_ty_1 {
+                left: format.display_area.left as _,
+                top: format.display_area.top as _,
+                right: format.display_area.right as _,
+                bottom: format.display_area.bottom as _,
+            },
+            target_rect: _CUVIDRECONFIGUREDECODERINFO__bindgen_ty_2 {
+                left: format.display_area.left as _,
+                top: format.display_area.top as _,
+                right: format.display_area.right as _,
+                bottom: format.display_area.bottom as _,
+            },
+            ..Default::default()
+        };
+        debug!("Reconfiguring decoder : {info:#?}");
+        unsafe { cuvidReconfigureDecoder(self.inner.as_ptr(), &mut info).result() }
     }
 
     pub fn decode(&self, params: &CUVIDPICPARAMS) -> CuResult<()> {

@@ -5,14 +5,15 @@ use crate::dec::{
 use cudarse_driver::sys::CuResult;
 use cudarse_driver::CuStream;
 use cudarse_video_sys::{
-    cudaVideoSurfaceFormat, CUVIDEOFORMAT, CUVIDPARSERDISPINFO, CUVIDPICPARAMS, CUVIDSEIMESSAGEINFO,
+    cudaVideoSurfaceFormat, CUVIDEOFORMAT, CUVIDPARSERDISPINFO, CUVIDPICPARAMS,
+    CUVIDRECONFIGUREDECODERINFO, CUVIDSEIMESSAGEINFO,
 };
 use std::cell::{OnceCell, RefCell, RefMut};
 use std::collections::VecDeque;
 use std::iter::repeat_with;
 use std::ops::DerefMut;
 use std::slice;
-use tracing::{debug, error, trace};
+use tracing::{debug, error, trace, warn};
 
 /// Simple decoder for single threaded use.
 pub struct NvDecoderSimple<'a> {
@@ -143,9 +144,16 @@ impl CuvidParserCallbacks for NvDecoderSimple<'_> {
         assert!(format.min_num_decode_surfaces > 1);
         let surfaces = format.min_num_decode_surfaces as u32 + self.extra_decode_surfaces;
         debug!(surfaces);
-        if let Some(_decoder) = self.decoder.get() {
-            // TODO Reconfigure
-            todo!("Reconfigure decoder");
+        if let Some((decoder, _, old_surface_format)) = self.decoder.get() {
+            // Decoder needs to be reconfigured
+            warn!("Decoder reconfiguration is only supported for the same codec params (only size can change)");
+            if surface_format != *old_surface_format {
+                panic!("Can't change surface format when reconfiguring");
+            }
+            // TODO handle complete reconfiguring
+            decoder
+                .reconfigure(&format)
+                .expect("Could not reconfigure the decoder");
         } else {
             // Initialize new
             let decoder = CuVideoDecoder::new(format, surface_format, surfaces, self.lock)
