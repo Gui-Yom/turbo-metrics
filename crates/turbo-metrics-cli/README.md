@@ -82,6 +82,11 @@ Options:
 
           [default: 0]
 
+      --frame-count <FRAME_COUNT>
+          Amount of frames to compute. Useful for computing subsets with `skip`, `skip-ref`, and `skip-dis`
+
+          [default: 0]
+
       --output <OUTPUT>
           Choose the CLI stdout format. Omit the option for the default. Status messages will be printed to stderr in all cases
 
