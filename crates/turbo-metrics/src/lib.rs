@@ -399,7 +399,7 @@ pub fn process_video_pair(
                     continue;
                 }
 
-                if decode_count - opts.skip >= opts.frame_count {
+                if opts.frame_count > 0 && decode_count - opts.skip >= opts.frame_count {
                     break 'main;
                 }
 
