@@ -7,3 +7,4 @@ pub mod dec;
 /// Simpler decoder implementation using no additional thread.
 pub mod dec_simple;
 pub mod enc;
+pub mod parser;

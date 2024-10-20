@@ -9,7 +9,7 @@ fn main() {
     nvptx_builder::link_libdevice();
 
     let root = env::var("CARGO_MANIFEST_DIR").unwrap();
-    nvptx_builder::link_bitcode_file(&format!("{root}/src/shared.ll"));
+    nvptx_builder::link_llvm_ir_file(&format!("{root}/src/shared.ll"));
 
     let out_dir = &env::var("OUT_DIR").expect("can read OUT_DIR");
 

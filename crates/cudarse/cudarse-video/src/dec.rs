@@ -1,194 +1,17 @@
-use crate::sys::{
-    _CUVIDDECODECREATEINFO__bindgen_ty_1, _CUVIDDECODECREATEINFO__bindgen_ty_2,
-    cudaVideoChromaFormat, cudaVideoCodec, cudaVideoCreateFlags, cudaVideoDeinterlaceMode,
-    cudaVideoSurfaceFormat, cuvidCreateDecoder, cuvidCreateVideoParser, cuvidCtxLock,
-    cuvidCtxLockCreate, cuvidCtxLockDestroy, cuvidCtxUnlock, cuvidDecodePicture, cuvidDecodeStatus,
-    cuvidDestroyDecoder, cuvidDestroyVideoParser, cuvidGetDecodeStatus, cuvidGetDecoderCaps,
-    cuvidMapVideoFrame64, cuvidParseVideoData, cuvidUnmapVideoFrame64,
-    CUVIDEOFORMATEX__bindgen_ty_1, CUvideopacketflags, _CUcontextlock_st, CUVIDDECODECAPS,
-    CUVIDDECODECREATEINFO, CUVIDEOFORMAT, CUVIDEOFORMATEX, CUVIDOPERATINGPOINTINFO,
-    CUVIDPARSERDISPINFO, CUVIDPARSERPARAMS, CUVIDPICPARAMS, CUVIDPROCPARAMS, CUVIDSEIMESSAGEINFO,
-    CUVIDSOURCEDATAPACKET,
-};
+use crate::sys;
 use cudarse_driver::sys::CuResult;
 use cudarse_driver::{CuCtx, CuStream};
-use cudarse_video_sys::{
-    _CUVIDRECONFIGUREDECODERINFO__bindgen_ty_1, _CUVIDRECONFIGUREDECODERINFO__bindgen_ty_2,
-    cuvidReconfigureDecoder, CUVIDRECONFIGUREDECODERINFO,
-};
+use sys::cudaVideoChromaFormat::*;
+use sys::cudaVideoSurfaceFormat::*;
+
 use std::ffi::{c_int, c_short, c_ulong, c_void};
 use std::marker::PhantomData;
 use std::mem;
-use std::ptr::{null, null_mut, NonNull};
+use std::ptr::{null_mut, NonNull};
 use tracing::debug;
 
-pub trait CuvidParserCallbacks {
-    /// Called when a new sequence is being parsed (parameters change)
-    fn sequence_callback(&self, format: &CUVIDEOFORMAT) -> Result<u32, ()>;
-    /// Called when a picture has been parsed and can be decoded (decode order).
-    fn decode_picture(&self, pic: &CUVIDPICPARAMS) -> Result<(), ()>;
-    /// Called when a picture can be mapped (display order).
-    fn display_picture(&self, disp: Option<&CUVIDPARSERDISPINFO>) -> Result<(), ()>;
-    fn get_operating_point(&self, _point: &CUVIDOPERATINGPOINTINFO) -> i32 {
-        1
-    }
-    fn get_sei_msg(&self, _sei: &CUVIDSEIMESSAGEINFO) -> i32 {
-        1
-    }
-}
-
-extern "C" fn sequence_callback<CB: CuvidParserCallbacks>(
-    user: *mut c_void,
-    format: *mut CUVIDEOFORMAT,
-) -> i32 {
-    let s = unsafe { &*(user.cast::<CB>()) };
-    if let Ok(new_size) = s.sequence_callback(unsafe { &*format }) {
-        new_size as i32
-    } else {
-        0
-    }
-}
-
-extern "C" fn decode_picture<CB: CuvidParserCallbacks>(
-    user: *mut c_void,
-    pic: *mut CUVIDPICPARAMS,
-) -> i32 {
-    let s = unsafe { &*(user.cast::<CB>()) };
-    if s.decode_picture(unsafe { &*pic }).is_ok() {
-        1
-    } else {
-        0
-    }
-}
-
-extern "C" fn display_picture<CB: CuvidParserCallbacks>(
-    user: *mut c_void,
-    disp: *mut CUVIDPARSERDISPINFO,
-) -> i32 {
-    let s = unsafe { &*(user.cast::<CB>()) };
-    let disp = if disp.is_null() {
-        None
-    } else {
-        Some(unsafe { &*disp })
-    };
-    if s.display_picture(disp).is_ok() {
-        1
-    } else {
-        0
-    }
-}
-
-extern "C" fn get_operating_point<CB: CuvidParserCallbacks>(
-    user: *mut c_void,
-    point: *mut CUVIDOPERATINGPOINTINFO,
-) -> i32 {
-    let s = unsafe { &*(user.cast::<CB>()) };
-    s.get_operating_point(unsafe { &*point })
-}
-
-extern "C" fn get_sei_msg<CB: CuvidParserCallbacks>(
-    user: *mut c_void,
-    sei: *mut CUVIDSEIMESSAGEINFO,
-) -> i32 {
-    let s = unsafe { &*(user.cast::<CB>()) };
-    s.get_sei_msg(unsafe { &*sei })
-}
-
-pub struct CuVideoParser<'a> {
-    pub(crate) inner: NonNull<c_void>,
-    marker: PhantomData<&'a dyn CuvidParserCallbacks>,
-}
-
-impl<'a> CuVideoParser<'a> {
-    pub fn new<CB: CuvidParserCallbacks>(
-        codec: cudaVideoCodec,
-        cb: &'a CB,
-        clock_rate: Option<u32>,
-        extra_data: Option<&[u8]>,
-    ) -> CuResult<Self> {
-        let mut ptr = null_mut();
-        let mut ext = if let Some(extra) = extra_data {
-            let mut raw = [0; 1024];
-            raw[0..extra.len()].copy_from_slice(extra);
-            Some(CUVIDEOFORMATEX {
-                format: CUVIDEOFORMAT {
-                    codec,
-                    seqhdr_data_length: extra_data.map(|s| s.len()).unwrap_or(0) as _,
-                    ..Default::default()
-                },
-                __bindgen_anon_1: CUVIDEOFORMATEX__bindgen_ty_1 {
-                    raw_seqhdr_data: raw,
-                },
-            })
-        } else {
-            None
-        };
-        let mut params = CUVIDPARSERPARAMS {
-            CodecType: codec,
-            ulMaxNumDecodeSurfaces: 1,
-            ulErrorThreshold: 0,
-            ulMaxDisplayDelay: 4,
-            ulClockRate: clock_rate.unwrap_or(0),
-            pExtVideoInfo: ext.as_mut().map(|p| p as *mut _).unwrap_or(null_mut()),
-            pUserData: cb as *const CB as *mut c_void,
-            pfnSequenceCallback: Some(sequence_callback::<CB>),
-            pfnDecodePicture: Some(decode_picture::<CB>),
-            pfnDisplayPicture: Some(display_picture::<CB>),
-            pfnGetOperatingPoint: Some(get_operating_point::<CB>),
-            pfnGetSEIMsg: Some(get_sei_msg::<CB>),
-            ..Default::default()
-        };
-        unsafe {
-            cuvidCreateVideoParser(&mut ptr, &mut params).result()?;
-        }
-        Ok(Self {
-            inner: NonNull::new(ptr).unwrap(),
-            marker: PhantomData,
-        })
-    }
-
-    /// The parser expects annexb format for H264 (with 0001 nalu delimiters).
-    pub fn parse_data(&mut self, packet: &[u8], timestamp: i64) -> CuResult<()> {
-        let mut flags = CUvideopacketflags(0);
-        flags |= CUvideopacketflags::CUVID_PKT_TIMESTAMP;
-        if packet.len() == 0 {
-            flags |= CUvideopacketflags::CUVID_PKT_ENDOFSTREAM;
-        }
-        // dbg!(&packet[..4]);
-        let mut packet = CUVIDSOURCEDATAPACKET {
-            flags: flags.0 as c_ulong,
-            payload_size: packet.len() as c_ulong,
-            payload: packet.as_ptr(),
-            timestamp,
-        };
-        unsafe { cuvidParseVideoData(self.inner.as_ptr(), &mut packet).result() }
-    }
-
-    pub fn flush(&mut self) -> CuResult<()> {
-        let mut packet = CUVIDSOURCEDATAPACKET {
-            flags: (CUvideopacketflags::CUVID_PKT_ENDOFSTREAM
-                | CUvideopacketflags::CUVID_PKT_NOTIFY_EOS)
-                .0 as _,
-            payload_size: 0,
-            payload: null(),
-            timestamp: 0,
-        };
-        unsafe { cuvidParseVideoData(self.inner.as_ptr(), &mut packet).result() }
-    }
-}
-
-impl<'a> Drop for CuVideoParser<'a> {
-    fn drop(&mut self) {
-        unsafe {
-            cuvidDestroyVideoParser(self.inner.as_ptr())
-                .result()
-                .unwrap()
-        }
-    }
-}
-
 /// The video context lock is required when decoding with CUDA instead of the video engines.
-pub struct CuVideoCtxLock(pub(crate) NonNull<_CUcontextlock_st>);
+pub struct CuVideoCtxLock(pub(crate) NonNull<sys::_CUcontextlock_st>);
 
 unsafe impl Send for CuVideoCtxLock {}
 unsafe impl Sync for CuVideoCtxLock {}
@@ -197,76 +20,73 @@ impl CuVideoCtxLock {
     pub fn new(ctx: &CuCtx) -> CuResult<Self> {
         let mut lock = null_mut();
         unsafe {
-            cuvidCtxLockCreate(&mut lock, ctx.inner()).result()?;
+            sys::cuvidCtxLockCreate(&mut lock, ctx.inner()).result()?;
         }
         Ok(Self(NonNull::new(lock).unwrap()))
     }
 
     pub fn lock(&self) -> CuResult<()> {
-        unsafe { cuvidCtxLock(self.0.as_ptr(), 0).result() }
+        unsafe { sys::cuvidCtxLock(self.0.as_ptr(), 0).result() }
     }
 
     pub fn unlock(&self) -> CuResult<()> {
-        unsafe { cuvidCtxUnlock(self.0.as_ptr(), 0).result() }
+        unsafe { sys::cuvidCtxUnlock(self.0.as_ptr(), 0).result() }
     }
 }
 
 impl Drop for CuVideoCtxLock {
     fn drop(&mut self) {
-        unsafe { cuvidCtxLockDestroy(self.0.as_ptr()).result().unwrap() }
+        unsafe { sys::cuvidCtxLockDestroy(self.0.as_ptr()).result().unwrap() }
     }
 }
 
 pub fn query_caps(
-    codec: cudaVideoCodec,
-    chroma_format: cudaVideoChromaFormat,
+    codec: sys::cudaVideoCodec,
+    chroma_format: sys::cudaVideoChromaFormat,
     bit_depth: u32,
-) -> CuResult<CUVIDDECODECAPS> {
-    let mut caps = CUVIDDECODECAPS {
+) -> CuResult<sys::CUVIDDECODECAPS> {
+    let mut caps = sys::CUVIDDECODECAPS {
         eCodecType: codec,
         eChromaFormat: chroma_format,
         nBitDepthMinus8: bit_depth - 8,
         ..Default::default()
     };
     unsafe {
-        cuvidGetDecoderCaps(&mut caps).result()?;
+        sys::cuvidGetDecoderCaps(&mut caps).result()?;
     }
     Ok(caps)
 }
 
 /// Choose a supported surface format based on bit depth and chroma format.
 pub fn select_output_format(
-    format: &CUVIDEOFORMAT,
-    caps: &CUVIDDECODECAPS,
-) -> cudaVideoSurfaceFormat {
+    format: &sys::CUVIDEOFORMAT,
+    caps: &sys::CUVIDDECODECAPS,
+) -> sys::cudaVideoSurfaceFormat {
     let high_bpp = format.bit_depth_luma_minus8 > 0;
     let mut surface_format = match format.chroma_format {
-        cudaVideoChromaFormat::cudaVideoChromaFormat_420
-        | cudaVideoChromaFormat::cudaVideoChromaFormat_Monochrome => {
+        cudaVideoChromaFormat_420 | cudaVideoChromaFormat_Monochrome => {
             if high_bpp {
-                cudaVideoSurfaceFormat::cudaVideoSurfaceFormat_P016
+                cudaVideoSurfaceFormat_P016
             } else {
-                cudaVideoSurfaceFormat::cudaVideoSurfaceFormat_NV12
+                cudaVideoSurfaceFormat_NV12
             }
         }
-        cudaVideoChromaFormat::cudaVideoChromaFormat_422 => {
+        cudaVideoChromaFormat_422 => {
             if high_bpp {
-                cudaVideoSurfaceFormat::cudaVideoSurfaceFormat_YUV444_16Bit
+                cudaVideoSurfaceFormat_YUV444_16Bit
             } else {
-                cudaVideoSurfaceFormat::cudaVideoSurfaceFormat_YUV444
+                cudaVideoSurfaceFormat_YUV444
             }
         }
-        cudaVideoChromaFormat::cudaVideoChromaFormat_444 => {
-            cudaVideoSurfaceFormat::cudaVideoSurfaceFormat_NV12
-        }
+        cudaVideoChromaFormat_444 => cudaVideoSurfaceFormat_NV12,
     };
 
     if !caps.is_output_format_supported(surface_format) {
         for format in [
-            cudaVideoSurfaceFormat::cudaVideoSurfaceFormat_NV12,
-            cudaVideoSurfaceFormat::cudaVideoSurfaceFormat_P016,
-            cudaVideoSurfaceFormat::cudaVideoSurfaceFormat_YUV444,
-            cudaVideoSurfaceFormat::cudaVideoSurfaceFormat_YUV444_16Bit,
+            cudaVideoSurfaceFormat_NV12,
+            cudaVideoSurfaceFormat_P016,
+            cudaVideoSurfaceFormat_YUV444,
+            cudaVideoSurfaceFormat_YUV444_16Bit,
         ] {
             // There should be at least one that works
             if caps.is_output_format_supported(format) {
@@ -279,9 +99,9 @@ pub fn select_output_format(
 
 #[derive(Debug)]
 #[repr(transparent)]
-pub struct CuVideoDecoder<'a> {
+pub struct CuVideoDecoder<'lock> {
     pub(crate) inner: NonNull<c_void>,
-    marker: PhantomData<&'a CuVideoCtxLock>,
+    marker: PhantomData<&'lock CuVideoCtxLock>,
 }
 
 unsafe impl Sync for CuVideoDecoder<'_> {}
@@ -289,13 +109,13 @@ unsafe impl Send for CuVideoDecoder<'_> {}
 
 impl<'a> CuVideoDecoder<'a> {
     pub fn new(
-        format: &CUVIDEOFORMAT,
-        surface_format: cudaVideoSurfaceFormat,
+        format: &sys::CUVIDEOFORMAT,
+        surface_format: sys::cudaVideoSurfaceFormat,
         decode_surfaces: u32,
         lock_for_cuda: Option<&'a CuVideoCtxLock>,
     ) -> CuResult<Self> {
         let mut ptr = null_mut();
-        let mut create_info = CUVIDDECODECREATEINFO {
+        let mut create_info = sys::CUVIDDECODECREATEINFO {
             ulWidth: format.coded_width as _,
             ulHeight: format.coded_height as _,
             // 0 means same as ulWidth
@@ -305,13 +125,13 @@ impl<'a> CuVideoDecoder<'a> {
             ulTargetWidth: format.coded_width as _,
             ulTargetHeight: format.coded_height as _,
 
-            display_area: _CUVIDDECODECREATEINFO__bindgen_ty_1 {
+            display_area: sys::_CUVIDDECODECREATEINFO__bindgen_ty_1 {
                 left: format.display_area.left as c_short,
                 top: format.display_area.top as c_short,
                 right: format.display_area.right as c_short,
                 bottom: format.display_area.bottom as c_short,
             },
-            target_rect: _CUVIDDECODECREATEINFO__bindgen_ty_2 {
+            target_rect: sys::_CUVIDDECODECREATEINFO__bindgen_ty_2 {
                 left: format.display_area.left as c_short,
                 top: format.display_area.top as c_short,
                 right: format.display_area.right as c_short,
@@ -322,15 +142,15 @@ impl<'a> CuVideoDecoder<'a> {
             ChromaFormat: format.chroma_format,
             bitDepthMinus8: format.bit_depth_luma_minus8 as c_ulong,
             OutputFormat: surface_format,
-            DeinterlaceMode: cudaVideoDeinterlaceMode::cudaVideoDeinterlaceMode_Weave,
+            DeinterlaceMode: sys::cudaVideoDeinterlaceMode::cudaVideoDeinterlaceMode_Weave,
 
             ulNumDecodeSurfaces: decode_surfaces as _,
             ulNumOutputSurfaces: 1,
 
             ulCreationFlags: if lock_for_cuda.is_some() {
-                cudaVideoCreateFlags::cudaVideoCreate_PreferCUDA as _
+                sys::cudaVideoCreateFlags::cudaVideoCreate_PreferCUDA as _
             } else {
-                cudaVideoCreateFlags::cudaVideoCreate_PreferCUVID as _
+                sys::cudaVideoCreateFlags::cudaVideoCreate_PreferCUVID as _
             },
             ulIntraDecodeOnly: 0,
             enableHistogram: 0,
@@ -340,7 +160,7 @@ impl<'a> CuVideoDecoder<'a> {
             Reserved2: [0; 4],
         };
         unsafe {
-            cuvidCreateDecoder(&mut ptr, &mut create_info).result()?;
+            sys::cuvidCreateDecoder(&mut ptr, &mut create_info).result()?;
         }
         Ok(Self {
             inner: NonNull::new(ptr).unwrap(),
@@ -349,20 +169,20 @@ impl<'a> CuVideoDecoder<'a> {
     }
 
     /// Reconfigure the decoder to accommodate a smaller frame size or to resize the number of decode surfaces.
-    pub fn reconfigure(&self, format: &CUVIDEOFORMAT) -> CuResult<()> {
-        let mut info = CUVIDRECONFIGUREDECODERINFO {
+    pub fn reconfigure(&self, format: &sys::CUVIDEOFORMAT) -> CuResult<()> {
+        let mut info = sys::CUVIDRECONFIGUREDECODERINFO {
             ulWidth: format.coded_width,
             ulHeight: format.coded_height,
             ulTargetWidth: format.display_width(),
             ulTargetHeight: format.display_height(),
             ulNumDecodeSurfaces: 0,
-            display_area: _CUVIDRECONFIGUREDECODERINFO__bindgen_ty_1 {
+            display_area: sys::_CUVIDRECONFIGUREDECODERINFO__bindgen_ty_1 {
                 left: format.display_area.left as _,
                 top: format.display_area.top as _,
                 right: format.display_area.right as _,
                 bottom: format.display_area.bottom as _,
             },
-            target_rect: _CUVIDRECONFIGUREDECODERINFO__bindgen_ty_2 {
+            target_rect: sys::_CUVIDRECONFIGUREDECODERINFO__bindgen_ty_2 {
                 left: format.display_area.left as _,
                 top: format.display_area.top as _,
                 right: format.display_area.right as _,
@@ -371,35 +191,35 @@ impl<'a> CuVideoDecoder<'a> {
             ..Default::default()
         };
         debug!("Reconfiguring decoder : {info:#?}");
-        unsafe { cuvidReconfigureDecoder(self.inner.as_ptr(), &mut info).result() }
+        unsafe { sys::cuvidReconfigureDecoder(self.inner.as_ptr(), &mut info).result() }
     }
 
-    pub fn decode(&self, params: &CUVIDPICPARAMS) -> CuResult<()> {
+    pub fn decode(&self, params: &sys::CUVIDPICPARAMS) -> CuResult<()> {
         unsafe {
-            cuvidDecodePicture(
+            sys::cuvidDecodePicture(
                 self.inner.as_ptr(),
-                params as *const CUVIDPICPARAMS as *mut _,
+                params as *const sys::CUVIDPICPARAMS as *mut _,
             )
             .result()
         }
     }
 
-    pub fn status(&self) -> CuResult<cuvidDecodeStatus> {
+    pub fn status(&self) -> CuResult<sys::cuvidDecodeStatus> {
         let mut status = Default::default();
         unsafe {
-            cuvidGetDecodeStatus(self.inner.as_ptr(), 0, &mut status).result()?;
+            sys::cuvidGetDecodeStatus(self.inner.as_ptr(), 0, &mut status).result()?;
         }
         Ok(status.decodeStatus)
     }
 
     pub fn map<'b>(
         &'b self,
-        info: &CUVIDPARSERDISPINFO,
+        info: &sys::CUVIDPARSERDISPINFO,
         stream: &CuStream,
     ) -> CuResult<FrameMapping<'b>> {
         let mut ptr = 0;
         let mut pitch = 0;
-        let mut proc = CUVIDPROCPARAMS {
+        let mut proc = sys::CUVIDPROCPARAMS {
             progressive_frame: 1,
             second_field: info.repeat_first_field + 1,
             top_field_first: info.top_field_first,
@@ -408,7 +228,7 @@ impl<'a> CuVideoDecoder<'a> {
             ..Default::default()
         };
         unsafe {
-            cuvidMapVideoFrame64(
+            sys::cuvidMapVideoFrame64(
                 self.inner.as_ptr(),
                 info.picture_index,
                 &mut ptr,
@@ -435,14 +255,16 @@ impl<'a> CuVideoDecoder<'a> {
 
     /// SAFETY: Ensure the frame mapping is not used afterward.
     pub(crate) unsafe fn unmap_inner(&self, frame: u64) -> CuResult<()> {
-        cuvidUnmapVideoFrame64(self.inner.as_ptr(), frame).result()
+        sys::cuvidUnmapVideoFrame64(self.inner.as_ptr(), frame).result()
     }
 }
 
 impl Drop for CuVideoDecoder<'_> {
     fn drop(&mut self) {
         unsafe {
-            cuvidDestroyDecoder(self.inner.as_ptr()).result().unwrap();
+            sys::cuvidDestroyDecoder(self.inner.as_ptr())
+                .result()
+                .unwrap();
         }
     }
 }

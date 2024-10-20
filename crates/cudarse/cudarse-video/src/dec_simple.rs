@@ -1,12 +1,9 @@
-use crate::dec::{
-    query_caps, select_output_format, CuVideoCtxLock, CuVideoDecoder, CuvidParserCallbacks,
-    FrameMapping,
-};
+use crate::dec::{query_caps, select_output_format, CuVideoCtxLock, CuVideoDecoder, FrameMapping};
+use crate::parser::CuvidParserCallbacks;
 use cudarse_driver::sys::CuResult;
 use cudarse_driver::CuStream;
 use cudarse_video_sys::{
-    cudaVideoSurfaceFormat, CUVIDEOFORMAT, CUVIDPARSERDISPINFO, CUVIDPICPARAMS,
-    CUVIDRECONFIGUREDECODERINFO, CUVIDSEIMESSAGEINFO,
+    cudaVideoSurfaceFormat, CUVIDEOFORMAT, CUVIDPARSERDISPINFO, CUVIDPICPARAMS, CUVIDSEIMESSAGEINFO,
 };
 use std::cell::{OnceCell, RefCell, RefMut};
 use std::collections::VecDeque;
@@ -16,10 +13,10 @@ use std::slice;
 use tracing::{debug, error, trace, warn};
 
 /// Simple decoder for single threaded use.
-pub struct NvDecoderSimple<'a> {
+pub struct NvDecoderSimple<'lock> {
     extra_decode_surfaces: u32,
-    lock: Option<&'a CuVideoCtxLock>,
-    decoder: OnceCell<(CuVideoDecoder<'a>, CUVIDEOFORMAT, cudaVideoSurfaceFormat)>,
+    lock: Option<&'lock CuVideoCtxLock>,
+    decoder: OnceCell<(CuVideoDecoder<'lock>, CUVIDEOFORMAT, cudaVideoSurfaceFormat)>,
     frames: RefCell<VecDeque<Option<CUVIDPARSERDISPINFO>>>,
 }
 
@@ -220,18 +217,15 @@ impl CuvidParserCallbacks for NvDecoderSimple<'_> {
 
 #[cfg(test)]
 mod tests {
-    use crate::dec::CuVideoParser;
     use crate::dec_simple::NvDecoderSimple;
+    use crate::parser::CuvidParser;
+    use codec_bitstream::h264;
     use codec_bitstream::h264::{NalReader, NaluType};
-    use codec_bitstream::{h264, Codec};
-    use core::slice;
     use cudarse_driver::CuStream;
     use cudarse_video_sys::cudaVideoCodec;
     use matroska_demuxer::{Frame, MatroskaFile};
-    use std::collections::VecDeque;
     use std::fs::File;
     use std::io::BufReader;
-    use std::path::PathBuf;
     use tracing::debug;
     use tracing_subscriber::EnvFilter;
 
@@ -244,7 +238,7 @@ mod tests {
         cudarse_driver::init_cuda_and_primary_ctx().unwrap();
         let cb = NvDecoderSimple::new(3, None);
         let mut parser =
-            CuVideoParser::new(cudaVideoCodec::cudaVideoCodec_H264, &cb, None, None).unwrap();
+            CuvidParser::new(cudaVideoCodec::cudaVideoCodec_H264, &cb, None, None).unwrap();
         let mut reader = NalReader::new(File::open("../../data/raw.h264").unwrap());
         'main: loop {
             if let Ok(pkt) = reader.read_nalu() {
@@ -278,12 +272,12 @@ mod tests {
         cudarse_driver::init_cuda_and_primary_ctx().unwrap();
         let cb = NvDecoderSimple::new(3, None);
         let mut parser =
-            CuVideoParser::new(cudaVideoCodec::cudaVideoCodec_H264, &cb, None, None).unwrap();
+            CuvidParser::new(cudaVideoCodec::cudaVideoCodec_H264, &cb, None, None).unwrap();
         let mut reader = NalReader::new(File::open("../../data/raw.h264").unwrap());
 
         let cb2 = NvDecoderSimple::new(3, None);
         let mut parser2 =
-            CuVideoParser::new(cudaVideoCodec::cudaVideoCodec_H264, &cb2, None, None).unwrap();
+            CuvidParser::new(cudaVideoCodec::cudaVideoCodec_H264, &cb2, None, None).unwrap();
         let mut reader2 = NalReader::new(File::open("../../data/raw.h264").unwrap());
 
         'main: loop {
@@ -336,7 +330,7 @@ mod tests {
         cudarse_driver::init_cuda_and_primary_ctx().unwrap();
         let cb = NvDecoderSimple::new(3, None);
         let mut parser =
-            CuVideoParser::new(cudaVideoCodec::cudaVideoCodec_H264, &cb, None, None).unwrap();
+            CuvidParser::new(cudaVideoCodec::cudaVideoCodec_H264, &cb, None, None).unwrap();
         let mut mkv = MatroskaFile::open(BufReader::new(
             File::open("../../../data/dpbbug.mkv").unwrap(),
         ))

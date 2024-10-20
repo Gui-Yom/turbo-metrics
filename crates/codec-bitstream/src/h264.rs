@@ -11,7 +11,7 @@ use std::io::{Cursor, ErrorKind, Read};
 use std::iter::repeat;
 use std::{io, mem};
 
-use bitstream_io::{BigEndian, BitRead, BitReader, ByteRead};
+use bitstream_io::{BigEndian, BitRead, BitReader};
 use h264_reader::annexb::AnnexBReader;
 use h264_reader::avcc::AvccError;
 use h264_reader::nal::{Nal, RefNal};

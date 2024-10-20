@@ -1,17 +1,41 @@
-use crate::img::{reinterpret_slice, CpuImg, SampleType};
-use crate::{npp, nvdec_to_codec};
+use crate::{nvdec_to_codec, HwFrame};
 use codec_bitstream::{
     ColorCharacteristics, ColourPrimaries, MatrixCoefficients, TransferCharacteristic,
 };
 use cuda_colorspace::{ColorMatrix, ColorspaceConversion, Transfer};
 use cudarse_driver::CuStream;
-use cudarse_npp::image::isu::Malloc;
 use cudarse_npp::image::{ImgMut, C};
 use cudarse_video::dec::npp::NvDecFrame;
 use cudarse_video::sys::CUVIDEOFORMAT;
-use std::fmt::Display;
 
-pub fn color_characteristics_from_format(format: &CUVIDEOFORMAT) -> (ColorCharacteristics, bool) {
+#[derive(Debug, Copy, Clone)]
+pub enum ColorRange {
+    Limited,
+    Full,
+}
+
+impl From<bool> for ColorRange {
+    fn from(value: bool) -> Self {
+        if value {
+            ColorRange::Full
+        } else {
+            ColorRange::Limited
+        }
+    }
+}
+
+impl Into<bool> for ColorRange {
+    fn into(self) -> bool {
+        match self {
+            ColorRange::Limited => false,
+            ColorRange::Full => true,
+        }
+    }
+}
+
+pub fn color_characteristics_from_format(
+    format: &CUVIDEOFORMAT,
+) -> (ColorCharacteristics, ColorRange) {
     (
         ColorCharacteristics::from_codec_bytes(
             nvdec_to_codec(format.codec),
@@ -20,7 +44,7 @@ pub fn color_characteristics_from_format(format: &CUVIDEOFORMAT) -> (ColorCharac
             format.video_signal_description.transfer_characteristics,
         )
         .or(color_characteristics_fallback(format)),
-        format.video_signal_description.full_range(),
+        format.video_signal_description.full_range().into(),
     )
 }
 
@@ -69,20 +93,9 @@ pub fn get_transfer(colors: &ColorCharacteristics) -> Transfer {
     }
 }
 
-pub fn video_color_print(format: &CUVIDEOFORMAT) -> impl Display {
-    let (colors, full_range) = color_characteristics_from_format(format);
-    format!(
-        "CP: {:?}, MC: {:?}, TC: {:?}, CR: {}",
-        colors.cp,
-        colors.mc,
-        colors.tc,
-        if full_range { "Full" } else { "Limited" }
-    )
-}
-
 pub fn convert_frame_to_linearrgb(
-    frame: NvDecFrame<'_>,
-    colors: (ColorCharacteristics, bool),
+    frame: HwFrame<'_>,
+    colors: (ColorCharacteristics, ColorRange),
     colorspace: &ColorspaceConversion,
     dst: impl ImgMut<f32, C<3>>,
     stream: &CuStream,
@@ -90,39 +103,14 @@ pub fn convert_frame_to_linearrgb(
     let color_matrix = get_color_matrix(&colors.0);
     let transfer = get_transfer(&colors.0);
     match frame {
-        NvDecFrame::NV12(frame) => colorspace
-            .biplanaryuv420_to_linearrgb_8(color_matrix, transfer, colors.1, frame, dst, stream)
+        HwFrame::NvDec(NvDecFrame::NV12(f)) => colorspace
+            .biplanaryuv420_to_linearrgb_8(color_matrix, transfer, colors.1.into(), f, dst, stream)
             .unwrap(),
-        NvDecFrame::P016(frame) => colorspace
-            .biplanaryuv420_to_linearrgb_16(color_matrix, transfer, colors.1, frame, dst, stream)
+        HwFrame::NvDec(NvDecFrame::P016(f)) => colorspace
+            .biplanaryuv420_to_linearrgb_16(color_matrix, transfer, colors.1.into(), f, dst, stream)
             .unwrap(),
-    };
-}
-
-pub(crate) fn cpu_to_linear(
-    src: &CpuImg,
-    dst: impl ImgMut<f32, C<3>>,
-    conversion: &ColorspaceConversion,
-    stream: &CuStream,
-) {
-    // TODO assume srgb
-    match src.sample_type {
-        SampleType::U8 => {
-            let mut tmp = npp::image::Image::malloc(src.width, src.height).unwrap();
-            tmp.copy_from_cpu(&src.data, stream.inner() as _).unwrap();
-            conversion.srgb_to_linear_u8(&tmp, dst, &stream).unwrap();
-        }
-        SampleType::U16 => {
-            let mut tmp = npp::image::Image::malloc(src.width, src.height).unwrap();
-            tmp.copy_from_cpu(reinterpret_slice(&src.data), stream.inner() as _)
-                .unwrap();
-            conversion.srgb_to_linear_u16(&tmp, dst, &stream).unwrap();
-        }
-        SampleType::F32 => {
-            let mut tmp = npp::image::Image::malloc(src.width, src.height).unwrap();
-            tmp.copy_from_cpu(reinterpret_slice(&src.data), stream.inner() as _)
-                .unwrap();
-            conversion.srgb_to_linear_f32(&tmp, dst, &stream).unwrap();
-        }
+        HwFrame::Npp8(f) => colorspace.srgb_to_linear_u8(f, dst, &stream).unwrap(),
+        HwFrame::Npp16(f) => colorspace.srgb_to_linear_u16(f, dst, &stream).unwrap(),
+        HwFrame::Npp32(f) => colorspace.srgb_to_linear_f32(f, dst, &stream).unwrap(),
     }
 }
