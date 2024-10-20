@@ -51,7 +51,7 @@ pub struct Options {
     /// Index of the first frame to start computing at for the distorted frame.
     pub skip_dis: u32,
     /// Amount of frames to compute. Useful for computing subsets with `skip`, `skip-ref`, and `skip-dis`.
-    pub frame_count: u32,
+    pub frames: u32,
 }
 
 #[derive(Debug)]
@@ -290,12 +290,13 @@ pub fn compute_metrics(
             decode_count += 1;
             continue;
         }
-
-        if opts.frame_count > 0 && decode_count - opts.skip >= opts.frame_count {
+        
+        decode_count += 1;
+        
+        if opts.frames > 0 && decode_count > opts.frames {
             break;
         }
 
-        decode_count += 1;
         trace!(frame = decode_count, "Computing metrics for frame");
 
         convert_frame_to_linearrgb(

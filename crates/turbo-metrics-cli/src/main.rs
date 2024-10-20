@@ -50,7 +50,7 @@ struct CliArgs {
     skip_dis: u32,
     /// Amount of frames to compute. Useful for computing subsets with `skip`, `skip-ref`, and `skip-dis`.
     #[arg(long, default_value = "0")]
-    frame_count: u32,
+    frames: u32,
 
     /// Choose the CLI stdout format. Omit the option for the default.
     /// Status messages will be printed to stderr in all cases.
@@ -86,7 +86,7 @@ impl CliArgs {
             skip: self.skip,
             skip_ref: self.skip_ref,
             skip_dis: self.skip_dis,
-            frame_count: self.frame_count,
+            frames: self.frames,
         }
     }
 
