@@ -55,12 +55,12 @@ pub struct Options {
 
 #[derive(Debug)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize))]
-pub struct MetricResults {
+pub struct MetricAggregate {
     pub scores: Vec<f64>,
     pub stats: Stats,
 }
 
-impl From<Vec<f64>> for MetricResults {
+impl From<Vec<f64>> for MetricAggregate {
     fn from(value: Vec<f64>) -> Self {
         Self {
             stats: Stats::compute(&value),
@@ -74,13 +74,52 @@ impl From<Vec<f64>> for MetricResults {
 pub struct MetricsResults {
     pub frame_count: usize,
     #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
-    pub psnr: Option<MetricResults>,
+    pub psnr: Option<MetricAggregate>,
     #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
-    pub ssim: Option<MetricResults>,
+    pub ssim: Option<MetricAggregate>,
     #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
-    pub msssim: Option<MetricResults>,
+    pub msssim: Option<MetricAggregate>,
     #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
-    pub ssimulacra2: Option<MetricResults>,
+    pub ssimulacra2: Option<MetricAggregate>,
+}
+
+#[derive(Debug)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize))]
+pub struct MetricsStats {
+    pub frame_count: usize,
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
+    pub psnr: Option<Stats>,
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
+    pub ssim: Option<Stats>,
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
+    pub msssim: Option<Stats>,
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
+    pub ssimulacra2: Option<Stats>,
+}
+
+impl From<MetricsResults> for MetricsStats {
+    fn from(value: MetricsResults) -> Self {
+        Self {
+            frame_count: value.frame_count,
+            psnr: value.psnr.map(|a| a.stats),
+            ssim: value.ssim.map(|a| a.stats),
+            msssim: value.msssim.map(|a| a.stats),
+            ssimulacra2: value.ssimulacra2.map(|a| a.stats),
+        }
+    }
+}
+
+#[derive(Debug)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize))]
+pub struct FrameScores {
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
+    pub psnr: Option<f64>,
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
+    pub ssim: Option<f64>,
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
+    pub msssim: Option<f64>,
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
+    pub ssimulacra2: Option<f64>,
 }
 
 pub enum HwFrame<'dec> {
@@ -209,20 +248,13 @@ impl TurboMetrics {
         })
     }
 
-    pub fn has_psnr(&self) -> bool {
-        self.psnr.is_some()
-    }
-
-    pub fn has_ssim(&self) -> bool {
-        self.ssim.is_some()
-    }
-
-    pub fn has_msssim(&self) -> bool {
-        self.msssim.is_some()
-    }
-
-    pub fn has_ssimulacra2(&self) -> bool {
-        self.ssimulacra2.is_some()
+    pub fn metrics(&self) -> Metrics {
+        Metrics {
+            psnr: self.psnr.is_some(),
+            ssim: self.ssim.is_some(),
+            msssim: self.msssim.is_some(),
+            ssimulacra2: self.ssimulacra2.is_some(),
+        }
     }
 
     pub fn stream_ref(&self) -> &CuStream {
@@ -239,7 +271,7 @@ impl TurboMetrics {
         (cc_ref, cr_ref): (ColorCharacteristics, ColorRange),
         fdis: HwFrame<'_>,
         (cc_dis, cr_dis): (ColorCharacteristics, ColorRange),
-    ) -> (Option<f64>, Option<f64>, Option<f64>, Option<f64>) {
+    ) -> FrameScores {
         let npp = get_stream_ctx().unwrap();
         convert_frame_to_linearrgb(
             fref,
@@ -319,12 +351,12 @@ impl TurboMetrics {
 
         self.streams[0].sync().unwrap();
 
-        (
-            self.psnr.as_ref().map(|_| psnr as f64),
-            self.ssim.as_ref().map(|_| ssim as f64),
-            self.msssim.as_ref().map(|_| msssim as f64),
-            self.ssimulacra2.as_mut().map(|s| s.get_score()),
-        )
+        FrameScores {
+            psnr: self.psnr.as_ref().map(|_| psnr as f64),
+            ssim: self.ssim.as_ref().map(|_| ssim as f64),
+            msssim: self.msssim.as_ref().map(|_| msssim as f64),
+            ssimulacra2: self.ssimulacra2.as_mut().map(|s| s.get_score()),
+        }
     }
 
     pub fn compute_all(
@@ -369,19 +401,18 @@ impl TurboMetrics {
 
             decode_count += 1;
 
-            let (psnr, ssim, msssim, ssimu) =
-                self.compute_one(fref, (cc_ref, cr_ref), fdis, (cc_dis, cr_dis));
+            let result = self.compute_one(fref, (cc_ref, cr_ref), fdis, (cc_dis, cr_dis));
 
-            if let Some((scores, value)) = scores_psnr.as_mut().zip(psnr) {
+            if let Some((scores, value)) = scores_psnr.as_mut().zip(result.psnr) {
                 scores.push(value);
             }
-            if let Some((scores, value)) = scores_ssim.as_mut().zip(ssim) {
+            if let Some((scores, value)) = scores_ssim.as_mut().zip(result.ssim) {
                 scores.push(value);
             }
-            if let Some((scores, value)) = scores_msssim.as_mut().zip(msssim) {
+            if let Some((scores, value)) = scores_msssim.as_mut().zip(result.msssim) {
                 scores.push(value);
             }
-            if let Some((scores, value)) = scores_ssimu.as_mut().zip(ssimu) {
+            if let Some((scores, value)) = scores_ssimu.as_mut().zip(result.ssimulacra2) {
                 scores.push(value);
             }
 

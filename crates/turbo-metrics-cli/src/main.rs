@@ -242,14 +242,18 @@ fn compute(
         frame_count=frames_dis.frame_count()
     );
 
-    let mut scores_psnr = turbo.has_psnr().then(|| Vec::with_capacity(4096));
-    let mut scores_ssim = turbo.has_ssim().then(|| Vec::with_capacity(4096));
-    let mut scores_msssim = turbo.has_msssim().then(|| Vec::with_capacity(4096));
-    let mut scores_ssimu = turbo.has_ssimulacra2().then(|| Vec::with_capacity(4096));
+    let metrics = turbo.metrics();
+
+    let mut scores_psnr = metrics.psnr.then(|| Vec::with_capacity(4096));
+    let mut scores_ssim = metrics.ssim.then(|| Vec::with_capacity(4096));
+    let mut scores_msssim = metrics.msssim.then(|| Vec::with_capacity(4096));
+    let mut scores_ssimu = metrics.ssimulacra2.then(|| Vec::with_capacity(4096));
 
     let start = Instant::now();
     let mut decode_count = 0;
     let mut compute_count = 0;
+
+    output.prepare(&metrics);
 
     // This can be 0 if the source does not report the total frame count
     let useful_decode_amount = frames_ref
@@ -300,19 +304,20 @@ fn compute(
         decode_count += 1;
         trace!(frame = decode_count, "Computing metrics for frame");
 
-        let (psnr, ssim, msssim, ssimu) =
-            turbo.compute_one(fref, (cc_ref, cr_ref), fdis, (cc_dis, cr_dis));
+        let result = turbo.compute_one(fref, (cc_ref, cr_ref), fdis, (cc_dis, cr_dis));
 
-        if let Some((scores, value)) = scores_psnr.as_mut().zip(psnr) {
+        output.output_single_score(&result);
+
+        if let Some((scores, value)) = scores_psnr.as_mut().zip(result.psnr) {
             scores.push(value);
         }
-        if let Some((scores, value)) = scores_ssim.as_mut().zip(ssim) {
+        if let Some((scores, value)) = scores_ssim.as_mut().zip(result.ssim) {
             scores.push(value);
         }
-        if let Some((scores, value)) = scores_msssim.as_mut().zip(msssim) {
+        if let Some((scores, value)) = scores_msssim.as_mut().zip(result.msssim) {
             scores.push(value);
         }
-        if let Some((scores, value)) = scores_ssimu.as_mut().zip(ssimu) {
+        if let Some((scores, value)) = scores_ssimu.as_mut().zip(result.ssimulacra2) {
             scores.push(value);
         }
 
@@ -341,7 +346,7 @@ fn compute(
     // The stream we set before is being destroyed before the drop
     set_stream(CuStream::DEFAULT.inner() as _).unwrap();
 
-    output.display_results(&MetricsResults {
+    output.output_results(MetricsResults {
         frame_count: compute_count,
         psnr: scores_psnr.map(Into::into),
         ssim: scores_ssim.map(Into::into),
