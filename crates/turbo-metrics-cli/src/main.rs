@@ -1,19 +1,25 @@
 use crate::output::Output;
 use clap::{Parser, ValueEnum};
+use indicatif::ProgressStyle;
 use std::error::Error;
+use std::fmt::{Display, Formatter};
 use std::fs::File;
 use std::io::{stdin, BufReader, Read};
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
-use tracing::error;
+use std::time::{Duration, Instant};
 use tracing::level_filters::LevelFilter;
+use tracing::{debug, error, info, info_span, instrument, span, trace, Span};
+use tracing_indicatif::span_ext::IndicatifSpanExt;
 use tracing_indicatif::IndicatifLayer;
 use tracing_subscriber::layer::SubscriberExt;
 use tracing_subscriber::util::SubscriberInitExt;
 use tracing_subscriber::{EnvFilter, Layer};
-use turbo_metrics::input_image::{ImageFrameSource, ImageProbe};
+use turbo_metrics::cudarse_driver::CuStream;
+use turbo_metrics::input_image::{ImageFrameSource, ImageProbe, PROBE_LEN};
 use turbo_metrics::input_video::{DynDemuxer, VideoFrameSource, VideoProbe};
-use turbo_metrics::{compute_metrics, init_cuda, FrameSource, Options};
+use turbo_metrics::npp::set_stream;
+use turbo_metrics::{init_cuda, FrameSource, MetricsResults, Options, TurboMetrics};
 
 mod output;
 
@@ -127,30 +133,17 @@ fn main() -> ExitCode {
         return ExitCode::FAILURE;
     }
 
-    let in_ref: BufReader<Box<dyn Read>> = BufReader::new(if ref_is_stdin {
-        // Use stdin
-        Box::new(stdin().lock())
-    } else {
-        Box::new(File::open(&args.reference).unwrap())
-    });
-    let in_dis: BufReader<Box<dyn Read>> = BufReader::new(if dis_is_stdin {
-        // Use stdin
-        Box::new(stdin().lock())
-    } else {
-        Box::new(File::open(&args.distorted).unwrap())
-    });
-
     // Frame sources might need cuda
     init_cuda();
 
-    let source_ref = match create_source(&args.reference, ref_is_stdin, in_ref) {
+    let source_ref = match create_source(&args.reference, ref_is_stdin) {
         Ok(source) => source,
         Err(e) => {
             error!("Could not read reference : {e}");
             return ExitCode::FAILURE;
         }
     };
-    let source_dis = match create_source(&args.distorted, dis_is_stdin, in_dis) {
+    let source_dis = match create_source(&args.distorted, dis_is_stdin) {
         Ok(source) => source,
         Err(e) => {
             error!("Could not read distorted : {e}");
@@ -158,27 +151,39 @@ fn main() -> ExitCode {
         }
     };
 
-    let result = compute_metrics(
+    if (source_ref.width(), source_ref.height()) != (source_dis.width(), source_dis.height()) {
+        error!("Reference and distorted are not the same size");
+    }
+
+    let turbo = match TurboMetrics::new(source_ref.width(), source_ref.height(), &args.metrics()) {
+        Ok(turbo) => turbo,
+        Err(e) => {
+            error!("Could not initialize engine : {e}");
+            return ExitCode::FAILURE;
+        }
+    };
+
+    compute(
+        turbo,
         source_ref,
         source_dis,
-        &args.metrics(),
         &args.video_options(),
+        args.output(),
     );
-
-    if let Some(result) = &result {
-        args.output().display_results(result);
-        ExitCode::SUCCESS
-    } else {
-        ExitCode::FAILURE
-    }
+    ExitCode::SUCCESS
 }
 
-fn create_source(
-    path: &Path,
-    is_stdin: bool,
-    mut stream: BufReader<impl Read + 'static>,
-) -> Result<Box<dyn FrameSource>, Box<dyn Error>> {
-    if let Some(probe_ref) = ImageProbe::probe_image(&mut stream) {
+fn create_source(path: &Path, is_stdin: bool) -> Result<Box<dyn FrameSource>, Box<dyn Error>> {
+    let mut stream: BufReader<Box<dyn Read>> = BufReader::with_capacity(
+        PROBE_LEN,
+        if is_stdin {
+            // Use stdin
+            Box::new(stdin().lock())
+        } else {
+            Box::new(File::open(path).unwrap())
+        },
+    );
+    if let Some(probe_ref) = ImageProbe::probe_image(&mut stream)? {
         if probe_ref.can_decode() {
             Ok(Box::new(ImageFrameSource::new(&mut stream, probe_ref)?))
         } else {
@@ -197,11 +202,179 @@ fn create_source(
         };
 
         match probe {
-            Ok(Ok(probe)) => Ok(Box::new(VideoFrameSource::<DynDemuxer>::new(
-                probe.make_demuxer(),
-            ))),
+            Ok(Ok(probe)) => Ok(Box::new(VideoFrameSource::new(probe.make_demuxer()))),
             Ok(Err(e)) => Err(e.into()),
             Err(e) => Err(e.into()),
         }
     }
+}
+
+fn compute(
+    mut turbo: TurboMetrics,
+    mut frames_ref: impl FrameSource,
+    mut frames_dis: impl FrameSource,
+    opts: &Options,
+    output: Output,
+) {
+    let (cc_ref, cr_ref) = frames_ref.color_characteristics();
+    info!(
+        target: "reference",
+        codec=%frames_ref.format_id(),
+        width=frames_ref.width(),
+        height=frames_ref.height(),
+        cp=?cc_ref.cp,
+        mc=?cc_ref.mc,
+        tc=?cc_ref.tc,
+        cr=?cr_ref,
+        frame_count=frames_ref.frame_count()
+    );
+
+    let (cc_dis, cr_dis) = frames_dis.color_characteristics();
+    info!(
+        target: "distorted",
+        codec=%frames_dis.format_id(),
+        width=frames_dis.width(),
+        height=frames_dis.height(),
+        cp=?cc_dis.cp,
+        mc=?cc_dis.mc,
+        tc=?cc_dis.tc,
+        cr=?cr_dis,
+        frame_count=frames_dis.frame_count()
+    );
+
+    let mut scores_psnr = turbo.has_psnr().then(|| Vec::with_capacity(4096));
+    let mut scores_ssim = turbo.has_ssim().then(|| Vec::with_capacity(4096));
+    let mut scores_msssim = turbo.has_msssim().then(|| Vec::with_capacity(4096));
+    let mut scores_ssimu = turbo.has_ssimulacra2().then(|| Vec::with_capacity(4096));
+
+    let start = Instant::now();
+    let mut decode_count = 0;
+    let mut compute_count = 0;
+
+    // This can be 0 if the source does not report the total frame count
+    let useful_decode_amount = frames_ref
+        .frame_count()
+        .saturating_sub(opts.skip_ref as _)
+        .max(frames_dis.frame_count().saturating_sub(opts.skip_dis as _))
+        .saturating_sub(opts.skip as _)
+        .min(opts.frame_count as _);
+
+    let span = info_span!("pb");
+    if useful_decode_amount > 0 {
+        span.pb_set_style(
+            &ProgressStyle::with_template("{wide_bar} {pos}/{len} {msg} (eta: {eta})").unwrap(),
+        );
+    } else {
+        span.pb_set_style(
+            &ProgressStyle::with_template("{spinner} {pos}/? {msg} (elapsed: {elapsed})").unwrap(),
+        )
+    }
+    if useful_decode_amount > 0 {
+        span.pb_set_length(useful_decode_amount as u64);
+    }
+    span.pb_set_message("Seeking");
+
+    debug!("Initialized, now processing ...");
+
+    let pb = span.enter();
+
+    frames_ref.skip_frames(opts.skip_ref + opts.skip);
+    frames_dis.skip_frames(opts.skip_dis + opts.skip);
+
+    span.pb_set_message("Computing");
+
+    while let Some((fref, fdis)) = frames_ref
+        .next_frame(turbo.stream_ref())
+        .unwrap()
+        .zip(frames_dis.next_frame(turbo.stream_dis()).unwrap())
+    {
+        if opts.every > 1 && decode_count != 0 && decode_count % opts.every != 0 {
+            decode_count += 1;
+            continue;
+        }
+
+        if opts.frame_count > 0 && decode_count >= opts.frame_count {
+            break;
+        }
+
+        decode_count += 1;
+        trace!(frame = decode_count, "Computing metrics for frame");
+
+        let (psnr, ssim, msssim, ssimu) =
+            turbo.compute_one(fref, (cc_ref, cr_ref), fdis, (cc_dis, cr_dis));
+
+        if let Some((scores, value)) = scores_psnr.as_mut().zip(psnr) {
+            scores.push(value);
+        }
+        if let Some((scores, value)) = scores_ssim.as_mut().zip(ssim) {
+            scores.push(value);
+        }
+        if let Some((scores, value)) = scores_msssim.as_mut().zip(msssim) {
+            scores.push(value);
+        }
+        if let Some((scores, value)) = scores_ssimu.as_mut().zip(ssimu) {
+            scores.push(value);
+        }
+
+        compute_count += 1;
+        span.pb_inc(1);
+    }
+
+    drop(pb);
+    drop(span);
+
+    let duration = start.elapsed();
+    let fps = compute_count as u128 * 1000 / duration.as_millis();
+    let perf_score = frames_ref.width() as f64 * frames_ref.height() as f64 * compute_count as f64
+        / duration.as_millis() as f64
+        / 1000.0;
+    info!(
+        "Processed: {} (decoded: ~{}) frame pairs in {} ({} fps) (Mpx/s: {:.3})",
+        compute_count,
+        decode_count + opts.skip,
+        format_duration(duration),
+        fps,
+        perf_score
+    );
+
+    // Default drop impl for npp image buffers are using this global stream
+    // The stream we set before is being destroyed before the drop
+    set_stream(CuStream::DEFAULT.inner() as _).unwrap();
+
+    output.display_results(&MetricsResults {
+        frame_count: compute_count,
+        psnr: scores_psnr.map(Into::into),
+        ssim: scores_ssim.map(Into::into),
+        msssim: scores_msssim.map(Into::into),
+        ssimulacra2: scores_ssimu.map(Into::into),
+    });
+}
+
+fn format_duration(duration: Duration) -> impl Display {
+    struct DurationFmt(Duration);
+    impl Display for DurationFmt {
+        fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+            let mut secs = self.0.as_secs();
+            let minutes = secs / 60;
+            secs = secs % 60;
+            let millis = self.0.subsec_millis();
+            if minutes > 0 {
+                write!(f, "{} m", minutes)?;
+                if secs > 0 {
+                    write!(f, " ")?;
+                }
+            }
+            if secs > 0 {
+                write!(f, "{} s", secs)?;
+                if millis > 0 {
+                    write!(f, " ")?;
+                }
+            }
+            if millis > 0 {
+                write!(f, "{} ms", millis)?;
+            }
+            Ok(())
+        }
+    }
+    DurationFmt(duration)
 }

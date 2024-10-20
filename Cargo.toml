@@ -62,6 +62,7 @@ clap = { version = "4", default-features = false, features = ["color", "derive",
 csv = "1"
 h264-reader = "0.7"
 image = { version = "0.25", default-features = false }
+indicatif = "0.17"
 indices = "0.3"
 libloading = "0.8"
 matroska-demuxer = "0.5"

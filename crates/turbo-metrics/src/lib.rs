@@ -6,8 +6,8 @@ use cudarse_driver::{CuDevice, CuStream};
 pub use cudarse_npp as npp;
 use cudarse_npp::image::ist::{PSNR, SSIM, WMSSSIM};
 use cudarse_npp::image::isu::Malloc;
-use cudarse_npp::image::{Img, ImgView, C};
-use cudarse_npp::{get_stream_ctx, set_stream};
+use cudarse_npp::image::{Image, Img, ImgView, C};
+use cudarse_npp::{get_stream_ctx, set_stream, ScratchBuffer};
 pub use cudarse_video;
 use cudarse_video::dec::npp::NvDecFrame;
 use cudarse_video::sys::cudaVideoCodec;
@@ -147,6 +147,264 @@ impl FrameSource for Box<dyn FrameSource> {
     }
 }
 
+pub struct TurboMetrics {
+    colorspace: ColorspaceConversion,
+    lrgb_ref: Image<f32, C<3>>,
+    lrgb_dis: Image<f32, C<3>>,
+    quantized: Option<(Image<u8, C<3>>, Image<u8, C<3>>)>,
+    psnr: Option<(ScratchBuffer)>,
+    ssim: Option<(ScratchBuffer)>,
+    msssim: Option<(ScratchBuffer)>,
+    ssimulacra2: Option<(Ssimulacra2)>,
+    streams: [CuStream; 5],
+}
+
+impl TurboMetrics {
+    pub fn new(width: u32, height: u32, metrics: &Metrics) -> Result<Self, Box<dyn Error>> {
+        let streams = [(); 5].map(|()| CuStream::new().unwrap());
+        set_stream(streams[0].inner() as _)?;
+        let npp = get_stream_ctx()?;
+
+        let lrgb_ref = cudarse_npp::image::Image::malloc(width, height)?;
+        let lrgb_dis = lrgb_ref.malloc_same_size()?;
+
+        let mut quantized = None;
+        let mut psnr = None;
+        let mut ssim = None;
+        let mut msssim = None;
+
+        if metrics.psnr || metrics.ssim || metrics.msssim {
+            let quant_ref = lrgb_ref.malloc_same_size()?;
+
+            psnr = metrics.psnr.then(|| {
+                debug!("init psnr");
+                quant_ref.psnr_alloc_scratch(npp).unwrap()
+            });
+            ssim = metrics.ssim.then(|| {
+                debug!("init ssim");
+                quant_ref.ssim_alloc_scratch(npp).unwrap()
+            });
+            msssim = metrics.msssim.then(|| {
+                debug!("init msssim");
+                quant_ref.wmsssim_alloc_scratch(npp).unwrap()
+            });
+            quantized = Some((quant_ref, lrgb_ref.malloc_same_size()?));
+        }
+
+        let ssimulacra2 = metrics.ssimulacra2.then(|| {
+            debug!("init ssimulacra2");
+
+            Ssimulacra2::new(&lrgb_ref, &lrgb_dis, &streams[0]).unwrap()
+        });
+
+        Ok(Self {
+            colorspace: ColorspaceConversion::new(),
+            streams,
+            lrgb_ref,
+            lrgb_dis,
+            quantized,
+            psnr,
+            ssim,
+            msssim,
+            ssimulacra2,
+        })
+    }
+
+    pub fn has_psnr(&self) -> bool {
+        self.psnr.is_some()
+    }
+
+    pub fn has_ssim(&self) -> bool {
+        self.ssim.is_some()
+    }
+
+    pub fn has_msssim(&self) -> bool {
+        self.msssim.is_some()
+    }
+
+    pub fn has_ssimulacra2(&self) -> bool {
+        self.ssimulacra2.is_some()
+    }
+
+    pub fn stream_ref(&self) -> &CuStream {
+        &self.streams[0]
+    }
+
+    pub fn stream_dis(&self) -> &CuStream {
+        &self.streams[1]
+    }
+
+    pub fn compute_one(
+        &mut self,
+        fref: HwFrame<'_>,
+        (cc_ref, cr_ref): (ColorCharacteristics, ColorRange),
+        fdis: HwFrame<'_>,
+        (cc_dis, cr_dis): (ColorCharacteristics, ColorRange),
+    ) -> (Option<f64>, Option<f64>, Option<f64>, Option<f64>) {
+        let npp = get_stream_ctx().unwrap();
+        convert_frame_to_linearrgb(
+            fref,
+            (cc_ref, cr_ref),
+            &self.colorspace,
+            &mut self.lrgb_ref,
+            &self.streams[0],
+        );
+
+        convert_frame_to_linearrgb(
+            fdis,
+            (cc_dis, cr_dis),
+            &self.colorspace,
+            &mut self.lrgb_dis,
+            &self.streams[1],
+        );
+
+        let mut psnr = 0.0;
+        let mut ssim = 0.0;
+        let mut msssim = 0.0;
+
+        if let Some((ref_8bit, dis_8bit)) = &mut self.quantized {
+            self.streams[2].wait_for_stream(&self.streams[0]).unwrap();
+            self.streams[3].wait_for_stream(&self.streams[1]).unwrap();
+            self.colorspace
+                .f32_to_8bit(&self.lrgb_ref, &mut *ref_8bit, &self.streams[2])
+                .unwrap();
+            self.colorspace
+                .f32_to_8bit(&self.lrgb_dis, &mut *dis_8bit, &self.streams[3])
+                .unwrap();
+
+            self.streams[2].wait_for_stream(&self.streams[3]).unwrap();
+
+            if let Some(scratch_psnr) = &mut self.psnr {
+                self.streams[4].wait_for_stream(&self.streams[2]).unwrap();
+                ref_8bit
+                    .psnr_into(
+                        &mut *dis_8bit,
+                        scratch_psnr,
+                        &mut psnr,
+                        npp.with_stream(self.streams[4].inner() as _),
+                    )
+                    .unwrap();
+            }
+            if let Some(scratch_ssim) = &mut self.ssim {
+                self.streams[3].wait_for_stream(&self.streams[2]).unwrap();
+                ref_8bit
+                    .ssim_into(
+                        &mut *dis_8bit,
+                        scratch_ssim,
+                        &mut ssim,
+                        npp.with_stream(self.streams[3].inner() as _),
+                    )
+                    .unwrap();
+            }
+            if let Some(scratch_msssim) = &mut self.msssim {
+                ref_8bit
+                    .wmsssim_into(
+                        dis_8bit,
+                        scratch_msssim,
+                        &mut msssim,
+                        npp.with_stream(self.streams[2].inner() as _),
+                    )
+                    .unwrap();
+            }
+        }
+
+        if let Some(ssimu) = &mut self.ssimulacra2 {
+            self.streams[0].wait_for_stream(&self.streams[1]).unwrap();
+            ssimu.compute(&self.streams[0]).unwrap();
+        }
+
+        self.streams[0].wait_for_stream(&self.streams[1]).unwrap();
+        self.streams[0].wait_for_stream(&self.streams[2]).unwrap();
+        self.streams[0].wait_for_stream(&self.streams[3]).unwrap();
+        self.streams[0].wait_for_stream(&self.streams[4]).unwrap();
+
+        self.streams[0].sync().unwrap();
+
+        (
+            self.psnr.as_ref().map(|_| psnr as f64),
+            self.ssim.as_ref().map(|_| ssim as f64),
+            self.msssim.as_ref().map(|_| msssim as f64),
+            self.ssimulacra2.as_mut().map(|s| s.get_score()),
+        )
+    }
+
+    pub fn compute_all(
+        mut self,
+        mut frames_ref: impl FrameSource,
+        mut frames_dis: impl FrameSource,
+        opts: &Options,
+    ) -> Option<MetricsResults> {
+        assert_eq!(
+            (frames_ref.width(), frames_ref.height()),
+            (frames_dis.width(), frames_dis.height()),
+            "Reference and distorted are not the same size"
+        );
+
+        let (cc_ref, cr_ref) = frames_ref.color_characteristics();
+        let (cc_dis, cr_dis) = frames_dis.color_characteristics();
+
+        let mut scores_psnr = self.psnr.as_ref().map(|_| Vec::with_capacity(4096));
+        let mut scores_ssim = self.ssim.as_ref().map(|_| Vec::with_capacity(4096));
+        let mut scores_msssim = self.msssim.as_ref().map(|_| Vec::with_capacity(4096));
+        let mut scores_ssimu = self.ssimulacra2.as_ref().map(|_| Vec::with_capacity(4096));
+
+        let mut decode_count = 0;
+        let mut compute_count = 0;
+
+        frames_ref.skip_frames(opts.skip_ref + opts.skip);
+        frames_dis.skip_frames(opts.skip_dis + opts.skip);
+
+        while let Some((fref, fdis)) = frames_ref
+            .next_frame(&self.streams[0])
+            .unwrap()
+            .zip(frames_dis.next_frame(&self.streams[1]).unwrap())
+        {
+            if opts.every > 1 && decode_count != 0 && decode_count % opts.every != 0 {
+                decode_count += 1;
+                continue;
+            }
+
+            if opts.frame_count > 0 && decode_count - opts.skip >= opts.frame_count {
+                break;
+            }
+
+            decode_count += 1;
+
+            let (psnr, ssim, msssim, ssimu) =
+                self.compute_one(fref, (cc_ref, cr_ref), fdis, (cc_dis, cr_dis));
+
+            if let Some((scores, value)) = scores_psnr.as_mut().zip(psnr) {
+                scores.push(value);
+            }
+            if let Some((scores, value)) = scores_ssim.as_mut().zip(ssim) {
+                scores.push(value);
+            }
+            if let Some((scores, value)) = scores_msssim.as_mut().zip(msssim) {
+                scores.push(value);
+            }
+            if let Some((scores, value)) = scores_ssimu.as_mut().zip(ssimu) {
+                scores.push(value);
+            }
+
+            compute_count += 1;
+        }
+
+        // Default drop impl for npp image buffers are using this global stream
+        // The stream we set before is being destroyed before the drop
+        set_stream(CuStream::DEFAULT.inner() as _).unwrap();
+
+        Some(MetricsResults {
+            frame_count: compute_count,
+            psnr: scores_psnr.map(Into::into),
+            ssim: scores_ssim.map(Into::into),
+            msssim: scores_msssim.map(Into::into),
+            ssimulacra2: scores_ssimu.map(Into::into),
+        })
+    }
+}
+
+/// Init the CUDA API and binds the primary context to the current thread.
+/// This can be called many times safely.
 pub fn init_cuda() {
     struct Cuda(CuDevice);
     static CUDA_INIT: LazyLock<Cuda> = LazyLock::new(|| {
@@ -167,258 +425,6 @@ pub fn init_cuda() {
         .unwrap();
 }
 
-pub fn compute_metrics(
-    mut frames_ref: impl FrameSource,
-    mut frames_dis: impl FrameSource,
-    metrics: &Metrics,
-    opts: &Options,
-) -> Option<MetricsResults> {
-    assert_eq!(
-        (frames_ref.width(), frames_ref.height()),
-        (frames_dis.width(), frames_dis.height()),
-        "Reference and distorted are not the same size"
-    );
-
-    // Init the colorspace conversion module
-    let colorspace = ColorspaceConversion::new();
-
-    let (cc_ref, cr_ref) = frames_ref.color_characteristics();
-    info!(
-        target: "reference",
-        codec=%frames_ref.format_id(),
-        width=frames_ref.width(),
-        height=frames_ref.height(),
-        cp=?cc_ref.cp,
-        mc=?cc_ref.mc,
-        tc=?cc_ref.tc,
-        cr=?cr_ref,
-    );
-
-    let (cc_dis, cr_dis) = frames_dis.color_characteristics();
-    info!(
-        target: "distorted",
-        codec=%frames_dis.format_id(),
-        width=frames_dis.width(),
-        height=frames_dis.height(),
-        cp=?cc_dis.cp,
-        mc=?cc_dis.mc,
-        tc=?cc_dis.tc,
-        cr=?cr_dis,
-    );
-
-    let streams = [(); 5].map(|()| CuStream::new().unwrap());
-    set_stream(streams[0].inner() as _).unwrap();
-    let npp = get_stream_ctx().unwrap();
-
-    let mut lrgb_ref =
-        cudarse_npp::image::Image::malloc(frames_ref.width(), frames_ref.height()).unwrap();
-    let mut lrgb_dis = lrgb_ref.malloc_same_size().unwrap();
-
-    let (mut quant_ref, mut quant_dis) = if metrics.psnr || metrics.ssim || metrics.msssim {
-        (
-            Some(lrgb_ref.malloc_same_size().unwrap()),
-            Some(lrgb_ref.malloc_same_size().unwrap()),
-        )
-    } else {
-        (None, None)
-    };
-
-    let (mut scratch_psnr, mut scores_psnr) = if metrics.psnr {
-        debug!("Initializing PSNR");
-        (
-            Some(quant_ref.as_ref().unwrap().psnr_alloc_scratch(npp).unwrap()),
-            Some(Vec::with_capacity(4096)),
-        )
-    } else {
-        (None, None)
-    };
-
-    let (mut scratch_ssim, mut scores_ssim) = if metrics.ssim {
-        debug!("Initializing SSIM");
-        (
-            Some(quant_ref.as_ref().unwrap().ssim_alloc_scratch(npp).unwrap()),
-            Some(Vec::with_capacity(4096)),
-        )
-    } else {
-        (None, None)
-    };
-
-    let (mut scratch_msssim, mut scores_msssim) = if metrics.msssim {
-        debug!("Initializing MSSSIM");
-        (
-            Some(
-                quant_ref
-                    .as_ref()
-                    .unwrap()
-                    .wmsssim_alloc_scratch(npp)
-                    .unwrap(),
-            ),
-            Some(Vec::with_capacity(4096)),
-        )
-    } else {
-        (None, None)
-    };
-
-    let (mut ssimu, mut scores_ssimu) = if metrics.ssimulacra2 {
-        debug!("Initializing SSIMULACRA2");
-        (
-            Some(Ssimulacra2::new(&lrgb_ref, &lrgb_dis, &streams[0]).unwrap()),
-            Some(Vec::with_capacity(4096)),
-        )
-    } else {
-        (None, None)
-    };
-
-    streams[0].sync().unwrap();
-
-    debug!("Initialized, now processing ...");
-    let start = Instant::now();
-    let mut decode_count = 0;
-    let mut compute_count = 0;
-
-    frames_ref.skip_frames(opts.skip_ref + opts.skip);
-    frames_dis.skip_frames(opts.skip_dis + opts.skip);
-
-    // println!();
-
-    while let Some((fref, fdis)) = frames_ref
-        .next_frame(&streams[0])
-        .unwrap()
-        .zip(frames_dis.next_frame(&streams[1]).unwrap())
-    {
-        if opts.every > 1 && decode_count != 0 && decode_count % opts.every != 0 {
-            decode_count += 1;
-            continue;
-        }
-
-        if opts.frame_count > 0 && decode_count - opts.skip >= opts.frame_count {
-            break;
-        }
-
-        decode_count += 1;
-        trace!(frame = decode_count, "Computing metrics for frame");
-
-        convert_frame_to_linearrgb(
-            fref,
-            (cc_ref, cr_ref),
-            &colorspace,
-            &mut lrgb_ref,
-            &streams[0],
-        );
-
-        convert_frame_to_linearrgb(
-            fdis,
-            (cc_dis, cr_dis),
-            &colorspace,
-            &mut lrgb_dis,
-            &streams[1],
-        );
-
-        let mut psnr = 0.0;
-        let mut ssim = 0.0;
-        let mut msssim = 0.0;
-
-        if let (Some(ref_8bit), Some(dis_8bit)) = (&mut quant_ref, &mut quant_dis) {
-            streams[2].wait_for_stream(&streams[0]).unwrap();
-            streams[3].wait_for_stream(&streams[1]).unwrap();
-            colorspace
-                .f32_to_8bit(&lrgb_ref, &mut *ref_8bit, &streams[2])
-                .unwrap();
-            colorspace
-                .f32_to_8bit(&lrgb_dis, &mut *dis_8bit, &streams[3])
-                .unwrap();
-
-            streams[2].wait_for_stream(&streams[3]).unwrap();
-
-            if let Some(scratch_psnr) = &mut scratch_psnr {
-                streams[4].wait_for_stream(&streams[2]).unwrap();
-                ref_8bit
-                    .psnr_into(
-                        &mut *dis_8bit,
-                        scratch_psnr,
-                        &mut psnr,
-                        npp.with_stream(streams[4].inner() as _),
-                    )
-                    .unwrap();
-            }
-            if let Some(scratch_ssim) = &mut scratch_ssim {
-                streams[3].wait_for_stream(&streams[2]).unwrap();
-                ref_8bit
-                    .ssim_into(
-                        &mut *dis_8bit,
-                        scratch_ssim,
-                        &mut ssim,
-                        npp.with_stream(streams[3].inner() as _),
-                    )
-                    .unwrap();
-            }
-            if let Some(scratch_msssim) = &mut scratch_msssim {
-                ref_8bit
-                    .wmsssim_into(
-                        dis_8bit,
-                        scratch_msssim,
-                        &mut msssim,
-                        npp.with_stream(streams[2].inner() as _),
-                    )
-                    .unwrap();
-            }
-        }
-
-        if let Some(ssimu) = &mut ssimu {
-            streams[0].wait_for_stream(&streams[1]).unwrap();
-            ssimu.compute(&streams[0]).unwrap();
-        }
-
-        streams[0].wait_for_stream(&streams[1]).unwrap();
-        streams[0].wait_for_stream(&streams[2]).unwrap();
-        streams[0].wait_for_stream(&streams[3]).unwrap();
-        streams[0].wait_for_stream(&streams[4]).unwrap();
-
-        streams[0].sync().unwrap();
-
-        if let Some(scores_psnr) = &mut scores_psnr {
-            scores_psnr.push(psnr as f64);
-        }
-        if let Some(scores_ssim) = &mut scores_ssim {
-            scores_ssim.push(ssim as f64);
-        }
-        if let Some(scores_msssim) = &mut scores_msssim {
-            scores_msssim.push(msssim as f64);
-        }
-        if let Some(scores_ssimu) = &mut scores_ssimu {
-            scores_ssimu.push(ssimu.as_mut().unwrap().get_score());
-        }
-
-        compute_count += 1;
-    }
-
-    let duration = start.elapsed();
-    let fps = compute_count as u128 * 1000 / duration.as_millis();
-    let perf_score = frames_ref.width() as f64 * frames_ref.height() as f64 * compute_count as f64
-        / duration.as_millis() as f64
-        / 1000.0;
-    info!(
-        "Decoded: {}, processed: {} frame pairs in {} ({} fps) (Mpx/s: {:.3})",
-        decode_count,
-        compute_count,
-        format_duration(duration),
-        fps,
-        perf_score
-    );
-
-    // Default drop impl for npp image buffers are using this global stream
-    // The stream we set before is being destroyed before the drop
-    set_stream(CuStream::DEFAULT.inner() as _).unwrap();
-
-    Some(MetricsResults {
-        frame_count: compute_count,
-        psnr: scores_psnr.map(Into::into),
-        ssim: scores_ssim.map(Into::into),
-        msssim: scores_msssim.map(Into::into),
-        ssimulacra2: scores_ssimu.map(Into::into),
-    })
-}
-
 pub fn nvdec_to_codec(codec: cudaVideoCodec) -> Codec {
     use cudarse_video::sys::cudaVideoCodec::*;
     match codec {
@@ -436,35 +442,6 @@ pub fn codec_to_nvdec(codec: Codec) -> cudaVideoCodec {
         Codec::H264 => cudaVideoCodec_H264,
         Codec::AV1 => cudaVideoCodec_AV1,
     }
-}
-
-fn format_duration(duration: Duration) -> impl Display {
-    struct DurationFmt(Duration);
-    impl Display for DurationFmt {
-        fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-            let mut secs = self.0.as_secs();
-            let minutes = secs / 60;
-            secs = secs % 60;
-            let millis = self.0.subsec_millis();
-            if minutes > 0 {
-                write!(f, "{} m", minutes)?;
-                if secs > 0 {
-                    write!(f, " ")?;
-                }
-            }
-            if secs > 0 {
-                write!(f, "{} s", secs)?;
-                if millis > 0 {
-                    write!(f, " ")?;
-                }
-            }
-            if millis > 0 {
-                write!(f, "{} ms", millis)?;
-            }
-            Ok(())
-        }
-    }
-    DurationFmt(duration)
 }
 
 //region debug utilities

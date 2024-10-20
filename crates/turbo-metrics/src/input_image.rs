@@ -10,7 +10,8 @@ use cudarse_npp::image::{Image, ImgMut, C};
 use image::DynamicImage;
 use std::collections::VecDeque;
 use std::error::Error;
-use std::io::{BufRead, Read};
+use std::io;
+use std::io::{BufRead, ErrorKind, Read};
 use tracing::instrument;
 use zune_core::bit_depth::BitType;
 use zune_core::options::DecoderOptions;
@@ -45,19 +46,21 @@ impl ImageProbe {
 
     /// `None` if we cannot even recognize the image, `Some` if we can recognize the format.
     /// This will peek at the first bytes on the stream.
-    pub fn probe_image(mut r: impl BufRead) -> Option<Self> {
-        let start = r.fill_buf().unwrap();
+    pub fn probe_image(mut r: impl BufRead) -> Result<Option<Self>, io::Error> {
+        let start = r.fill_buf()?;
         if start.len() < PROBE_LEN {
-            panic!("unexpected eof");
+            return Err(io::Error::from(ErrorKind::UnexpectedEof));
         }
         // First try zune_image
-        if let Some((f, _)) = zune_image::codecs::ImageFormat::guess_format(start) {
-            Some(Self::Zune(f))
-        } else if let Ok(f) = image::guess_format(start) {
-            Some(Self::Image(f))
-        } else {
-            None
-        }
+        Ok(
+            if let Some((f, _)) = zune_image::codecs::ImageFormat::guess_format(start) {
+                Some(Self::Zune(f))
+            } else if let Ok(f) = image::guess_format(start) {
+                Some(Self::Image(f))
+            } else {
+                None
+            },
+        )
     }
 
     fn codec(&self) -> String {
