@@ -1,39 +1,45 @@
 use crate::output::Output;
 use clap::{Parser, ValueEnum};
+use std::error::Error;
 use std::fs::File;
 use std::io::{stdin, BufReader, Read};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::ExitCode;
-use turbo_metrics::input_image::probe_image;
-use turbo_metrics::input_video::{Demuxer, VideoProbe};
-use turbo_metrics::{
-    init_cuda, process_img_pair, process_video_pair, MetricsToCompute, VideoOptions,
-};
+use tracing::error;
+use tracing::level_filters::LevelFilter;
+use tracing_indicatif::IndicatifLayer;
+use tracing_subscriber::layer::SubscriberExt;
+use tracing_subscriber::util::SubscriberInitExt;
+use tracing_subscriber::{EnvFilter, Layer};
+use turbo_metrics::input_image::{ImageFrameSource, ImageProbe};
+use turbo_metrics::input_video::{DynDemuxer, VideoFrameSource, VideoProbe};
+use turbo_metrics::{compute_metrics, init_cuda, FrameSource, Options};
 
 mod output;
 
-/// Turbo metrics compare two images of videos using quality metrics.
+/// Turbo metrics compares two images or videos using quality metrics.
 ///
-/// Video decoding and metric computations happen on your Nvidia GPU.
+/// Video decoding and metric computations happen on your Nvidia GPU using CUDA.
+///
+/// Use the `RUST_LOG` environment variable to configure logging. The trace level can be very verbose, with many events per frame.
 #[derive(Parser, Debug)]
 #[command(version, author)]
 struct CliArgs {
-    /// Reference media.
+    /// Reference media. Use `-` to read from stdin.
     reference: PathBuf,
-    /// Distorted media. Use '-' to read from stdin.
+    /// Distorted media. Use `-` to read from stdin.
     distorted: PathBuf,
 
-    /// Select the metrics to compute, selecting many at once will reduce overhead because the video will only be decoded once.
+    /// Select the metrics to compute, the video will only be decoded once.
     #[arg(short, long)]
     metrics: Vec<Metrics>,
 
     /// Only compute metrics every few frames, effectively down-sampling the measurements.
-    /// Still, this tool will decode all frames, hence increasing overhead. Check Mpx/s to see what I mean.
-    ///
-    /// E.g. 8 invocations with --every 8 will perform around 50% worse than a single pass computing every frame.
+    /// Frames in between will still be decoded.
     #[arg(long, default_value = "0")]
     every: u32,
     /// Index of the first frame to start computing at. Useful for overlaying separate computations with `every`.
+    /// No efficient seeking is implemented yet. All frames will be decoded.
     #[arg(long, default_value = "0")]
     skip: u32,
     /// Index of the first frame to start computing at the reference frame. Additive with `skip`.
@@ -65,8 +71,8 @@ pub enum Metrics {
 }
 
 impl CliArgs {
-    fn metrics(&self) -> MetricsToCompute {
-        MetricsToCompute {
+    fn metrics(&self) -> turbo_metrics::Metrics {
+        turbo_metrics::Metrics {
             psnr: self.metrics.contains(&Metrics::PSNR),
             ssim: self.metrics.contains(&Metrics::SSIM),
             msssim: self.metrics.contains(&Metrics::MSSSIM),
@@ -74,8 +80,8 @@ impl CliArgs {
         }
     }
 
-    fn video_options(&self) -> VideoOptions {
-        VideoOptions {
+    fn video_options(&self) -> Options {
+        Options {
             every: self.every,
             skip: self.skip,
             skip_ref: self.skip_ref,
@@ -92,127 +98,110 @@ impl CliArgs {
 fn main() -> ExitCode {
     let args = CliArgs::parse();
 
+    let mut env_filter = EnvFilter::builder();
+    env_filter = if cfg!(debug_assertions) {
+        env_filter.with_default_directive(LevelFilter::DEBUG.into())
+    } else {
+        env_filter.with_default_directive(LevelFilter::INFO.into())
+    };
+    let env_filter = env_filter.from_env_lossy();
+
+    let indicatif_layer = IndicatifLayer::new();
+
+    tracing_subscriber::registry()
+        .with(
+            tracing_subscriber::fmt::layer()
+                .compact()
+                .without_time()
+                .with_writer(indicatif_layer.get_stderr_writer())
+                .with_filter(env_filter),
+        )
+        .with(indicatif_layer)
+        .init();
+
+    let ref_is_stdin = args.reference.to_str() == Some("-");
     let dis_is_stdin = args.distorted.to_str() == Some("-");
 
-    let mut in_ref = BufReader::new(File::open(&args.reference).unwrap());
-    let mut in_dis: BufReader<Box<dyn Read>> = BufReader::new(if dis_is_stdin {
+    if ref_is_stdin && dis_is_stdin {
+        error!("Can't read both reference and distorted from stdin");
+        return ExitCode::FAILURE;
+    }
+
+    let in_ref: BufReader<Box<dyn Read>> = BufReader::new(if ref_is_stdin {
+        // Use stdin
+        Box::new(stdin().lock())
+    } else {
+        Box::new(File::open(&args.reference).unwrap())
+    });
+    let in_dis: BufReader<Box<dyn Read>> = BufReader::new(if dis_is_stdin {
         // Use stdin
         Box::new(stdin().lock())
     } else {
         Box::new(File::open(&args.distorted).unwrap())
     });
 
-    // Try with an image first
-    if let Some(probe_ref) = probe_image(&mut in_ref) {
+    // Frame sources might need cuda
+    init_cuda();
+
+    let source_ref = match create_source(&args.reference, ref_is_stdin, in_ref) {
+        Ok(source) => source,
+        Err(e) => {
+            error!("Could not read reference : {e}");
+            return ExitCode::FAILURE;
+        }
+    };
+    let source_dis = match create_source(&args.distorted, dis_is_stdin, in_dis) {
+        Ok(source) => source,
+        Err(e) => {
+            error!("Could not read distorted : {e}");
+            return ExitCode::FAILURE;
+        }
+    };
+
+    let result = compute_metrics(
+        source_ref,
+        source_dis,
+        &args.metrics(),
+        &args.video_options(),
+    );
+
+    if let Some(result) = &result {
+        args.output().display_results(result);
+        ExitCode::SUCCESS
+    } else {
+        ExitCode::FAILURE
+    }
+}
+
+fn create_source(
+    path: &Path,
+    is_stdin: bool,
+    mut stream: BufReader<impl Read + 'static>,
+) -> Result<Box<dyn FrameSource>, Box<dyn Error>> {
+    if let Some(probe_ref) = ImageProbe::probe_image(&mut stream) {
         if probe_ref.can_decode() {
-            if let Some(probe_dis) = probe_image(&mut in_dis) {
-                if probe_dis.can_decode() {
-                    if args.every != 0 || args.skip != 0 || args.skip_ref != 0 || args.skip_dis != 0  || args.frame_count != 0 {
-                        eprintln!("WARN: --every, --skip[_ref/_dist], and --frame-count are useless with a pair of images");
-                    }
-
-                    init_cuda();
-                    // Yay, we can decode both as an image
-                    let result = process_img_pair(
-                        &mut in_ref,
-                        &mut in_dis,
-                        probe_ref,
-                        probe_dis,
-                        &args.metrics(),
-                    );
-
-                    if let Some(result) = result {
-                        args.output().display_image_result(&result);
-                        ExitCode::SUCCESS
-                    } else {
-                        ExitCode::FAILURE
-                    }
-                } else {
-                    eprintln!(
-                        "Distorted '{}' detected as {:?} but no decoder is available (missing crate feature / unimplemented).",
-                        args.distorted.display(),
-                        probe_dis
-                    );
-                    eprintln!("Aborting.");
-                    ExitCode::FAILURE
-                }
-            } else {
-                eprintln!("Reference is an image, so we expect an image as distorted.");
-                eprintln!("Aborting.");
-                ExitCode::FAILURE
-            }
+            Ok(Box::new(ImageFrameSource::new(&mut stream, probe_ref)?))
         } else {
-            eprintln!(
-                "Reference '{}' detected as {:?} but no decoder is available (missing crate feature or unimplemented).",
-                args.reference.display(),
+            error!(
+                "'{}' detected as {:?} but no decoder is available (missing crate feature or unimplemented).",
+                path.display(),
                 probe_ref
             );
-            eprintln!("Aborting.");
-            ExitCode::FAILURE
+            Err("no decoder".into())
         }
     } else {
-        match VideoProbe::probe_file(in_ref) {
-            Ok(Ok(probe_ref)) => {
-                let probe_dis = if dis_is_stdin {
-                    VideoProbe::probe_stream(in_dis)
-                } else {
-                    VideoProbe::probe_file(BufReader::new(File::open(&args.distorted).unwrap()))
-                };
-                match probe_dis {
-                    Ok(Ok(probe_dis)) => {
-                        init_cuda();
-                        let result = process_video_pair(
-                            <VideoProbe as Into<Box<dyn Demuxer>>>::into(probe_ref),
-                            <VideoProbe as Into<Box<dyn Demuxer>>>::into(probe_dis),
-                            &args.metrics(),
-                            &args.video_options(),
-                        );
+        let probe = if is_stdin {
+            VideoProbe::probe_stream(stream)
+        } else {
+            VideoProbe::probe_file(BufReader::new(File::open(path).unwrap()))
+        };
 
-                        if let Some(result) = &result {
-                            args.output().display_video_result(result);
-                            ExitCode::SUCCESS
-                        } else {
-                            ExitCode::FAILURE
-                        }
-                    }
-                    Ok(Err(e)) => {
-                        if dis_is_stdin {
-                            eprintln!("Unsupported distorted from stream : {e:?}");
-                        } else {
-                            eprintln!(
-                                "Unsupported distorted file '{}' : {e:?}",
-                                args.distorted.display()
-                            );
-                        }
-                        ExitCode::FAILURE
-                    }
-                    Err(e) => {
-                        if dis_is_stdin {
-                            eprintln!("Could not read distorted from stdin : {e}");
-                        } else {
-                            eprintln!(
-                                "Could not read distorted file '{}' : {e}",
-                                args.distorted.display()
-                            );
-                        }
-                        ExitCode::FAILURE
-                    }
-                }
-            }
-            Ok(Err(e)) => {
-                eprintln!(
-                    "Unsupported reference file '{}' : {e:?}",
-                    args.reference.display(),
-                );
-                ExitCode::FAILURE
-            }
-            Err(e) => {
-                eprintln!(
-                    "Can't read reference file '{}' : {e}",
-                    args.reference.display(),
-                );
-                ExitCode::FAILURE
-            }
+        match probe {
+            Ok(Ok(probe)) => Ok(Box::new(VideoFrameSource::<DynDemuxer>::new(
+                probe.make_demuxer(),
+            ))),
+            Ok(Err(e)) => Err(e.into()),
+            Err(e) => Err(e.into()),
         }
     }
 }

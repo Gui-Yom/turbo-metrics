@@ -1,7 +1,7 @@
 use clap::ValueEnum;
 use std::io::stdout;
 use std::{io, iter};
-use turbo_metrics::{ResultsImage, ResultsVideo};
+use turbo_metrics::MetricsResults;
 
 #[derive(Debug, Copy, Clone, Default, ValueEnum)]
 pub(crate) enum Output {
@@ -15,53 +15,53 @@ pub(crate) enum Output {
 }
 
 impl Output {
-    pub(crate) fn display_image_result(&self, results: &ResultsImage) {
-        match self {
-            Output::Default => {
-                if let Some(score) = results.psnr {
-                    println!("PSNR: {score:.3}");
-                }
-                if let Some(score) = results.ssim {
-                    println!("SSIM: {score:.3}");
-                }
-                if let Some(score) = results.msssim {
-                    println!("MSSSIM: {score:.3}");
-                }
-                if let Some(score) = results.ssimulacra2 {
-                    println!("SSIMULACRA2: {score:.3}");
-                }
-            }
-            Output::Json => {
-                println!("{}", serde_json::to_string_pretty(results).unwrap());
-            }
-            Output::CSV => {
-                let mut csv = csv::Writer::from_writer(stdout().lock());
-                // CSV header
-                csv.write_record(
-                    results
-                        .psnr
-                        .map(|_| "psnr")
-                        .into_iter()
-                        .chain(results.ssim.map(|_| "ssim"))
-                        .chain(results.msssim.map(|_| "msssim"))
-                        .chain(results.ssimulacra2.map(|_| "ssimulacra2")),
-                )
-                .unwrap();
-                csv.write_record(
-                    results
-                        .psnr
-                        .into_iter()
-                        .chain(results.ssim)
-                        .chain(results.msssim)
-                        .chain(results.ssimulacra2)
-                        .map(|s| s.to_string()),
-                )
-                .unwrap();
-            }
-        }
-    }
+    // pub(crate) fn display_image_result(&self, results: &ResultsImage) {
+    //     match self {
+    //         Output::Default => {
+    //             if let Some(score) = results.psnr {
+    //                 println!("PSNR: {score:.3}");
+    //             }
+    //             if let Some(score) = results.ssim {
+    //                 println!("SSIM: {score:.3}");
+    //             }
+    //             if let Some(score) = results.msssim {
+    //                 println!("MSSSIM: {score:.3}");
+    //             }
+    //             if let Some(score) = results.ssimulacra2 {
+    //                 println!("SSIMULACRA2: {score:.3}");
+    //             }
+    //         }
+    //         Output::Json => {
+    //             println!("{}", serde_json::to_string_pretty(results).unwrap());
+    //         }
+    //         Output::CSV => {
+    //             let mut csv = csv::Writer::from_writer(stdout().lock());
+    //             // CSV header
+    //             csv.write_record(
+    //                 results
+    //                     .psnr
+    //                     .map(|_| "psnr")
+    //                     .into_iter()
+    //                     .chain(results.ssim.map(|_| "ssim"))
+    //                     .chain(results.msssim.map(|_| "msssim"))
+    //                     .chain(results.ssimulacra2.map(|_| "ssimulacra2")),
+    //             )
+    //             .unwrap();
+    //             csv.write_record(
+    //                 results
+    //                     .psnr
+    //                     .into_iter()
+    //                     .chain(results.ssim)
+    //                     .chain(results.msssim)
+    //                     .chain(results.ssimulacra2)
+    //                     .map(|s| s.to_string()),
+    //             )
+    //             .unwrap();
+    //         }
+    //     }
+    // }
 
-    pub(crate) fn display_video_result(&self, results: &ResultsVideo) {
+    pub(crate) fn display_results(&self, results: &MetricsResults) {
         match self {
             Output::Default => {
                 if let Some(results) = &results.psnr {

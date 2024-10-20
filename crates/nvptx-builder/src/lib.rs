@@ -129,7 +129,7 @@ fn rustlib() -> PathBuf {
 }
 
 /// Compile and link a llvm .ll file
-pub fn link_bitcode_file(file: impl AsRef<Path>) {
+pub fn link_llvm_ir_file(file: impl AsRef<Path>) {
     let path = file.as_ref();
     println!("cargo:rerun-if-changed={}", path.display());
     let out_path = PathBuf::from(env::var("OUT_DIR").unwrap())
@@ -146,12 +146,12 @@ pub fn link_bitcode_file(file: impl AsRef<Path>) {
 }
 
 /// Compile and link a llvm .ll file
-pub fn link_bitcode(bitcode: &str) {
+pub fn link_llvm_ir(bitcode: &str) {
     let out = PathBuf::from(env::var("OUT_DIR").unwrap());
     let mut hash = DefaultHasher::new();
     bitcode.hash(&mut hash);
     let hash = hash.finish();
     let path = out.join(&format!("{:x}.ll", hash));
     fs::write(&path, bitcode).unwrap();
-    link_bitcode_file(&path);
+    link_llvm_ir_file(&path);
 }

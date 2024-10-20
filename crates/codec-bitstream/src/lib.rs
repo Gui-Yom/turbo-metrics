@@ -9,7 +9,7 @@ pub mod ivf;
 pub enum Codec {
     AV1,
     H264,
-    H262,
+    MPEG2,
 }
 
 impl Codec {
@@ -29,8 +29,8 @@ impl Display for Codec {
             "{:width$}",
             match self {
                 Codec::AV1 => "AV1",
-                Codec::H264 => "H.264/AVC",
-                Codec::H262 => "H.262/MPEG2",
+                Codec::H264 => "H264",
+                Codec::MPEG2 => "MPEG2",
             },
             width = f.width().unwrap_or(0)
         )
@@ -57,7 +57,7 @@ impl ColorCharacteristics {
                 mc: h264::MatrixCoefficients::from_byte(mc).into(),
                 tc: h264::TransferCharacteristic::from_byte(tc).into(),
             },
-            Codec::H262 => Self {
+            Codec::MPEG2 => Self {
                 cp: h262::ColourPrimaries::from_byte(cp).into(),
                 mc: h262::MatrixCoefficients::from_byte(mc).into(),
                 tc: h262::TransferCharacteristic::from_byte(tc).into(),

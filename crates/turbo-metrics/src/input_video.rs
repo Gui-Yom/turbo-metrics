@@ -1,20 +1,24 @@
+use crate::color::{color_characteristics_from_format, ColorRange};
 use crate::input_image::PROBE_LEN;
+use crate::{codec_to_nvdec, FormatIdentifier, FrameSource, HwFrame};
 use codec_bitstream::h264::NaluType;
-use codec_bitstream::{av1, h264, ivf, Codec};
-use cudarse_video::dec::CuVideoParser;
-use matroska_demuxer::{Frame, MatroskaFile, TrackEntry};
+use codec_bitstream::{av1, h264, ivf, Codec, ColorCharacteristics};
+use cudarse_driver::CuStream;
+use cudarse_video::dec_simple::NvDecoderSimple;
+use cudarse_video::parser::CuvidParser;
+use matroska_demuxer::{Frame as MkvFrame, MatroskaFile, TrackEntry};
 use std::error::Error;
 use std::fmt::{Debug, Display, Formatter};
 use std::fs::File;
 use std::io;
 use std::io::{BufRead, BufReader, ErrorKind, Read, Seek};
+use std::rc::Rc;
 use tracing::trace;
 
-pub type Matroska = MatroskaFile<BufReader<File>>;
-
-pub enum VideoProbe {
-    MKV(Matroska),
-    IVF(ivf::Header, Box<dyn Read>),
+#[derive(Debug, Copy, Clone)]
+pub enum Container {
+    Mkv,
+    Ivf,
 }
 
 #[derive(Debug)]
@@ -37,6 +41,13 @@ impl Display for ProbeError {
 
 impl Error for ProbeError {}
 
+pub type Matroska = MatroskaFile<BufReader<File>>;
+
+pub enum VideoProbe {
+    Mkv(Matroska),
+    Ivf(ivf::Header, Box<dyn Read>),
+}
+
 impl VideoProbe {
     /// Probe by peeking at a [BufRead] without advancing the read pointer.
     /// Returns the reader if probe is unsuccessful
@@ -50,7 +61,7 @@ impl VideoProbe {
         match ivf::read_header(&mut start) {
             Ok((header, len)) if header.codec().is_some() => {
                 r.consume(len);
-                Ok(Ok(Self::IVF(header, Box::new(r))))
+                Ok(Ok(Self::Ivf(header, Box::new(r))))
             }
             Ok((header, _)) => Ok(Err((ProbeError::IvfUnknownCodec(header.fourcc), r))),
             Err(e) if e.kind() == ErrorKind::InvalidData => {
@@ -74,7 +85,7 @@ impl VideoProbe {
                 if let Ok(matroska) = Matroska::open(r) {
                     if let Some((_, track)) = mkv_find_video_track(&matroska) {
                         if mkv_codec_id_to_codec(track.codec_id()).is_some() {
-                            Ok(Ok(Self::MKV(matroska)))
+                            Ok(Ok(Self::Mkv(matroska)))
                         } else {
                             Ok(Err(ProbeError::MkvUnknownCodec(
                                 track.codec_id().to_string(),
@@ -91,13 +102,11 @@ impl VideoProbe {
             other => Ok(other.map_err(|(e, _)| e)),
         }
     }
-}
 
-impl From<VideoProbe> for Box<dyn Demuxer> {
-    fn from(value: VideoProbe) -> Self {
-        match value {
-            VideoProbe::MKV(mkv) => Box::new(MkvDemuxer::new(mkv)),
-            VideoProbe::IVF(header, stream) => Box::new(IvfDemuxer::new(stream, header)),
+    pub fn make_demuxer(self) -> DynDemuxer {
+        match self {
+            VideoProbe::Mkv(mkv) => Box::new(MkvDemuxer::new(mkv)),
+            VideoProbe::Ivf(header, stream) => Box::new(IvfDemuxer::new(stream, header)),
         }
     }
 }
@@ -111,15 +120,23 @@ fn mkv_find_video_track(matroska: &MatroskaFile<impl Read + Seek>) -> Option<(us
 }
 
 pub trait Demuxer {
+    fn container(&self) -> Container;
     fn codec(&self) -> Codec;
     fn clock_rate(&self) -> u32;
+    fn frame_count(&self) -> usize;
     /// Kickstart parsing by feeding out of band data in the parser
-    fn init(&mut self, parser: &mut CuVideoParser);
+    fn init(&mut self, parser: &mut CuvidParser<Rc<NvDecoderSimple<'static>>>);
     /// Feed a single packet into the parser, return false if there is no more data
-    fn demux(&mut self, parser: &mut CuVideoParser) -> bool;
+    fn demux(&mut self, parser: &mut CuvidParser<Rc<NvDecoderSimple<'static>>>) -> bool;
 }
 
-impl Demuxer for Box<dyn Demuxer> {
+pub type DynDemuxer = Box<dyn Demuxer>;
+
+impl Demuxer for DynDemuxer {
+    fn container(&self) -> Container {
+        Box::as_ref(self).container()
+    }
+
     fn codec(&self) -> Codec {
         Box::as_ref(self).codec()
     }
@@ -128,11 +145,15 @@ impl Demuxer for Box<dyn Demuxer> {
         Box::as_ref(self).clock_rate()
     }
 
-    fn init(&mut self, parser: &mut CuVideoParser) {
+    fn frame_count(&self) -> usize {
+        Box::as_ref(self).frame_count()
+    }
+
+    fn init(&mut self, parser: &mut CuvidParser<Rc<NvDecoderSimple<'static>>>) {
         Box::as_mut(self).init(parser)
     }
 
-    fn demux(&mut self, parser: &mut CuVideoParser) -> bool {
+    fn demux(&mut self, parser: &mut CuvidParser<Rc<NvDecoderSimple<'static>>>) -> bool {
         Box::as_mut(self).demux(parser)
     }
 }
@@ -157,6 +178,10 @@ impl IvfDemuxer {
 }
 
 impl Demuxer for IvfDemuxer {
+    fn container(&self) -> Container {
+        Container::Ivf
+    }
+
     fn codec(&self) -> Codec {
         // This can't fail at the moment this is called
         self.header.codec().unwrap()
@@ -168,12 +193,16 @@ impl Demuxer for IvfDemuxer {
         1000000
     }
 
-    fn init(&mut self, parser: &mut CuVideoParser) {
+    fn frame_count(&self) -> usize {
+        self.header.frames as _
+    }
+
+    fn init(&mut self, parser: &mut CuvidParser<Rc<NvDecoderSimple<'static>>>) {
         let _ = ivf::read_packet(&mut self.stream, &mut self.buf).unwrap();
         parser.parse_data(&self.buf, 0).unwrap()
     }
 
-    fn demux(&mut self, parser: &mut CuVideoParser) -> bool {
+    fn demux(&mut self, parser: &mut CuvidParser<Rc<NvDecoderSimple<'static>>>) -> bool {
         if let Ok(pts) = ivf::read_packet(&mut self.stream, &mut self.buf) {
             self.frame += 1;
             if self.buf.is_empty() {
@@ -193,7 +222,7 @@ impl Demuxer for IvfDemuxer {
 pub struct MkvDemuxer {
     mkv: Matroska,
     nal_length_size: usize,
-    frame: Frame,
+    frame: MkvFrame,
     /// Offset after the data we have already read in the frame
     frame_offset: usize,
     packet: Vec<u8>,
@@ -220,6 +249,10 @@ impl MkvDemuxer {
 }
 
 impl Demuxer for MkvDemuxer {
+    fn container(&self) -> Container {
+        Container::Mkv
+    }
+
     fn codec(&self) -> Codec {
         self.codec
     }
@@ -228,10 +261,14 @@ impl Demuxer for MkvDemuxer {
         self.mkv.info().timestamp_scale().get() as _
     }
 
-    fn init(&mut self, parser: &mut CuVideoParser) {
+    fn frame_count(&self) -> usize {
+        0
+    }
+
+    fn init(&mut self, parser: &mut CuvidParser<Rc<NvDecoderSimple<'static>>>) {
         let track = &self.mkv.tracks()[self.track_id as usize];
         match self.codec {
-            Codec::H262 => {
+            Codec::MPEG2 => {
                 // dbg!(v_track.codec_private());
                 if let Some(private) = track.codec_private() {
                     parser.parse_data(private, 0).unwrap();
@@ -253,7 +290,7 @@ impl Demuxer for MkvDemuxer {
         }
     }
 
-    fn demux(&mut self, parser: &mut CuVideoParser) -> bool {
+    fn demux(&mut self, parser: &mut CuvidParser<Rc<NvDecoderSimple<'static>>>) -> bool {
         // Pull a frame if we're empty
         if self.frame.data.len() - self.frame_offset == 0 {
             // Loop because the next frame might not be from the video track we expect
@@ -273,7 +310,7 @@ impl Demuxer for MkvDemuxer {
         // There should be data available in the frame at this point
         if self.frame.data.len() - self.frame_offset > 0 {
             match self.codec {
-                Codec::AV1 | Codec::H262 => {
+                Codec::AV1 | Codec::MPEG2 => {
                     // TODO investigate if feeding a full frame can cause a problem with those codecs
                     parser
                         .parse_data(&self.frame.data, self.frame.timestamp as i64)
@@ -315,8 +352,90 @@ fn mkv_codec_id_to_codec(id: &str) -> Option<Codec> {
     match id {
         "V_MPEG4/ISO/AVC" => Some(Codec::H264),
         "V_AV1" => Some(Codec::AV1),
-        "V_MPEG2" => Some(Codec::H262),
+        "V_MPEG2" => Some(Codec::MPEG2),
         // Unsupported
         _ => None,
+    }
+}
+
+pub struct VideoFrameSource<D: Demuxer> {
+    demuxer: D,
+    decoder: Rc<NvDecoderSimple<'static>>,
+    parser: CuvidParser<Rc<NvDecoderSimple<'static>>>,
+}
+
+impl<D: Demuxer> VideoFrameSource<D> {
+    pub fn new(mut demuxer: D) -> Self {
+        let decoder = Rc::new(NvDecoderSimple::new(3, None));
+        let mut parser = CuvidParser::new(
+            codec_to_nvdec(demuxer.codec()),
+            Rc::clone(&decoder),
+            Some(demuxer.clock_rate()),
+            None,
+        )
+        .unwrap();
+
+        demuxer.init(&mut parser);
+        while decoder.format().is_none() {
+            if !demuxer.demux(&mut parser) {
+                break;
+            }
+        }
+        assert!(decoder.format().is_some());
+
+        Self {
+            demuxer,
+            decoder,
+            parser,
+        }
+    }
+}
+
+impl<D: Demuxer> FrameSource for VideoFrameSource<D> {
+    fn format_id(&self) -> FormatIdentifier {
+        FormatIdentifier {
+            container: Some(format!("{:?}", self.demuxer.container())),
+            codec: self.demuxer.codec().to_string(),
+            decoder: "NVDEC".to_string(),
+        }
+    }
+
+    fn width(&self) -> u32 {
+        self.decoder.format().unwrap().display_width()
+    }
+
+    fn height(&self) -> u32 {
+        self.decoder.format().unwrap().display_height()
+    }
+
+    fn color_characteristics(&self) -> (ColorCharacteristics, ColorRange) {
+        color_characteristics_from_format(self.decoder.format().unwrap())
+    }
+
+    fn frame_count(&self) -> usize {
+        self.demuxer.frame_count()
+    }
+
+    fn skip_frames(&mut self, mut n: u32) {
+        while n > 0 {
+            if self.decoder.frames().next().is_some() {
+                n -= 1;
+            } else {
+                self.demuxer.demux(&mut self.parser);
+            }
+        }
+    }
+
+    fn next_frame(&mut self, stream: &CuStream) -> Result<Option<HwFrame>, Box<dyn Error>> {
+        while !self.decoder.has_frames() {
+            if !self.demuxer.demux(&mut self.parser) {
+                break;
+            }
+        }
+        if let Some(Some(d)) = self.decoder.frames().next() {
+            Ok(Some(HwFrame::NvDec(self.decoder.map_npp(&d, stream)?)))
+        } else {
+            Ok(None)
+        }
     }
 }
