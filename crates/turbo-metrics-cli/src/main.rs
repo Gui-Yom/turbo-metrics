@@ -9,7 +9,7 @@ use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 use std::time::{Duration, Instant};
 use tracing::level_filters::LevelFilter;
-use tracing::{debug, error, info, info_span, instrument, span, trace, Span};
+use tracing::{debug, error, info, info_span, trace};
 use tracing_indicatif::span_ext::IndicatifSpanExt;
 use tracing_indicatif::IndicatifLayer;
 use tracing_subscriber::layer::SubscriberExt;
@@ -17,7 +17,7 @@ use tracing_subscriber::util::SubscriberInitExt;
 use tracing_subscriber::{EnvFilter, Layer};
 use turbo_metrics::cudarse_driver::CuStream;
 use turbo_metrics::input_image::{ImageFrameSource, ImageProbe, PROBE_LEN};
-use turbo_metrics::input_video::{DynDemuxer, VideoFrameSource, VideoProbe};
+use turbo_metrics::input_video::{VideoFrameSource, VideoProbe};
 use turbo_metrics::npp::set_stream;
 use turbo_metrics::{init_cuda, FrameSource, MetricsResults, Options, TurboMetrics};
 
@@ -56,7 +56,7 @@ struct CliArgs {
     skip_dis: u32,
     /// Amount of frames to compute. Useful for computing subsets with `skip`, `skip-ref`, and `skip-dis`.
     #[arg(long, default_value = "0")]
-    frame_count: u32,
+    frames: u32,
 
     /// Choose the CLI stdout format. Omit the option for the default.
     /// Status messages will be printed to stderr in all cases.
@@ -92,7 +92,7 @@ impl CliArgs {
             skip: self.skip,
             skip_ref: self.skip_ref,
             skip_dis: self.skip_dis,
-            frame_count: self.frame_count,
+            frames: self.frames,
         }
     }
 
@@ -257,7 +257,7 @@ fn compute(
         .saturating_sub(opts.skip_ref as _)
         .max(frames_dis.frame_count().saturating_sub(opts.skip_dis as _))
         .saturating_sub(opts.skip as _)
-        .min(opts.frame_count as _);
+        .min(opts.frames as _);
 
     let span = info_span!("pb");
     if useful_decode_amount > 0 {
@@ -293,7 +293,7 @@ fn compute(
             continue;
         }
 
-        if opts.frame_count > 0 && decode_count >= opts.frame_count {
+        if opts.frames > 0 && decode_count >= opts.frames {
             break;
         }
 

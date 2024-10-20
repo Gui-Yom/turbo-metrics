@@ -17,8 +17,7 @@ use ssimulacra2_cuda::Ssimulacra2;
 use std::error::Error;
 use std::fmt::{Display, Formatter};
 use std::sync::LazyLock;
-use std::time::{Duration, Instant};
-use tracing::{debug, info, trace};
+use tracing::debug;
 
 pub mod color;
 pub mod img;
@@ -51,7 +50,7 @@ pub struct Options {
     /// Index of the first frame to start computing at for the distorted frame.
     pub skip_dis: u32,
     /// Amount of frames to compute. Useful for computing subsets with `skip`, `skip-ref`, and `skip-dis`.
-    pub frame_count: u32,
+    pub frames: u32,
 }
 
 #[derive(Debug)]
@@ -152,10 +151,10 @@ pub struct TurboMetrics {
     lrgb_ref: Image<f32, C<3>>,
     lrgb_dis: Image<f32, C<3>>,
     quantized: Option<(Image<u8, C<3>>, Image<u8, C<3>>)>,
-    psnr: Option<(ScratchBuffer)>,
-    ssim: Option<(ScratchBuffer)>,
-    msssim: Option<(ScratchBuffer)>,
-    ssimulacra2: Option<(Ssimulacra2)>,
+    psnr: Option<ScratchBuffer>,
+    ssim: Option<ScratchBuffer>,
+    msssim: Option<ScratchBuffer>,
+    ssimulacra2: Option<Ssimulacra2>,
     streams: [CuStream; 5],
 }
 
@@ -364,7 +363,7 @@ impl TurboMetrics {
                 continue;
             }
 
-            if opts.frame_count > 0 && decode_count - opts.skip >= opts.frame_count {
+            if opts.frames > 0 && decode_count >= opts.frames {
                 break;
             }
 
