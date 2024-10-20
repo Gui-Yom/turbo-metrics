@@ -42,6 +42,9 @@ struct CliArgs {
     /// Index of the first frame to start computing at the distorted frame. Additive with `skip`.
     #[arg(long, default_value = "0")]
     skip_dis: u32,
+    /// Amount of frames to compute. Useful for computing subsets with `skip`, `skip-ref`, and `skip-dis`.
+    #[arg(long, default_value = "0")]
+    frame_count: u32,
 
     /// Choose the CLI stdout format. Omit the option for the default.
     /// Status messages will be printed to stderr in all cases.
@@ -77,6 +80,7 @@ impl CliArgs {
             skip: self.skip,
             skip_ref: self.skip_ref,
             skip_dis: self.skip_dis,
+            frame_count: self.frame_count,
         }
     }
 
@@ -103,8 +107,8 @@ fn main() -> ExitCode {
         if probe_ref.can_decode() {
             if let Some(probe_dis) = probe_image(&mut in_dis) {
                 if probe_dis.can_decode() {
-                    if args.every != 0 || args.skip != 0 || args.skip_ref != 0 || args.skip_dis != 0 {
-                        eprintln!("WARN: --every and --skip[_ref/_dist] are useless with a pair of images");
+                    if args.every != 0 || args.skip != 0 || args.skip_ref != 0 || args.skip_dis != 0  || args.frame_count != 0 {
+                        eprintln!("WARN: --every, --skip[_ref/_dist], and --frame-count are useless with a pair of images");
                     }
 
                     init_cuda();

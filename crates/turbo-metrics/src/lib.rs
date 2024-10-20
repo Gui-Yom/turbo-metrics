@@ -54,6 +54,8 @@ pub struct VideoOptions {
     pub skip_ref: u32,
     /// Index of the first frame to start computing at for the distorted frame.
     pub skip_dis: u32,
+    /// Amount of frames to compute. Useful for computing subsets with `skip`, `skip-ref`, and `skip-dis`.
+    pub frame_count: u32,
 }
 
 #[derive(Debug)]
@@ -396,6 +398,11 @@ pub fn process_video_pair(
                     decode_count += 1;
                     continue;
                 }
+
+                if opts.frame_count > 0 && decode_count - opts.skip >= opts.frame_count {
+                    break 'main;
+                }
+
                 decode_count += 1;
                 print!("\rDecoding frame {}", decode_count);
 
