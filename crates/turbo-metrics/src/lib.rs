@@ -377,16 +377,21 @@ pub fn compute_metrics(
         streams[0].sync().unwrap();
 
         if let Some(scores_psnr) = &mut scores_psnr {
+            trace!("PSNR {} {}", compute_count, psnr);
             scores_psnr.push(psnr as f64);
         }
         if let Some(scores_ssim) = &mut scores_ssim {
+            trace!("SSIM {} {}", compute_count, ssim);
             scores_ssim.push(ssim as f64);
         }
         if let Some(scores_msssim) = &mut scores_msssim {
+            trace!("MSSSIM {} {}", compute_count, msssim);
             scores_msssim.push(msssim as f64);
         }
         if let Some(scores_ssimu) = &mut scores_ssimu {
-            scores_ssimu.push(ssimu.as_mut().unwrap().get_score());
+            let ssimu = ssimu.as_mut().unwrap().get_score();
+            trace!("SSIMULACRA2 {} {}", compute_count, ssimu);
+            scores_ssimu.push(ssimu);
         }
 
         compute_count += 1;
