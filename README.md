@@ -89,7 +89,7 @@ repo is by cloning the git repo.
 - Nvidia GPU, exact requirement is unknown, but you should be safe with a GTX 10xx or later (codec
   support will vary with your GPU generation).
 - CUDA 12.x (tested with 12.5 and 12.6, it might work with previous versions, I don't know)
-- CUDA NPP (normally packaged with CUDA by default, but it's an optional component)
+- CUDA NPP (normally packaged with CUDA by default, but it's an optional component on Windows)
 - Rust stable
 - Rust nightly for the CUDA kernels (it should work with only a nightly toolchain and no stable)
 - Various rustup components for the nightly channel :
@@ -114,7 +114,8 @@ repo is by cloning the git repo.
 
 ### Linux
 
-- Tested on Fedora 41 with proprietary Nvidia drivers (I do not think CUDA works with Nouveau ?)
+- Tested on Fedora 41 and CachyOS with proprietary Nvidia drivers (I do not think CUDA works with
+  Nouveau ?)
 - `CUDA_PATH` env var is optional, by default it will look in `/usr/local/cuda`.
 - `AMF_SDK_PATH` env var is optional, by default it will look in `/usr/include/AMF` as AMF headers
   were present in my system packages.
@@ -131,8 +132,9 @@ There are various ways you can support development.
 
 ## TODO ideas
 
-The base is solid. I plan to implement various tools to help the process of making encodes (except
-encoding itself) from pre-filtering to validation. In no particular order or priority :
+The core libraries are getting solid. I plan to implement various tools to help the process of
+making encodes (except encoding itself) from pre-filtering to validation. In no particular order or
+priority :
 
 ### Tools & workflows
 
@@ -140,6 +142,8 @@ encoding itself) from pre-filtering to validation. In no particular order or pri
 - GUI for interactive inspection of error maps
 - Hull generation, by running a command automatically (e.g.
   `turbo-metrics --ssimulacra2 --hull --ref ref.png -- avifenc ref.png --crf @`)
+- Dynamic loading at runtime (e.g. optionally load ffmpeg libraries if present), this might be
+  necessary to support many platform API with a single portable build.
 
 ### Algorithms implementations
 
@@ -157,6 +161,7 @@ encoding itself) from pre-filtering to validation. In no particular order or pri
 
 ### Inputs
 
+- Many distorted media (the reference is only decoded once)
 - Region selection
 - More video containers (mp4)
 - Raw bitstreams
@@ -169,12 +174,12 @@ encoding itself) from pre-filtering to validation. In no particular order or pri
 
 ### Outputs
 
-- Nicer interactive output (tracing-indicatif ?)
 - Plot output
 
 ### Platform support
 
-Currently, we're locked to Nvidia hardware. However, nothing here explicitly requires CUDA.
+Currently, we're locked to Nvidia hardware. However, the problem at hand does not require CUDA or
+NVDEC specifically.
 
 - Other hardware video decoding API.
 - Other accelerated compute platforms (krnl, cubecl, Vulkan).
