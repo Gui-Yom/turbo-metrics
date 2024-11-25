@@ -12,8 +12,21 @@ use crate::{sys, CuEvent, CuGraph};
 #[repr(transparent)]
 pub struct CuStream(pub(crate) sys::CUstream);
 
+impl Default for CuStream {
+    fn default() -> Self {
+        Self::DEFAULT
+    }
+}
+
+impl Default for &CuStream {
+    fn default() -> Self {
+        CuStream::DEFAULT_
+    }
+}
+
 impl CuStream {
     pub const DEFAULT: Self = CuStream(null_mut());
+    pub const DEFAULT_: &'static Self = &CuStream(null_mut());
 
     /// Create a new CUDA stream.
     pub fn new() -> CuResult<Self> {
@@ -22,6 +35,10 @@ impl CuStream {
             cuStreamCreate(&mut stream, CUstream_flags::CU_STREAM_NON_BLOCKING as _).result()?;
         }
         Ok(Self(stream))
+    }
+
+    pub fn raw(&self) -> sys::CUstream {
+        self.0 as _
     }
 
     pub fn inner(&self) -> *mut c_void {

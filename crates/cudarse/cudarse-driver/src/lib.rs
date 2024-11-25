@@ -5,6 +5,7 @@ pub use device::*;
 pub use event::*;
 pub use function::*;
 pub use graph::*;
+pub use mem::*;
 pub use module::*;
 pub use stream::*;
 use sys::{
@@ -16,6 +17,7 @@ mod device;
 mod event;
 mod function;
 mod graph;
+mod mem;
 mod module;
 mod stream;
 
