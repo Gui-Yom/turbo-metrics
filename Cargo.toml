@@ -11,6 +11,7 @@ members = [
     "crates/cudarse/cudarse-npp-sys",
     "crates/cudarse/cudarse-video",
     "crates/cudarse/cudarse-video-sys",
+    "crates/superframe",
     "crates/nvptx-builder",
     "crates/nvptx-std",
     "crates/quick-stats",
@@ -52,6 +53,7 @@ nvptx-builder = { version = "0.1", path = "crates/nvptx-builder", default-featur
 nvptx-std = { version = "0.1", path = "crates/nvptx-std", default-features = false }
 quick-stats = { version = "0.1", path = "crates/quick-stats", default-features = false }
 ssimulacra2-cuda = { version = "0.1", path = "crates/ssimulacra2-cuda", default-features = false }
+superframe = { version = "0.1", path = "crates/superframe" }
 turbo-metrics = { version = "0.3", path = "crates/turbo-metrics", default-features = false }
 xpsnr-cuda = { version = "0.1", path = "crates/xpsnr-cuda", default-features = false }
 
