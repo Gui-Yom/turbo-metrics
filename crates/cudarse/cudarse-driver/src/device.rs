@@ -63,4 +63,36 @@ impl CuDevice {
     pub fn release_primary_ctx(&self) -> CuResult<()> {
         unsafe { cuDevicePrimaryCtxRelease_v2(self.0).result() }
     }
+
+    // pub fn create_ctx(&self) -> CuResult<CuCtx> {
+    //     let mut ctx = null_mut();
+    //     unsafe {
+    //         sys::cuCtxCreate_v4(
+    //             &mut ctx,
+    //             &mut sys::CUctxCreateParams {
+    //                 execAffinityParams: &mut sys::CUexecAffinityParam {
+    //                     type_: CUexecAffinityType_enum::CU_EXEC_AFFINITY_TYPE_SM_COUNT,
+    //                     param: Default::default(),
+    //                 },
+    //                 numExecAffinityParams: 0,
+    //                 cigParams: &mut sys::CUctxCigParam {
+    //                     sharedDataType: CUcigDataType_enum::CIG_DATA_TYPE_D3D12_COMMAND_QUEUE,
+    //                     sharedData: (),
+    //                 },
+    //             },
+    //             0,
+    //             self.0,
+    //         )
+    //         .result()?;
+    //     }
+    //     Ok(CuCtx(NonNull::new(ctx).unwrap()))
+    // }
+
+    pub fn attr(&self, attr: sys::CUdevice_attribute) -> CuResult<i32> {
+        let mut out = 0;
+        unsafe {
+            sys::cuDeviceGetAttribute(&mut out, attr, self.0).result()?;
+        }
+        Ok(out)
+    }
 }

@@ -17,7 +17,7 @@ pub use crate::rect::*;
 
 pub trait Sample: Copy {
     /// Tag that must be stored out of band to identify this sample type.
-    type Id;
+    type Id: Clone;
     const SIZE: usize = size_of::<Self>();
 }
 impl Sample for u8 {

@@ -10,8 +10,10 @@ pub use module::*;
 pub use stream::*;
 use sys::{
     cuCtxGetCurrent, cuCtxSetCurrent, cuCtxSynchronize, cuDriverGetVersion, cuInit,
-    cuMemGetInfo_v2, cuMemcpy2DAsync_v2, cuProfilerStart, cuProfilerStop, CuResult, CUDA_MEMCPY2D,
+    cuMemGetInfo_v2, cuMemcpy2DAsync_v2, cuProfilerStart, cuProfilerStop, CUDA_MEMCPY2D,
 };
+
+pub use sys::CuResult;
 
 mod device;
 mod event;

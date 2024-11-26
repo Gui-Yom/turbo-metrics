@@ -4,35 +4,40 @@ use crate::{
 };
 use std::error::Error;
 
-/// Data transfer between planes. The copy works across devices.
+/// Data transfer between planes. The copy works across storages.
 pub trait TransferPlane<S: StaticSample, Src: SampleStorage, Dst: SampleStorage> {
-    type Aux<'a>;
+    /// Extra implementation defined data.
+    type Ext<'a>;
+
+    /// Copy data to this plane from a `src` plane. Plane sizes must match.
     fn copy_from_ext(
         &mut self,
         src: impl AsPlane<Storage = Src>,
-        aux: Self::Aux<'_>,
+        ext: Self::Ext<'_>,
     ) -> Result<(), Box<dyn Error>>;
+
+    /// Like [Self::copy_from_ext] but with a default initialized extra data.
     fn copy_from(&mut self, src: impl AsPlane<Storage = Src>) -> Result<(), Box<dyn Error>>;
 }
 
 // Host to Host
-impl<
-        S: StaticSample,
-        Src: HostAccessible<SampleType = S>,
-        Dst: HostAccessibleMut<SampleType = S>,
-        DstPlane: AsPlaneMut<Storage = Dst>,
-    > TransferPlane<S, Src, Dst> for DstPlane
+impl<S, Src, Dst, DstPlane> TransferPlane<S, Src, Dst> for DstPlane
+where
+    S: StaticSample,
+    Src: HostAccessible<SampleType = S>,
+    Dst: HostAccessibleMut<SampleType = S>,
+    DstPlane: AsPlaneMut<Storage = Dst>,
 {
-    type Aux<'a> = ();
+    type Ext<'a> = ();
 
     fn copy_from_ext(
         &mut self,
         src: impl AsPlane<Storage = Src>,
-        _aux: Self::Aux<'_>,
+        _ext: Self::Ext<'_>,
     ) -> Result<(), Box<dyn Error>> {
         assert_same_size!(self, src);
-        if self.is_full_view() && src.is_full_view() {
-            // Do the whole operation in one copy if we are working with the full planes
+        if self.is_full_view() && src.is_full_view() && self.pitch_bytes() == src.pitch_bytes() {
+            // Do the whole operation in one copy if we are working with the same full planes
             self.storage_mut()
                 .slice_mut()
                 .copy_from_slice(src.storage().slice());
@@ -56,22 +61,31 @@ impl<
     }
 }
 
+/// Set a plane to a fixed value.
 pub trait SetPlane<Stor: SampleStorage> {
-    type Aux<'aux>;
+    /// Extra implementation defined data.
+    type Ext<'aux>;
+
+    /// Set the plane to a fixed value.
     fn set_ext(
         &mut self,
         value: Stor::SampleType,
-        aux: Self::Aux<'_>,
+        ext: Self::Ext<'_>,
     ) -> Result<(), Box<dyn Error>>;
+
+    /// Like [Self::set_ext] but with a default initialized extra data.
     fn set(&mut self, value: Stor::SampleType) -> Result<(), Box<dyn Error>>;
 }
 
-impl<S: StaticSample, Stor: HostAccessibleMut<SampleType = S>, P: AsPlaneMut<Storage = Stor>>
-    SetPlane<Stor> for P
+impl<S, Stor, P> SetPlane<Stor> for P
+where
+    S: StaticSample,
+    Stor: HostAccessibleMut<SampleType = S>,
+    P: AsPlaneMut<Storage = Stor>,
 {
-    type Aux<'aux> = ();
+    type Ext<'aux> = ();
 
-    fn set_ext(&mut self, value: S, _aux: Self::Aux<'_>) -> Result<(), Box<dyn Error>> {
+    fn set_ext(&mut self, value: S, _ext: Self::Ext<'_>) -> Result<(), Box<dyn Error>> {
         if self.is_full_view() {
             self.storage_mut().slice_mut().fill(value);
         } else {

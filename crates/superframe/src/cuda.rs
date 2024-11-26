@@ -3,7 +3,8 @@ use crate::{
     HostAccessibleMut, OwnedSampleStorage, Sample, SampleStorage, SetPlane, StaticSample,
     TransferPlane,
 };
-use cudarse_driver::{CuBox, CuStream};
+use cudarse_driver::{CuBox, CuPin, CuResult, CuStream};
+use std::borrow::{Borrow, BorrowMut};
 use std::error::Error;
 use std::ptr::{null, null_mut};
 
@@ -63,19 +64,18 @@ impl<S: Sample> OwnedSampleStorage for Cuda<S> {
 }
 
 // Cuda to Host
-impl<
-        'b,
-        S: StaticSample,
-        Dst: HostAccessibleMut<SampleType = S>,
-        DstPlane: AsPlaneMut<Storage = Dst>,
-    > TransferPlane<S, Cuda<S>, Dst> for DstPlane
+impl<'b, S, Dst, DstPlane> TransferPlane<S, Cuda<S>, Dst> for DstPlane
+where
+    S: StaticSample,
+    Dst: HostAccessibleMut<SampleType = S>,
+    DstPlane: AsPlaneMut<Storage = Dst>,
 {
-    type Aux<'a> = &'a CuStream;
+    type Ext<'a> = &'a CuStream;
 
     fn copy_from_ext(
         &mut self,
         src: impl AsPlane<Storage = Cuda<S>>,
-        aux: Self::Aux<'_>,
+        ext: Self::Ext<'_>,
     ) -> Result<(), Box<dyn Error>> {
         assert_same_size!(self, src);
         let src_rect = src.absolute_rect();
@@ -100,7 +100,7 @@ impl<
                     WidthInBytes: self.width() * S::SIZE,
                     Height: self.height(),
                 },
-                aux.raw(),
+                ext.raw(),
             )
             .result()?;
         }
@@ -113,19 +113,18 @@ impl<
 }
 
 /// Host to Cuda
-impl<
-        'b,
-        S: StaticSample,
-        Src: HostAccessible<SampleType = S>,
-        Dst: AsPlaneMut<Storage = Cuda<S>>,
-    > TransferPlane<S, Src, Cuda<S>> for Dst
+impl<'b, S, Src, Dst> TransferPlane<S, Src, Cuda<S>> for Dst
+where
+    S: StaticSample,
+    Src: HostAccessible<SampleType = S>,
+    Dst: AsPlaneMut<Storage = Cuda<S>>,
 {
-    type Aux<'a> = &'a CuStream;
+    type Ext<'a> = &'a CuStream;
 
     fn copy_from_ext(
         &mut self,
         src: impl AsPlane<Storage = Src>,
-        aux: Self::Aux<'_>,
+        ext: Self::Ext<'_>,
     ) -> Result<(), Box<dyn Error>> {
         assert_same_size!(self, src);
         let src_rect = src.absolute_rect();
@@ -150,9 +149,10 @@ impl<
                     WidthInBytes: self.width() * S::SIZE,
                     Height: self.height(),
                 },
-                aux.raw(),
+                ext.raw(),
             )
-            .result()?;
+            .result()
+            .unwrap();
         }
         Ok(())
     }
@@ -163,15 +163,17 @@ impl<
 }
 
 // Cuda to Cuda
-impl<'b, 'c, S: StaticSample, Dst: AsPlaneMut<Storage = Cuda<S>>> TransferPlane<S, Cuda<S>, Cuda<S>>
-    for Dst
+impl<'b, 'c, S, Dst> TransferPlane<S, Cuda<S>, Cuda<S>> for Dst
+where
+    S: StaticSample,
+    Dst: AsPlaneMut<Storage = Cuda<S>>,
 {
-    type Aux<'a> = &'a CuStream;
+    type Ext<'a> = &'a CuStream;
 
     fn copy_from_ext(
         &mut self,
         src: impl AsPlane<Storage = Cuda<S>>,
-        aux: Self::Aux<'_>,
+        ext: Self::Ext<'_>,
     ) -> Result<(), Box<dyn Error>> {
         assert_same_size!(self, src);
         let src_rect = src.absolute_rect();
@@ -196,7 +198,7 @@ impl<'b, 'c, S: StaticSample, Dst: AsPlaneMut<Storage = Cuda<S>>> TransferPlane<
                     WidthInBytes: self.width() * S::SIZE,
                     Height: self.height(),
                 },
-                aux.raw(),
+                ext.raw(),
             )
             .result()?;
         }
@@ -209,9 +211,9 @@ impl<'b, 'c, S: StaticSample, Dst: AsPlaneMut<Storage = Cuda<S>>> TransferPlane<
 }
 
 impl<'a, P: AsPlaneMut<Storage = Cuda<u8>>> SetPlane<Cuda<u8>> for P {
-    type Aux<'aux> = &'aux CuStream;
+    type Ext<'aux> = &'aux CuStream;
 
-    fn set_ext(&mut self, value: u8, aux: Self::Aux<'_>) -> Result<(), Box<dyn Error>> {
+    fn set_ext(&mut self, value: u8, ext: Self::Ext<'_>) -> Result<(), Box<dyn Error>> {
         let rect = self.absolute_rect();
         let pitch = self.pitch_bytes();
         unsafe {
@@ -221,7 +223,7 @@ impl<'a, P: AsPlaneMut<Storage = Cuda<u8>>> SetPlane<Cuda<u8>> for P {
                 value,
                 self.width(),
                 self.height(),
-                aux.raw(),
+                ext.raw(),
             )
             .result()?;
             Ok(())
@@ -234,9 +236,9 @@ impl<'a, P: AsPlaneMut<Storage = Cuda<u8>>> SetPlane<Cuda<u8>> for P {
 }
 
 impl<'a, P: AsPlaneMut<Storage = Cuda<u16>>> SetPlane<Cuda<u16>> for P {
-    type Aux<'aux> = &'aux CuStream;
+    type Ext<'aux> = &'aux CuStream;
 
-    fn set_ext(&mut self, value: u16, aux: Self::Aux<'_>) -> Result<(), Box<dyn Error>> {
+    fn set_ext(&mut self, value: u16, ext: Self::Ext<'_>) -> Result<(), Box<dyn Error>> {
         let rect = self.absolute_rect();
         let pitch = self.pitch_bytes();
         unsafe {
@@ -246,7 +248,7 @@ impl<'a, P: AsPlaneMut<Storage = Cuda<u16>>> SetPlane<Cuda<u16>> for P {
                 value,
                 self.width(),
                 self.height(),
-                aux.raw(),
+                ext.raw(),
             )
             .result()?;
             Ok(())
@@ -259,9 +261,9 @@ impl<'a, P: AsPlaneMut<Storage = Cuda<u16>>> SetPlane<Cuda<u16>> for P {
 }
 
 impl<'a, P: AsPlaneMut<Storage = Cuda<f32>>> SetPlane<Cuda<f32>> for P {
-    type Aux<'aux> = &'aux CuStream;
+    type Ext<'aux> = &'aux CuStream;
 
-    fn set_ext(&mut self, value: f32, aux: Self::Aux<'_>) -> Result<(), Box<dyn Error>> {
+    fn set_ext(&mut self, value: f32, ext: Self::Ext<'_>) -> Result<(), Box<dyn Error>> {
         let rect = self.absolute_rect();
         let pitch = self.pitch_bytes();
         unsafe {
@@ -271,7 +273,7 @@ impl<'a, P: AsPlaneMut<Storage = Cuda<f32>>> SetPlane<Cuda<f32>> for P {
                 value.to_bits(),
                 self.width(),
                 self.height(),
-                aux.raw(),
+                ext.raw(),
             )
             .result()?;
             Ok(())
@@ -284,9 +286,9 @@ impl<'a, P: AsPlaneMut<Storage = Cuda<f32>>> SetPlane<Cuda<f32>> for P {
 }
 
 impl<'a, P: AsPlaneMut<Storage = Cuda<[u8; 2]>>> SetPlane<Cuda<[u8; 2]>> for P {
-    type Aux<'aux> = &'aux CuStream;
+    type Ext<'aux> = &'aux CuStream;
 
-    fn set_ext(&mut self, value: [u8; 2], aux: Self::Aux<'_>) -> Result<(), Box<dyn Error>> {
+    fn set_ext(&mut self, value: [u8; 2], ext: Self::Ext<'_>) -> Result<(), Box<dyn Error>> {
         let rect = self.absolute_rect();
         let pitch = self.pitch_bytes();
         unsafe {
@@ -296,7 +298,7 @@ impl<'a, P: AsPlaneMut<Storage = Cuda<[u8; 2]>>> SetPlane<Cuda<[u8; 2]>> for P {
                 u16::from_ne_bytes(value),
                 self.width(),
                 self.height(),
-                aux.raw(),
+                ext.raw(),
             )
             .result()?;
             Ok(())
@@ -309,9 +311,9 @@ impl<'a, P: AsPlaneMut<Storage = Cuda<[u8; 2]>>> SetPlane<Cuda<[u8; 2]>> for P {
 }
 
 impl<'a, P: AsPlaneMut<Storage = Cuda<[u16; 2]>>> SetPlane<Cuda<[u16; 2]>> for P {
-    type Aux<'aux> = &'aux CuStream;
+    type Ext<'aux> = &'aux CuStream;
 
-    fn set_ext(&mut self, value: [u16; 2], aux: Self::Aux<'_>) -> Result<(), Box<dyn Error>> {
+    fn set_ext(&mut self, value: [u16; 2], ext: Self::Ext<'_>) -> Result<(), Box<dyn Error>> {
         let rect = self.absolute_rect();
         let pitch = self.pitch_bytes();
         unsafe {
@@ -321,7 +323,7 @@ impl<'a, P: AsPlaneMut<Storage = Cuda<[u16; 2]>>> SetPlane<Cuda<[u16; 2]>> for P
                 ((value[1] as u32) << 16) | value[0] as u32,
                 self.width(),
                 self.height(),
-                aux.raw(),
+                ext.raw(),
             )
             .result()?;
             Ok(())
@@ -330,6 +332,50 @@ impl<'a, P: AsPlaneMut<Storage = Cuda<[u16; 2]>>> SetPlane<Cuda<[u16; 2]>> for P
 
     fn set(&mut self, value: [u16; 2]) -> Result<(), Box<dyn Error>> {
         self.set_ext(value, CuStream::DEFAULT_)
+    }
+}
+
+pub struct CuPinned<S>(CuPin<Box<[S]>>);
+impl<S> CuPinned<S> {
+    pub fn new(boxed: Box<[S]>) -> CuResult<Self> {
+        Ok(Self(CuPin::new(boxed)?))
+    }
+}
+
+impl<S: Sample> SampleStorage for CuPinned<S> {
+    type SampleType = S;
+}
+// impl<S: Sample, Target: Sample> CastStorage<Target> for CuPinned<S> {
+//     type Out = CuPinned<Target>;
+//
+//     fn cast(self) -> Self::Out {
+//
+//     }
+// }
+impl<S: Sample> OwnedSampleStorage for CuPinned<S> {
+    type Ext<'a> = ();
+
+    fn alloc_ext(
+        width: usize,
+        height: usize,
+        ext: Self::Ext<'_>,
+    ) -> Result<(usize, Self), Box<dyn Error>> {
+        let (pitch, alloc) = Box::alloc_ext(width, height, ext)?;
+        Ok((pitch, Self(CuPin::new(alloc)?)))
+    }
+
+    fn drop_ext(&mut self, _ext: Self::Ext<'_>) -> Result<(), Box<dyn Error>> {
+        Ok(())
+    }
+}
+impl<S: Sample> Borrow<[S]> for CuPinned<S> {
+    fn borrow(&self) -> &[S] {
+        &self.0
+    }
+}
+impl<S: Sample> BorrowMut<[S]> for CuPinned<S> {
+    fn borrow_mut(&mut self) -> &mut [S] {
+        &mut self.0
     }
 }
 
@@ -377,6 +423,15 @@ mod tests {
             })
             .unwrap()
             .set(255)?;
+        Ok(())
+    }
+
+    #[test]
+    fn pinning() -> Result<(), Box<dyn Error>> {
+        init_cuda()?;
+        let plane = Plane::<Box<[u8]>>::new(4, 4)?.cupin()?;
+        let mut gpu = plane.new_like::<Cuda<u8>>()?;
+        gpu.copy_from(&plane)?;
         Ok(())
     }
 }

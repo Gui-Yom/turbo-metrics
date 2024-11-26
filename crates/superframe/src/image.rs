@@ -312,7 +312,7 @@ mod tests {
     #[test]
     fn nv12() -> Result<(), Box<dyn Error>> {
         let luma = Plane::<Box<[u8]>>::new(16, 16)?;
-        let uv = Plane::<Box<[u8; 2]>>::new(8, 8)?;
+        let uv = Plane::<Box<[[u8; 2]]>>::new(8, 8)?;
         let img: Image<_, Array<2>> = Image::from_parts([luma.to_dyn(), uv.to_dyn()], ());
         let [l, uv] = img.planes();
         for (i, plane) in img.into_iter().enumerate() {

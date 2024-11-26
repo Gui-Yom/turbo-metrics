@@ -182,7 +182,7 @@ impl<C: Deref<Target: ?Sized>> CuPin<C> {
         unsafe {
             sys::cuMemHostRegister_v2(
                 data.deref() as *const _ as _,
-                size_of_val(data.borrow()),
+                size_of_val(data.deref()),
                 flags,
             )
             .result()?;

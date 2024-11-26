@@ -284,17 +284,6 @@ impl<S: StaticSample, Stor: OwnedSampleStorage<SampleType = S>> Plane<Stor> {
         })
     }
 
-    pub fn same<'a>(&self) -> Result<Self, Box<dyn Error>>
-    where
-        Stor::Ext<'a>: Default,
-    {
-        self.same_ext(Stor::Ext::default())
-    }
-
-    pub fn same_ext(&self, ext: Stor::Ext<'_>) -> Result<Self, Box<dyn Error>> {
-        Self::new_ext(self.width, self.height, ext)
-    }
-
     /// Manually drop the plane, specifying drop parameters.
     pub fn drop<'a>(mut self) -> Result<(), Box<dyn Error>>
     where
@@ -306,6 +295,36 @@ impl<S: StaticSample, Stor: OwnedSampleStorage<SampleType = S>> Plane<Stor> {
     /// Manually drop the plane, specifying drop parameters.
     pub fn drop_ext(mut self, ext: Stor::Ext<'_>) -> Result<(), Box<dyn Error>> {
         self.data.drop_ext(ext)
+    }
+}
+
+impl<Stor: SampleStorage> Plane<Stor> {
+    pub fn new_like_ext<DstStor: OwnedSampleStorage<SampleType: StaticSample>>(
+        &self,
+        ext: DstStor::Ext<'_>,
+    ) -> Result<Plane<DstStor>, Box<dyn Error>> {
+        Plane::new_ext(self.width, self.height, ext)
+    }
+
+    pub fn new_like<'a, DstStor: OwnedSampleStorage<SampleType: StaticSample>>(
+        &self,
+    ) -> Result<Plane<DstStor>, Box<dyn Error>>
+    where
+        DstStor::Ext<'a>: Default,
+    {
+        self.new_like_ext(DstStor::Ext::default())
+    }
+}
+
+impl<Stor: SampleStorage + Clone> Clone for Plane<Stor> {
+    fn clone(&self) -> Self {
+        Self {
+            width: self.width,
+            height: self.height,
+            pitch: self.pitch,
+            sample_type: self.sample_type.clone(),
+            data: self.data.clone(),
+        }
     }
 }
 
@@ -342,6 +361,18 @@ impl<S: StaticSample> Plane<crate::cuda::Cuda<S>> {
             sample_type: (),
             data,
         }
+    }
+}
+
+#[cfg(feature = "cuda")]
+impl<S: StaticSample> Plane<Box<[S]>> {
+    pub fn cupin(self) -> cudarse_driver::CuResult<Plane<crate::cuda::CuPinned<S>>> {
+        Ok(Plane::from_host(
+            self.width,
+            self.height,
+            self.pitch,
+            crate::cuda::CuPinned::new(self.data)?,
+        ))
     }
 }
 
